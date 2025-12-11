@@ -1,55 +1,39 @@
 # Development stage
-FROM golang:1.24-alpine AS development
-
-# Install tools for development
-RUN apk --no-cache add ca-certificates git curl
+FROM node:20-alpine AS development
 
 WORKDIR /app
 
-# Copy go mod files
-COPY go.mod go.sum* ./
+COPY package*.json ./
+RUN npm install
 
-# Download dependencies
-RUN go mod download
-
-# Copy source code
 COPY . .
 
-# Expose port
 EXPOSE 8080
 
-# Run the application with go run for development
-CMD ["go", "run", "."]
+CMD ["npm", "run", "dev"]
 
 # Build stage for production
-FROM golang:1.24-alpine AS builder
-
-# Install ca-certificates for downloading dependencies
-RUN apk --no-cache add ca-certificates
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy all source code including vendor if exists
+COPY package*.json ./
+RUN npm ci --only=production
+
 COPY . .
-
-# Download dependencies (with vendor fallback)
-RUN go mod download || go mod vendor
-
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o art-backend .
+RUN npm run build
 
 # Production runtime stage
-FROM alpine:latest AS production
+FROM node:20-alpine AS production
 
 RUN apk --no-cache add ca-certificates curl
 
-WORKDIR /root/
+WORKDIR /app
 
-# Copy the binary from builder
-COPY --from=builder /app/art-backend .
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
 
-# Expose port
 EXPOSE 8080
 
-# Run the application
-CMD ["./art-backend"]
+CMD ["node", "dist/index.js"]
