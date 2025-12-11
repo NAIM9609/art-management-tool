@@ -12,7 +12,7 @@ export class StripePaymentProvider extends PaymentProvider {
       throw new Error('Stripe API key not configured');
     }
     this.stripe = new Stripe(config.stripeApiKey, {
-      apiVersion: '2024-12-18.acacia',
+      apiVersion: '2023-10-16',
     });
     this.webhookSecret = config.stripeWebhookSecret || '';
   }

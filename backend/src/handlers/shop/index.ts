@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { CartService } from '../../services/cart/CartService';
-import { ProductService } from '../../services/product/ProductService';
-import { OrderService } from '../../services/order/OrderService';
+import { CartService } from '../../services/CartService';
+import { ProductService } from '../../services/ProductService';
+import { OrderService } from '../../services/OrderService';
 import { PaymentProvider } from '../../services/payment/PaymentProvider';
+import { PaymentStatus } from '../../entities/Order';
 
 export function createShopRoutes(
   cartService: CartService,
@@ -111,7 +112,7 @@ export function createShopRoutes(
         );
         
         if (paymentResult.success) {
-          await orderService.updatePaymentStatus(order.id, 'paid', paymentResult.transactionId);
+          await orderService.updatePaymentStatus(order.id, PaymentStatus.PAID, paymentResult.transactionId);
         }
       }
       

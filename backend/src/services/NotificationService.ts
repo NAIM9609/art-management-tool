@@ -17,7 +17,12 @@ export class NotificationService {
   }
 
   async createNotification(data: NotificationData): Promise<Notification> {
-    const notification = this.notificationRepo.create(data);
+    const notification = this.notificationRepo.create({
+      type: data.type as NotificationType,
+      title: data.title,
+      message: data.message,
+      metadata: data.metadata,
+    });
     return this.notificationRepo.save(notification);
   }
 

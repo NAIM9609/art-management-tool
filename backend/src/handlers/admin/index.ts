@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { ProductService } from '../../services/product/ProductService';
-import { OrderService } from '../../services/order/OrderService';
-import { NotificationService } from '../../services/notification/NotificationService';
+import { ProductService } from '../../services/ProductService';
+import { OrderService } from '../../services/OrderService';
+import { NotificationService } from '../../services/NotificationService';
 import { AppDataSource } from '../../database/connection';
 import { Category } from '../../entities/Category';
 import { DiscountCode } from '../../entities/DiscountCode';

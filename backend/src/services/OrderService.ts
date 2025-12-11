@@ -6,8 +6,8 @@ import { Cart } from '../entities/Cart';
 import { CartItem } from '../entities/CartItem';
 import { EnhancedProduct } from '../entities/EnhancedProduct';
 import { ProductVariant } from '../entities/ProductVariant';
-import { NotificationService } from '../notification/NotificationService';
-import { PaymentProvider } from '../payment/PaymentProvider';
+import { NotificationService } from './NotificationService';
+import { PaymentProvider } from './payment/PaymentProvider';
 
 export interface CheckoutData {
   customerEmail: string;

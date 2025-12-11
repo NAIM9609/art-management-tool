@@ -1,19 +1,19 @@
 import { Express } from 'express';
-import { authMiddleware } from './middleware/auth';
-import { createShopRoutes } from './handlers/shop';
-import { createAdminRoutes } from './handlers/admin';
-import { createAuthRoutes } from './handlers/auth';
-import { createPersonaggiRoutes } from './handlers/personaggi';
-import { createFumettiRoutes } from './handlers/fumetti';
-import { CartService } from './services/cart/CartService';
-import { ProductService } from './services/product/ProductService';
-import { OrderService } from './services/order/OrderService';
-import { NotificationService } from './services/notification/NotificationService';
-import { MockPaymentProvider } from './services/payment/MockPaymentProvider';
-import { StripePaymentProvider } from './services/payment/StripePaymentProvider';
-import { EtsyPaymentProvider } from './services/payment/EtsyPaymentProvider';
-import { PaymentProvider } from './services/payment/PaymentProvider';
-import { config } from './config';
+import { authMiddleware } from '../middleware/auth';
+import { createShopRoutes } from '../handlers/shop';
+import { createAdminRoutes } from '../handlers/admin';
+import { createAuthRoutes } from '../handlers/auth';
+import { createPersonaggiRoutes } from '../handlers/personaggi';
+import { createFumettiRoutes } from '../handlers/fumetti';
+import { CartService } from '../services/CartService';
+import { ProductService } from '../services/ProductService';
+import { OrderService } from '../services/OrderService';
+import { NotificationService } from '../services/NotificationService';
+import { MockPaymentProvider } from '../services/payment/MockPaymentProvider';
+import { StripePaymentProvider } from '../services/payment/StripePaymentProvider';
+import { EtsyPaymentProvider } from '../services/payment/EtsyPaymentProvider';
+import { PaymentProvider } from '../services/payment/PaymentProvider';
+import { config } from '../config';
 
 export function setupRoutes(app: Express): void {
   const cartService = new CartService();
@@ -38,7 +38,7 @@ export function setupRoutes(app: Express): void {
 
   const orderService = new OrderService(paymentProvider, notificationService);
 
-  app.get('/health', (req, res) => {
+  app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
