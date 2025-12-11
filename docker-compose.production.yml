@@ -14,8 +14,6 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_prod_data:/var/lib/postgresql/data
-      - ./backend/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      # Backups directory
       - ./backups:/backups
     restart: always
     healthcheck:
