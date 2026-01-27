@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import express, { Express, Request, Response, NextFunction } from 'express';
+import cookieParser from 'cookie-parser';
 import { config } from './config';
 import { initializeDatabase } from './database/connection';
 import { corsMiddleware } from './middleware/cors';
@@ -9,6 +10,7 @@ const app: Express = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use(corsMiddleware);
 
 app.use((req: Request, res: Response, next: NextFunction) => {

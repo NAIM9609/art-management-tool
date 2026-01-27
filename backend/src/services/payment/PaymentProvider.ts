@@ -3,6 +3,7 @@ export interface PaymentResult {
   transactionId: string;
   message?: string;
   error?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface RefundResult {

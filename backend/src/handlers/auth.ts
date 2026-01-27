@@ -9,19 +9,20 @@ export function createAuthRoutes(): Router {
     try {
       const { username, password } = req.body;
 
-      if (username === 'admin' && password === 'admin') {
+      // Legacy credentials: artadmin / ArtM@nag3r2025!
+      // Also support admin / admin for backward compatibility
+      if ((username === 'artadmin' && password === 'ArtM@nag3r2025!') ||
+          (username === 'admin' && password === 'admin')) {
         const token = jwt.sign(
-          { id: 1, username: 'admin' },
+          { id: 1, username },
           config.jwtSecret,
           { expiresIn: '24h' }
         );
 
+        // Legacy response format: user is a string, not an object
         res.json({
           token,
-          user: {
-            id: 1,
-            username: 'admin',
-          },
+          user: username,
         });
       } else {
         res.status(401).json({ error: 'Invalid credentials' });

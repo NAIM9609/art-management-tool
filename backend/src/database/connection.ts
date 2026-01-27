@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { DataSource, DataSourceOptions } from 'typeorm';
-import { config } from '../config';
+import { config, isDevelopment, isProduction } from '../config';
 import { Category } from '../entities/Category';
 import { EnhancedProduct } from '../entities/EnhancedProduct';
 import { ProductImage } from '../entities/ProductImage';
@@ -50,9 +50,10 @@ const dataSourceOptions: DataSourceOptions = {
     Personaggio,
     Fumetto,
   ],
-  synchronize: false,
+  // Use synchronize only in development, migrations in production
+  synchronize: isDevelopment(),
   logging: config.logging.level === 'debug',
-  migrations: ['src/database/migrations/*.ts'],
+  migrations: ['dist/database/migrations/*.js'],
   migrationsTableName: 'migrations',
 };
 
@@ -64,10 +65,19 @@ export const initializeDatabase = async (): Promise<void> => {
     await AppDataSource.initialize();
     console.log('Database connection established successfully');
     
-    console.log('Running database migrations...');
-    await AppDataSource.synchronize();
+    if (isProduction()) {
+      console.log('Running database migrations...');
+      await AppDataSource.runMigrations();
+      console.log('Database migrations completed successfully');
+    } else {
+      console.log('Development mode: using schema synchronization');
+      if (AppDataSource.options.synchronize) {
+        await AppDataSource.synchronize();
+      }
+    }
+    
     await runCustomMigrations();
-    console.log('Database migrations completed successfully');
+    console.log('Database initialization completed successfully');
   } catch (error) {
     console.error('Failed to initialize database:', error);
     throw error;

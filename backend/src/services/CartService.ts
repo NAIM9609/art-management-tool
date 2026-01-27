@@ -140,4 +140,32 @@ export class CartService {
   async getCart(sessionId: string): Promise<Cart> {
     return this.getOrCreateCart(sessionId);
   }
+
+  async calculateTotals(sessionId: string): Promise<{
+    subtotal: number;
+    tax: number;
+    discount: number;
+    total: number;
+  }> {
+    const cart = await this.getOrCreateCart(sessionId);
+    
+    let subtotal = 0;
+    
+    if (cart.items && cart.items.length > 0) {
+      for (const item of cart.items) {
+        subtotal += parseFloat(item.price.toString()) * item.quantity;
+      }
+    }
+    
+    const tax = subtotal * 0.0; // No tax for now
+    const discount = parseFloat(cart.discount_amount.toString());
+    const total = subtotal + tax - discount;
+    
+    return {
+      subtotal,
+      tax,
+      discount,
+      total,
+    };
+  }
 }

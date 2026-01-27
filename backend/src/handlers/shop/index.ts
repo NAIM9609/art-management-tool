@@ -4,6 +4,7 @@ import { ProductService } from '../../services/ProductService';
 import { OrderService } from '../../services/OrderService';
 import { PaymentProvider } from '../../services/payment/PaymentProvider';
 import { PaymentStatus } from '../../entities/Order';
+import { getSessionToken, setSessionCookie } from '../../utils/sessionHelper';
 
 export function createShopRoutes(
   cartService: CartService,
@@ -16,16 +17,32 @@ export function createShopRoutes(
 
   router.get('/products', async (req: Request, res: Response) => {
     try {
-      const { category, search, price_min, price_max, page = 1, per_page = 20 } = req.query;
+      // Support both min_price/max_price (legacy) and price_min/price_max
+      const { category, search, min_price, max_price, price_min, price_max, page = 1, per_page = 20 } = req.query;
       const filters: any = { status: 'published' };
       
       if (category) filters.category = category as string;
       if (search) filters.search = search as string;
-      if (price_min) filters.minPrice = parseFloat(price_min as string);
-      if (price_max) filters.maxPrice = parseFloat(price_max as string);
+      
+      // Use min_price/max_price if provided, otherwise fall back to price_min/price_max
+      const minPrice = min_price || price_min;
+      const maxPrice = max_price || price_max;
+      
+      if (minPrice) filters.minPrice = parseFloat(minPrice as string);
+      if (maxPrice) filters.maxPrice = parseFloat(maxPrice as string);
 
-      const result = await productService.listProducts(filters, parseInt(page as string), parseInt(per_page as string));
-      res.json(result);
+      const currentPage = parseInt(page as string);
+      const itemsPerPage = parseInt(per_page as string);
+      
+      const result = await productService.listProducts(filters, currentPage, itemsPerPage);
+      
+      // Include page and per_page in response for legacy compatibility
+      res.json({
+        products: result.products,
+        total: result.total,
+        page: currentPage,
+        per_page: itemsPerPage,
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -45,9 +62,16 @@ export function createShopRoutes(
 
   router.get('/cart', async (req: Request, res: Response) => {
     try {
-      const sessionId = req.headers['x-session-id'] as string || `session_${Date.now()}`;
+      const sessionId = getSessionToken(req);
+      setSessionCookie(res, sessionId);
+      
       const cart = await cartService.getCart(sessionId);
-      res.json(cart);
+      const totals = await cartService.calculateTotals(sessionId);
+      
+      res.json({
+        cart,
+        ...totals,
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -55,7 +79,9 @@ export function createShopRoutes(
 
   router.post('/cart/items', async (req: Request, res: Response) => {
     try {
-      const sessionId = req.headers['x-session-id'] as string || `session_${Date.now()}`;
+      const sessionId = getSessionToken(req);
+      setSessionCookie(res, sessionId);
+      
       const { product_id, variant_id, quantity } = req.body;
       
       const cart = await cartService.addItem(sessionId, product_id, variant_id, quantity || 1);
@@ -67,7 +93,9 @@ export function createShopRoutes(
 
   router.patch('/cart/items/:id', async (req: Request, res: Response) => {
     try {
-      const sessionId = req.headers['x-session-id'] as string || `session_${Date.now()}`;
+      const sessionId = getSessionToken(req);
+      setSessionCookie(res, sessionId);
+      
       const { quantity } = req.body;
       
       const cart = await cartService.updateItem(sessionId, parseInt(req.params.id), quantity);
@@ -79,7 +107,9 @@ export function createShopRoutes(
 
   router.delete('/cart/items/:id', async (req: Request, res: Response) => {
     try {
-      const sessionId = req.headers['x-session-id'] as string || `session_${Date.now()}`;
+      const sessionId = getSessionToken(req);
+      setSessionCookie(res, sessionId);
+      
       const cart = await cartService.removeItem(sessionId, parseInt(req.params.id));
       res.json(cart);
     } catch (error: any) {
@@ -89,7 +119,9 @@ export function createShopRoutes(
 
   router.delete('/cart', async (req: Request, res: Response) => {
     try {
-      const sessionId = req.headers['x-session-id'] as string || `session_${Date.now()}`;
+      const sessionId = getSessionToken(req);
+      setSessionCookie(res, sessionId);
+      
       await cartService.clearCart(sessionId);
       res.json({ message: 'Cart cleared' });
     } catch (error: any) {
@@ -99,16 +131,26 @@ export function createShopRoutes(
 
   router.post('/checkout', async (req: Request, res: Response) => {
     try {
-      const sessionId = req.headers['x-session-id'] as string || `session_${Date.now()}`;
-      const checkoutData = req.body;
+      const sessionId = getSessionToken(req);
+      setSessionCookie(res, sessionId);
+      
+      // Map snake_case request body to camelCase for service layer
+      const checkoutData = {
+        customerEmail: req.body.email || req.body.customer_email,
+        customerName: req.body.name || req.body.customer_name,
+        shippingAddress: req.body.shipping_address,
+        billingAddress: req.body.billing_address,
+        paymentMethod: req.body.payment_method,
+        notes: req.body.notes,
+      };
       
       const order = await orderService.createOrderFromCart(sessionId, checkoutData);
       
-      if (checkoutData.payment_method !== 'mock') {
+      if (checkoutData.paymentMethod !== 'mock') {
         const paymentResult = await paymentProvider.processPayment(
           parseFloat(order.total.toString()),
           order.currency,
-          checkoutData.payment_details || {}
+          req.body.payment_details || {}
         );
         
         if (paymentResult.success) {
