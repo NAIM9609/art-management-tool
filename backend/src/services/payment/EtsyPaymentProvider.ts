@@ -34,6 +34,7 @@ export class EtsyPaymentProvider extends PaymentProvider {
       success: true,
       transactionId: `etsy_redirect_${Date.now()}`,
       message: 'Redirect to Etsy for payment',
+      metadata: { checkoutUrl },
       error: undefined,
     };
   }

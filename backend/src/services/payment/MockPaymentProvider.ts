@@ -19,7 +19,7 @@ export class MockPaymentProvider extends PaymentProvider {
       return {
         success: false,
         transactionId: '',
-        error: `Amount must be at least ${this.minAmount / 100} ${currency}`,
+        error: `Amount must be at least ${this.minAmount} ${currency}`,
       };
     }
 

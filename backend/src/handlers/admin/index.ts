@@ -4,7 +4,6 @@ import { OrderService } from '../../services/OrderService';
 import { NotificationService } from '../../services/NotificationService';
 import { AppDataSource } from '../../database/connection';
 import { Category } from '../../entities/Category';
-import { DiscountCode } from '../../entities/DiscountCode';
 
 export function createAdminRoutes(
   productService: ProductService,

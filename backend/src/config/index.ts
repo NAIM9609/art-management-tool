@@ -78,6 +78,17 @@ const getEnvBool = (key: string, defaultValue: boolean): boolean => {
   return value ? value.toLowerCase() === 'true' : defaultValue;
 };
 
+const getJwtSecret = (): string => {
+  const secret = process.env.JWT_SECRET;
+  const env = process.env.ENVIRONMENT || 'development';
+  
+  if (!secret && (env === 'production' || env === 'staging')) {
+    throw new Error('JWT_SECRET must be set in production/staging environments');
+  }
+  
+  return secret || 'your-secret-key-change-in-production';
+};
+
 export const config: Config = {
   server: {
     port: getEnvInt('PORT', 8080),
@@ -118,7 +129,7 @@ export const config: Config = {
     level: getEnv('LOG_LEVEL', 'info'),
     format: getEnv('LOG_FORMAT', 'json'),
   },
-  jwtSecret: getEnv('JWT_SECRET', 'your-secret-key-change-in-production'),
+  jwtSecret: getJwtSecret(),
   corsAllowedOrigins: getEnv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:3001').split(','),
   paymentProvider: getEnv('PAYMENT_PROVIDER', 'mock'),
   stripeApiKey: process.env.STRIPE_API_KEY,

@@ -90,10 +90,8 @@ export class OrderService {
     const discount = parseFloat(cart.discount_amount.toString());
     const total = subtotal + tax - discount;
 
-    const orderNumber = `ORD-${Date.now()}`;
-
     const order = this.orderRepo.create({
-      order_number: orderNumber,
+      order_number: 'TEMP', // Will be updated after insert
       customer_email: checkoutData.customerEmail,
       customer_name: checkoutData.customerName,
       subtotal,
@@ -110,6 +108,11 @@ export class OrderService {
     });
 
     const savedOrder = await this.orderRepo.save(order);
+    
+    // Generate order_number from persisted ID using legacy format
+    const orderNumber = `ORD-${savedOrder.id.toString().padStart(8, '0')}`;
+    await this.orderRepo.update(savedOrder.id, { order_number: orderNumber });
+    savedOrder.order_number = orderNumber;
 
     for (const itemData of orderItems) {
       const item = this.orderItemRepo.create({ ...itemData, order_id: savedOrder.id });
@@ -120,7 +123,7 @@ export class OrderService {
 
     await this.notificationService.createNotification({
       type: 'order_created',
-      title: `New Order: ${orderNumber}`,
+      title: `New Order: ${savedOrder.order_number}`,
       message: `Order from ${checkoutData.customerName}`,
       metadata: { order_id: savedOrder.id },
     });

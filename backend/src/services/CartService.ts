@@ -46,8 +46,9 @@ export class CartService {
       throw new Error('Product not found');
     }
 
+    let variant: ProductVariant | null = null;
     if (variantId) {
-      const variant = await this.variantRepo.findOne({ where: { id: variantId } });
+      variant = await this.variantRepo.findOne({ where: { id: variantId } });
       if (!variant) {
         throw new Error('Variant not found');
       }
@@ -70,9 +71,8 @@ export class CartService {
       existingItem.quantity += quantity;
       await this.cartItemRepo.save(existingItem);
     } else {
-      const price = variantId
-        ? parseFloat(product.base_price.toString()) +
-          parseFloat((await this.variantRepo.findOne({ where: { id: variantId } }))!.price_adjustment.toString())
+      const price = variant
+        ? parseFloat(product.base_price.toString()) + parseFloat(variant.price_adjustment.toString())
         : parseFloat(product.base_price.toString());
 
       const newItem = this.cartItemRepo.create({
