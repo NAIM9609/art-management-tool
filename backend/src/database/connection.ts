@@ -66,17 +66,16 @@ export const initializeDatabase = async (): Promise<void> => {
     console.log('Database connection established successfully');
     
     if (isProduction()) {
-      console.log('Running database migrations...');
-      try {
+      console.log('Checking for database migrations...');
+      // Check if there are any pending migrations
+      const pendingMigrations = await AppDataSource.showMigrations();
+      
+      if (pendingMigrations) {
+        console.log('Running database migrations...');
         const migrations = await AppDataSource.runMigrations();
         console.log(`Database migrations completed successfully (${migrations.length} migration(s) applied)`);
-      } catch (error: any) {
-        // Gracefully handle case where migrations directory is empty or doesn't exist
-        if (error.message?.includes('No migrations') || error.code === 'ENOENT') {
-          console.log('No migrations to run');
-        } else {
-          throw error;
-        }
+      } else {
+        console.log('No pending migrations to run');
       }
     } else {
       console.log('Development mode: using schema synchronization');
