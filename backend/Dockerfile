@@ -18,7 +18,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+# Install all dependencies (including devDependencies) for building
+RUN npm ci --include=dev
 
 COPY . .
 RUN npm run build

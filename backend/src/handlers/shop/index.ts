@@ -146,6 +146,8 @@ export function createShopRoutes(
       
       const order = await orderService.createOrderFromCart(sessionId, checkoutData);
       
+      let paymentMetadata: Record<string, any> | undefined;
+      
       if (checkoutData.paymentMethod !== 'mock') {
         const paymentResult = await paymentProvider.processPayment(
           parseFloat(order.total.toString()),
@@ -156,9 +158,20 @@ export function createShopRoutes(
         if (paymentResult.success) {
           await orderService.updatePaymentStatus(order.id, PaymentStatus.PAID, paymentResult.transactionId);
         }
+        
+        // Include payment metadata (e.g., Etsy checkout URL) in response
+        if (paymentResult.metadata) {
+          paymentMetadata = paymentResult.metadata;
+        }
       }
       
-      res.json(order);
+      // Return order with optional payment metadata
+      const response: any = { ...order };
+      if (paymentMetadata) {
+        response.payment_metadata = paymentMetadata;
+      }
+      
+      res.json(response);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
