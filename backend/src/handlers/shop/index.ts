@@ -3,8 +3,12 @@ import { CartService } from '../../services/CartService';
 import { ProductService } from '../../services/ProductService';
 import { OrderService } from '../../services/OrderService';
 import { PaymentProvider } from '../../services/payment/PaymentProvider';
-import { PaymentStatus } from '../../entities/Order';
+import { PaymentStatus, Order } from '../../entities/Order';
 import { getSessionToken, setSessionCookie } from '../../utils/sessionHelper';
+
+interface CheckoutResponse extends Order {
+  payment_metadata?: Record<string, any>;
+}
 
 export function createShopRoutes(
   cartService: CartService,
@@ -166,7 +170,7 @@ export function createShopRoutes(
       }
       
       // Return order with optional payment metadata
-      const response: any = { ...order };
+      const response: CheckoutResponse = { ...order };
       if (paymentMetadata) {
         response.payment_metadata = paymentMetadata;
       }

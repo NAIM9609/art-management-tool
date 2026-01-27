@@ -68,9 +68,9 @@ export const initializeDatabase = async (): Promise<void> => {
     if (isProduction()) {
       console.log('Checking for database migrations...');
       // Check if there are any pending migrations
-      const pendingMigrations = await AppDataSource.showMigrations();
+      const hasPendingMigrations = await AppDataSource.showMigrations();
       
-      if (pendingMigrations) {
+      if (hasPendingMigrations) {
         console.log('Running database migrations...');
         const migrations = await AppDataSource.runMigrations();
         console.log(`Database migrations completed successfully (${migrations.length} migration(s) applied)`);
