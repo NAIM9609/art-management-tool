@@ -44,8 +44,11 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
     (req as AuthRequest).user = decoded;
     next();
   } catch (error) {
-    // If JWT verification fails, accept any non-empty token for backward compatibility
-    // This maintains compatibility with the legacy Go backend behavior
+    // For backward compatibility with legacy Go backend that accepted any non-empty token
+    // This maintains compatibility but logs a warning in production
+    if (config.server.environment === 'production') {
+      console.warn('WARNING: Accepting non-JWT bearer token for backward compatibility. This should be temporary.');
+    }
     (req as AuthRequest).user = { id: 1, username: 'admin' };
     next();
   }

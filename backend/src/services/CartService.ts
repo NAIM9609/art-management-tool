@@ -4,6 +4,7 @@ import { Cart } from '../entities/Cart';
 import { CartItem } from '../entities/CartItem';
 import { EnhancedProduct } from '../entities/EnhancedProduct';
 import { ProductVariant } from '../entities/ProductVariant';
+import { config } from '../config';
 
 export class CartService {
   private cartRepo: Repository<Cart>;
@@ -157,7 +158,7 @@ export class CartService {
       }
     }
     
-    const tax = subtotal * 0.0; // No tax for now
+    const tax = subtotal * config.taxRate;
     const discount = parseFloat(cart.discount_amount.toString());
     const total = subtotal + tax - discount;
     

@@ -8,6 +8,7 @@ import { EnhancedProduct } from '../entities/EnhancedProduct';
 import { ProductVariant } from '../entities/ProductVariant';
 import { NotificationService } from './NotificationService';
 import { PaymentProvider } from './payment/PaymentProvider';
+import { config } from '../config';
 
 export interface CheckoutData {
   customerEmail: string;
@@ -86,7 +87,7 @@ export class OrderService {
       });
     }
 
-    const tax = subtotal * 0.0;
+    const tax = subtotal * config.taxRate;
     const discount = parseFloat(cart.discount_amount.toString());
     const total = subtotal + tax - discount;
 
