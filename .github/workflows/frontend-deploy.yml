@@ -1,0 +1,147 @@
+name: Frontend Build and Deploy
+
+# Trigger the workflow on pushes to the specified branch
+on:
+  push:
+    branches:
+      - copilot/remove-go-backend-replace-typescript
+
+# Define environment variables that can be used across all jobs
+env:
+  NODE_VERSION: '20'  # Use Node.js LTS version
+  AWS_REGION: 'us-east-1'  # Default AWS region, can be overridden by secrets
+
+jobs:
+  build-and-deploy:
+    name: Build Frontend and Deploy to AWS
+    runs-on: ubuntu-latest
+    
+    # Set working directory for all run steps in this job
+    defaults:
+      run:
+        working-directory: ./frontend
+    
+    steps:
+      # Step 1: Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # Step 2: Setup Node.js environment
+      # Uses the LTS version specified in env variables
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+      
+      # Step 3: Install dependencies
+      # Using 'npm ci' for clean, reproducible builds (faster than 'npm install')
+      - name: Install dependencies
+        run: npm ci
+      
+      # Step 4: Build the frontend application
+      # Creates production-ready static files in .next directory (Next.js standalone mode)
+      - name: Build frontend
+        run: npm run build
+        env:
+          # Set production environment for the build
+          NODE_ENV: production
+      
+      # Step 5: Create ZIP archive of build artifacts
+      # Package the .next directory, public assets, and necessary files for deployment
+      - name: Create build archive
+        run: |
+          # Create a deployment package with all necessary files
+          mkdir -p ../deploy-package
+          
+          # Copy the standalone build output
+          cp -r .next/standalone ../deploy-package/
+          
+          # Copy static files
+          cp -r .next/static ../deploy-package/.next/static
+          cp -r public ../deploy-package/public 2>/dev/null || true
+          
+          # Copy package.json for reference
+          cp package.json ../deploy-package/
+          
+          # Create ZIP archive with timestamp
+          cd ../deploy-package
+          zip -r ../frontend-build-$(date +%Y%m%d-%H%M%S).zip .
+          
+          # Also create a 'latest' version for easy reference
+          cp ../frontend-build-$(date +%Y%m%d-%H%M%S).zip ../frontend-build-latest.zip
+          
+          # Move back to workspace root
+          cd ..
+      
+      # Step 6: Configure AWS credentials
+      # Uses GitHub Secrets for secure authentication with AWS
+      # Required secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || env.AWS_REGION }}
+      
+      # Step 7: Upload build artifacts to S3
+      # Uploads both timestamped and 'latest' versions of the build
+      # Required secret: S3_BUCKET_NAME
+      - name: Upload to S3
+        run: |
+          # Upload timestamped version
+          aws s3 cp ../frontend-build-$(date +%Y%m%d-%H%M%S).zip \
+            s3://${{ secrets.S3_BUCKET_NAME }}/builds/frontend-build-$(date +%Y%m%d-%H%M%S).zip
+          
+          # Upload 'latest' version (overwrites previous)
+          aws s3 cp ../frontend-build-latest.zip \
+            s3://${{ secrets.S3_BUCKET_NAME }}/builds/frontend-build-latest.zip
+          
+          # Set appropriate metadata and cache control
+          aws s3 cp ../frontend-build-latest.zip \
+            s3://${{ secrets.S3_BUCKET_NAME }}/builds/frontend-build-latest.zip \
+            --metadata "build-date=$(date -u +%Y-%m-%dT%H:%M:%SZ),commit-sha=${{ github.sha }}" \
+            --cache-control "no-cache"
+      
+      # Step 8: Trigger Amplify deployment
+      # Option 1: Start a new deployment job if Amplify is connected to S3
+      # Option 2: Trigger a webhook to notify Amplify of the new build
+      # Required secrets: AMPLIFY_APP_ID, optionally AMPLIFY_WEBHOOK_URL
+      - name: Update Amplify deployment
+        run: |
+          # Check if AMPLIFY_APP_ID is set
+          if [ -n "${{ secrets.AMPLIFY_APP_ID }}" ]; then
+            echo "Triggering Amplify deployment for app: ${{ secrets.AMPLIFY_APP_ID }}"
+            
+            # Start a new deployment job
+            aws amplify start-job \
+              --app-id ${{ secrets.AMPLIFY_APP_ID }} \
+              --branch-name ${{ secrets.AMPLIFY_BRANCH_NAME || 'main' }} \
+              --job-type RELEASE
+            
+            echo "Amplify deployment triggered successfully"
+          else
+            echo "AMPLIFY_APP_ID not set, skipping Amplify deployment"
+          fi
+          
+          # Alternative: Use webhook if configured
+          if [ -n "${{ secrets.AMPLIFY_WEBHOOK_URL }}" ]; then
+            echo "Triggering Amplify via webhook"
+            curl -X POST "${{ secrets.AMPLIFY_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"source\":\"github-actions\",\"commit\":\"${{ github.sha }}\"}"
+          fi
+      
+      # Step 9: Output deployment information
+      - name: Deployment summary
+        run: |
+          echo "✅ Frontend build completed successfully"
+          echo "📦 Build archive uploaded to S3"
+          echo "🚀 Amplify deployment triggered"
+          echo ""
+          echo "Build details:"
+          echo "  - Commit: ${{ github.sha }}"
+          echo "  - Branch: ${{ github.ref_name }}"
+          echo "  - S3 Bucket: ${{ secrets.S3_BUCKET_NAME }}"
+          echo "  - Build file: frontend-build-latest.zip"
