@@ -1,10 +1,12 @@
 name: Frontend Build and Deploy
 
 # Trigger the workflow on pushes to the specified branch
+# Also allow manual triggering from the Actions tab
 on:
   push:
     branches:
       - copilot/remove-go-backend-replace-typescript
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
 
 # Define environment variables that can be used across all jobs
 env:
@@ -65,12 +67,16 @@ jobs:
           # Copy package.json for reference
           cp package.json ../deploy-package/
           
+          # Generate timestamp for consistent file naming
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          echo "BUILD_TIMESTAMP=${TIMESTAMP}" >> $GITHUB_ENV
+          
           # Create ZIP archive with timestamp
           cd ../deploy-package
-          zip -r ../frontend-build-$(date +%Y%m%d-%H%M%S).zip .
+          zip -r ../frontend-build-${TIMESTAMP}.zip .
           
           # Also create a 'latest' version for easy reference
-          cp ../frontend-build-$(date +%Y%m%d-%H%M%S).zip ../frontend-build-latest.zip
+          cp ../frontend-build-${TIMESTAMP}.zip ../frontend-build-latest.zip
           
           # Move back to workspace root
           cd ..
@@ -91,8 +97,8 @@ jobs:
       - name: Upload to S3
         run: |
           # Upload timestamped version
-          aws s3 cp ../frontend-build-$(date +%Y%m%d-%H%M%S).zip \
-            s3://${{ secrets.S3_BUCKET_NAME }}/builds/frontend-build-$(date +%Y%m%d-%H%M%S).zip
+          aws s3 cp ../frontend-build-${BUILD_TIMESTAMP}.zip \
+            s3://${{ secrets.S3_BUCKET_NAME }}/builds/frontend-build-${BUILD_TIMESTAMP}.zip
           
           # Upload 'latest' version (overwrites previous)
           aws s3 cp ../frontend-build-latest.zip \

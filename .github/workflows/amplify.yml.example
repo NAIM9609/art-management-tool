@@ -1,0 +1,89 @@
+# AWS Amplify Build Specification Example
+
+# This is an example amplify.yml file that shows how to configure
+# AWS Amplify to use the build artifacts from S3 that were created
+# by the GitHub Actions workflow.
+
+version: 1
+
+# Frontend configuration for Next.js application
+frontend:
+  phases:
+    # Pre-build phase: Download the build artifact from S3
+    preBuild:
+      commands:
+        - echo "Downloading build artifact from S3..."
+        # Download the latest build from S3
+        - aws s3 cp s3://${S3_BUCKET_NAME}/builds/frontend-build-latest.zip build.zip
+        
+        # Extract the build
+        - echo "Extracting build artifact..."
+        - unzip -q build.zip
+        
+        # Verify extraction
+        - ls -la .next/standalone
+        - ls -la .next/static
+        
+    # Build phase: No actual build needed since it's already built
+    build:
+      commands:
+        - echo "Build already completed by GitHub Actions"
+        - echo "Build timestamp:" $(cat .next/BUILD_ID 2>/dev/null || echo "N/A")
+        
+    # Post-build phase: Any cleanup or additional steps
+    postBuild:
+      commands:
+        - echo "Deployment preparation complete"
+        - echo "Application is ready to serve"
+        
+  # Artifacts configuration: What to deploy
+  artifacts:
+    # Base directory for the build output
+    baseDirectory: .
+    files:
+      # Include all standalone server files
+      - '.next/standalone/**/*'
+      # Include static assets
+      - '.next/static/**/*'
+      # Include public assets
+      - 'public/**/*'
+      # Include package.json
+      - 'package.json'
+      
+  # Cache configuration (optional, can be empty since build is from S3)
+  cache:
+    paths: []
+
+# Environment variables that should be set in Amplify Console
+# These are examples - set actual values in Amplify Console under:
+# App settings → Environment variables
+#
+# S3_BUCKET_NAME: your-bucket-name
+# NODE_ENV: production
+# NEXT_PUBLIC_API_URL: https://api.your-domain.com
+
+# Alternative Configuration: Simple Node.js Server
+# If you want to run the Next.js standalone server directly:
+#
+# frontend:
+#   phases:
+#     preBuild:
+#       commands:
+#         - aws s3 cp s3://${S3_BUCKET_NAME}/builds/frontend-build-latest.zip build.zip
+#         - unzip -q build.zip
+#     build:
+#       commands:
+#         - echo "Starting Next.js server..."
+#   artifacts:
+#     baseDirectory: .
+#     files:
+#       - '**/*'
+#   cache:
+#     paths: []
+
+# Notes:
+# 1. Make sure to set S3_BUCKET_NAME as an environment variable in Amplify
+# 2. The IAM role for Amplify must have permissions to read from the S3 bucket
+# 3. For custom domains, configure them in Amplify Console under Domain Management
+# 4. For HTTPS, Amplify automatically provisions SSL certificates
+# 5. For custom headers, configure them under Rewrites and redirects
