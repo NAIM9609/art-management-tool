@@ -18,6 +18,10 @@ jobs:
     name: Build Frontend and Deploy to AWS
     runs-on: ubuntu-latest
     
+    # Explicitly set minimal permissions for security
+    permissions:
+      contents: read  # Required to checkout the repository
+    
     # Set working directory for all run steps in this job
     defaults:
       run:
