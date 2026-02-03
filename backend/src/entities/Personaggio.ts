@@ -17,30 +17,30 @@ export class Personaggio {
   @Column({ type: 'json', nullable: true })
   images?: string[];
 
-  @Column({ type: 'varchar', length: 50, default: '#E0E7FF' })
+  @Column({ name: 'background_color', type: 'varchar', length: 50, default: '#E0E7FF' })
   backgroundColor!: string;
 
-  @Column({ type: 'varchar', length: 20, default: 'solid' })
+  @Column({ name: 'background_type', type: 'varchar', length: 20, default: 'solid' })
   backgroundType!: string;
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
+  @Column({ name: 'gradient_from', type: 'varchar', length: 50, nullable: true })
   gradientFrom?: string;
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
+  @Column({ name: 'gradient_to', type: 'varchar', length: 50, nullable: true })
   gradientTo?: string;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ name: 'background_image', type: 'varchar', length: 500, nullable: true })
   backgroundImage?: string;
 
   @Column({ type: 'int', default: 0 })
   order!: number;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 
-  @DeleteDateColumn()
+  @DeleteDateColumn({ name: 'deleted_at' })
   deletedAt?: Date;
 }

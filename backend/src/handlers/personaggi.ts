@@ -18,6 +18,19 @@ export function createPersonaggiRoutes(): Router {
     }
   });
 
+  router.get('/deleted', authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const personaggi = await personaggioRepo.find({
+        withDeleted: true,
+        where: {},
+      });
+      const deleted = personaggi.filter(p => p.deletedAt);
+      res.json(deleted);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   router.get('/:id', async (req: Request, res: Response) => {
     try {
       const personaggio = await personaggioRepo.findOne({
@@ -70,19 +83,6 @@ export function createPersonaggiRoutes(): Router {
         where: { id: parseInt(req.params.id) },
       });
       res.json(personaggio);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  router.get('/deleted', authMiddleware, async (req: Request, res: Response) => {
-    try {
-      const personaggi = await personaggioRepo.find({
-        withDeleted: true,
-        where: {},
-      });
-      const deleted = personaggi.filter(p => p.deletedAt);
-      res.json(deleted);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

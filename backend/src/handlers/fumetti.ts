@@ -18,6 +18,19 @@ export function createFumettiRoutes(): Router {
     }
   });
 
+  router.get('/deleted', authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const fumetti = await fumettoRepo.find({
+        withDeleted: true,
+        where: {},
+      });
+      const deleted = fumetti.filter(f => f.deletedAt);
+      res.json(deleted);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   router.get('/:id', async (req: Request, res: Response) => {
     try {
       const fumetto = await fumettoRepo.findOne({
@@ -70,19 +83,6 @@ export function createFumettiRoutes(): Router {
         where: { id: parseInt(req.params.id) },
       });
       res.json(fumetto);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  router.get('/deleted', authMiddleware, async (req: Request, res: Response) => {
-    try {
-      const fumetti = await fumettoRepo.find({
-        withDeleted: true,
-        where: {},
-      });
-      const deleted = fumetti.filter(f => f.deletedAt);
-      res.json(deleted);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

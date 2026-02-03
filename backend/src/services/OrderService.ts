@@ -129,10 +129,16 @@ export class OrderService {
       metadata: { order_id: savedOrder.id },
     });
 
-    return this.orderRepo.findOne({
+    const finalOrder = await this.orderRepo.findOne({
       where: { id: savedOrder.id },
       relations: ['items'],
-    }) as Promise<Order>;
+    });
+    
+    if (!finalOrder) {
+      throw new Error(`Order with id ${savedOrder.id} not found after creation`);
+    }
+    
+    return finalOrder;
   }
 
   async getOrderById(id: number): Promise<Order | null> {
@@ -176,11 +182,19 @@ export class OrderService {
       }
     }
 
-    return this.getOrderById(id) as Promise<Order>;
+    const order = await this.getOrderById(id);
+    if (!order) {
+      throw new Error(`Order with id ${id} not found`);
+    }
+    return order;
   }
 
   async updateFulfillmentStatus(id: number, status: FulfillmentStatus): Promise<Order> {
     await this.orderRepo.update(id, { fulfillment_status: status });
-    return this.getOrderById(id) as Promise<Order>;
+    const order = await this.getOrderById(id);
+    if (!order) {
+      throw new Error(`Order with id ${id} not found`);
+    }
+    return order;
   }
 }

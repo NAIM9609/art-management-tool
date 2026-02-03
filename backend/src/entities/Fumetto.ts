@@ -11,7 +11,7 @@ export class Fumetto {
   @Column({ type: 'text', nullable: true })
   description?: string;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ name: 'cover_image', type: 'varchar', length: 500, nullable: true })
   coverImage?: string;
 
   @Column({ type: 'json', nullable: true })
@@ -20,12 +20,12 @@ export class Fumetto {
   @Column({ type: 'int', default: 0 })
   order!: number;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 
-  @DeleteDateColumn()
+  @DeleteDateColumn({ name: 'deleted_at' })
   deletedAt?: Date;
 }

@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, ManyToMany, CreateDateColumn, UpdateDateColumn, DeleteDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, ManyToMany, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, JoinColumn } from 'typeorm';
 import { EnhancedProduct } from './EnhancedProduct';
 
 @Entity('categories')
@@ -19,6 +19,7 @@ export class Category {
   parent_id?: number;
 
   @ManyToOne(() => Category, (category) => category.children, { nullable: true })
+  @JoinColumn({ name: 'parent_id' })
   parent?: Category;
 
   @OneToMany(() => Category, (category) => category.parent)

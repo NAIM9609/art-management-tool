@@ -44,11 +44,14 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
     (req as AuthRequest).user = decoded;
     next();
   } catch (error) {
-    // For backward compatibility with legacy Go backend that accepted any non-empty token
-    // This maintains compatibility but logs a warning in production
+    // In production, reject invalid tokens
     if (config.server.environment === 'production') {
-      console.warn('WARNING: Accepting non-JWT bearer token for backward compatibility. This should be temporary.');
+      res.status(401).json({ error: 'Invalid or expired token' });
+      return;
     }
+    
+    // In non-production environments, allow for development/testing compatibility
+    console.warn('WARNING: Accepting non-JWT bearer token in non-production environment');
     (req as AuthRequest).user = { id: 1, username: 'admin' };
     next();
   }

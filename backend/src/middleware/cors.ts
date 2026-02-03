@@ -10,7 +10,7 @@ export const corsMiddleware = cors({
     }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Cart-Session', 'x-session-id', 'Stripe-Signature'],
   credentials: true,
   optionsSuccessStatus: 200,
 });

@@ -153,7 +153,12 @@ export function createShopRoutes(
       let paymentMetadata: Record<string, any> | undefined;
       
       if (checkoutData.paymentMethod !== 'mock') {
-        const paymentResult = await paymentProvider.processPayment(
+        // Select the appropriate payment provider based on payment method
+        const selectedProvider = checkoutData.paymentMethod === 'etsy' && etsyPaymentProvider 
+          ? etsyPaymentProvider 
+          : paymentProvider;
+          
+        const paymentResult = await selectedProvider.processPayment(
           parseFloat(order.total.toString()),
           order.currency,
           req.body.payment_details || {}

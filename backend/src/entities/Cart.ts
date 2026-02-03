@@ -6,7 +6,7 @@ export class Cart {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ type: 'varchar', length: 255, unique: true })
+  @Column({ name: 'session_token', type: 'varchar', length: 255, unique: true })
   session_id!: string;
 
   @Column({ type: 'int', nullable: true })

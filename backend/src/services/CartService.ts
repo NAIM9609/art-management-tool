@@ -72,16 +72,11 @@ export class CartService {
       existingItem.quantity += quantity;
       await this.cartItemRepo.save(existingItem);
     } else {
-      const price = variant
-        ? parseFloat(product.base_price.toString()) + parseFloat(variant.price_adjustment.toString())
-        : parseFloat(product.base_price.toString());
-
       const newItem = this.cartItemRepo.create({
         cart_id: cart.id,
         product_id: productId,
         variant_id: variantId,
         quantity,
-        price,
       });
       await this.cartItemRepo.save(newItem);
     }
@@ -154,7 +149,21 @@ export class CartService {
     
     if (cart.items && cart.items.length > 0) {
       for (const item of cart.items) {
-        subtotal += parseFloat(item.price.toString()) * item.quantity;
+        // Fetch product to get price
+        const product = await this.productRepo.findOne({ where: { id: item.product_id } });
+        if (product) {
+          let itemPrice = parseFloat(product.base_price.toString());
+          
+          // Add variant price adjustment if applicable
+          if (item.variant_id) {
+            const variant = await this.variantRepo.findOne({ where: { id: item.variant_id } });
+            if (variant) {
+              itemPrice += parseFloat(variant.price_adjustment.toString());
+            }
+          }
+          
+          subtotal += itemPrice * item.quantity;
+        }
       }
     }
     

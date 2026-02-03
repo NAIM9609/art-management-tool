@@ -91,7 +91,11 @@ export class ProductService {
 
   async updateProduct(id: number, data: Partial<EnhancedProduct>): Promise<EnhancedProduct> {
     await this.productRepo.update(id, data);
-    return this.getProductById(id) as Promise<EnhancedProduct>;
+    const product = await this.getProductById(id);
+    if (!product) {
+      throw new Error(`Product with id ${id} not found`);
+    }
+    return product;
   }
 
   async deleteProduct(id: number): Promise<void> {
