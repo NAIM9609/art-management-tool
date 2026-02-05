@@ -62,10 +62,10 @@ jobs:
           mkdir -p ../deploy-package/.next
           
           # Copy the standalone build output, preserving .next/standalone layout
-          cp -r .next/standalone ../deploy-package/.next/
+          cp -r .next/standalone ../deploy-package/.next/standalone
           
           # Copy static files under .next/static
-          cp -r .next/static ../deploy-package/.next/
+          cp -r .next/static ../deploy-package/.next/static
           
           # Copy public directory if it exists
           if [ -d "public" ]; then
