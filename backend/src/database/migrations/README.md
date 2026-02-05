@@ -1,1 +1,0 @@
-# TypeORM migrations directory
