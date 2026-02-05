@@ -72,8 +72,7 @@ Create an IAM user with programmatic access and attach the following policy:
       "Action": [
         "s3:PutObject",
         "s3:GetObject",
-        "s3:ListBucket",
-        "s3:PutObjectMetadata"
+        "s3:ListBucket"
       ],
       "Resource": [
         "arn:aws:s3:::my-art-tool-builds",
@@ -176,7 +175,7 @@ The ZIP archive includes:
 
 - `.next/standalone/` - Standalone Next.js server
 - `.next/static/` - Static assets (JS, CSS, images)
-- `public/` - Public assets
+- `public/` - Public assets (if exists)
 - `package.json` - Package metadata
 
 ## Manual Deployment Steps (if Amplify auto-deploy fails)

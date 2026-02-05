@@ -74,9 +74,7 @@ Create an IAM user with the following policy for minimal required permissions:
       "Effect": "Allow",
       "Action": [
         "s3:PutObject",
-        "s3:GetObject",
-        "s3:PutObjectAcl",
-        "s3:PutObjectMetadata"
+        "s3:GetObject"
       ],
       "Resource": [
         "arn:aws:s3:::YOUR_BUCKET_NAME/*"

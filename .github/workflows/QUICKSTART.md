@@ -34,8 +34,8 @@ aws s3 mb s3://art-tool-frontend-builds --region us-east-1
 # 4. Enable "Programmatic access"
 # 5. Click "Next"
 # 6. Click "Attach policies directly"
-# 7. Search and select "AmazonS3FullAccess" (or create custom policy - see SECRETS_SETUP.md)
-# 8. If using Amplify, also select "AWSAmplifyFullAccess"
+# 7. Create and attach a least-privilege custom policy scoped to your S3 bucket (see SECRETS_SETUP.md for the exact policy JSON)
+# 8. If using Amplify, also add only the minimal Amplify permissions as documented in SECRETS_SETUP.md (do NOT use AWSAmplifyFullAccess)
 # 9. Click "Next" → "Create user"
 # 10. **IMPORTANT**: Save the Access Key ID and Secret Access Key (you won't see them again!)
 ```
@@ -192,7 +192,7 @@ If you want to use AWS Amplify for hosting:
    ```
 
 2. **Configure Amplify Build**:
-   - Copy the example configuration from `amplify.yml.example`
+   - Copy the example configuration from `.github/workflows/amplify.yml.example`
    - Add `S3_BUCKET_NAME` as environment variable in Amplify
    - Set up IAM role for Amplify to access S3
 
