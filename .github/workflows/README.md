@@ -113,7 +113,7 @@ frontend:
       commands:
         - echo "Build already completed by GitHub Actions"
   artifacts:
-    baseDirectory: .next
+    baseDirectory: .
     files:
       - '**/*'
   cache:
