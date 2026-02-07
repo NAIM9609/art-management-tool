@@ -6,6 +6,11 @@ import { useLocale } from "next-intl";
 import Image from "next/image";
 import { FumettiAPIService, type FumettoDTO } from "@/services/FumettiAPIService";
 
+// Generate a placeholder page for static export; actual slug is read client-side via useParams()
+export function generateStaticParams() {
+  return [{ slug: '_' }];
+}
+
 export default function FumettoDetailPage() {
   const params = useParams();
   const router = useRouter();

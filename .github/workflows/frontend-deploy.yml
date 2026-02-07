@@ -46,50 +46,48 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      # Step 4: Build the frontend application
-      # Creates production-ready static files in .next directory (Next.js standalone mode)
-      - name: Build frontend
-        run: npm run build
+      # Step 4: Prepare for static export build
+      # Remove API routes (not supported with output: 'export') and build static site
+      - name: Build frontend (static export)
+        run: |
+          # Remove API routes - they only work in standalone/server mode.
+          # In static export, the frontend calls the backend directly via NEXT_PUBLIC_API_URL.
+          rm -rf app/api
+
+          # Build with static export mode
+          npm run build
         env:
-          # Set production environment for the build
           NODE_ENV: production
+          # Tell next.config.ts to use output: 'export'
+          NEXT_OUTPUT_MODE: export
+          # Set the backend URL so client-side API calls go directly to it
+          NEXT_PUBLIC_API_URL: ${{ secrets.BACKEND_API_URL }}
       
-      # Step 5: Create ZIP archive of build artifacts
-      # Package the .next directory, public assets, and necessary files for deployment
+      # Step 5: Create ZIP archive of static build artifacts
+      # The 'out/' directory contains all static HTML, CSS, JS files ready for hosting
       - name: Create build archive
         run: |
-          # Create a deployment package with all necessary files
-          mkdir -p ../deploy-package/.next
-          
-          # Copy the standalone build output, preserving .next/standalone layout
-          cp -r .next/standalone ../deploy-package/.next/standalone
-          
-          # Copy static files under .next/static
-          cp -r .next/static ../deploy-package/.next/static
-          
-          # Copy public directory if it exists
-          if [ -d "public" ]; then
-            echo "Copying public directory..."
-            cp -r public ../deploy-package/public
-          else
-            echo "No public directory found, skipping..."
+          # Verify the static export output exists
+          if [ ! -d "out" ]; then
+            echo "ERROR: 'out' directory not found. Static export may have failed."
+            exit 1
           fi
-          
-          # Copy package.json for reference
-          cp package.json ../deploy-package/
-          
+
+          echo "Static export contents:"
+          ls -la out/
+          echo ""
+          echo "Locale directories:"
+          ls -la out/it/ 2>/dev/null || echo "No /it directory"
+          ls -la out/en/ 2>/dev/null || echo "No /en directory"
+
           # Generate timestamp for consistent file naming
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           echo "BUILD_TIMESTAMP=${TIMESTAMP}" >> $GITHUB_ENV
-          
-          # Create ZIP archive with timestamp
-          cd ../deploy-package
-          zip -r ../frontend-build-${TIMESTAMP}.zip .
-          
-          # Also create a 'latest' version for easy reference
-          cp ../frontend-build-${TIMESTAMP}.zip ../frontend-build-latest.zip
-          
-          # Move back to workspace root
+
+          # Create ZIP from the contents of out/ (files at root of ZIP = served at root of site)
+          cd out
+          zip -r ../../frontend-build-${TIMESTAMP}.zip .
+          cp ../../frontend-build-${TIMESTAMP}.zip ../../frontend-build-latest.zip
           cd ..
       
       # Step 6: Configure AWS credentials

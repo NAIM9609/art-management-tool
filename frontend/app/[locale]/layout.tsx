@@ -11,6 +11,11 @@ export const metadata: Metadata = {
   description: "Art gallery management system with customer and admin interfaces",
 };
 
+// Required for static export (output: 'export') - pre-render pages for each locale
+export function generateStaticParams() {
+  return [{locale: 'en'}, {locale: 'it'}];
+}
+
 const jungleFever = localFont({
   src: [
     {

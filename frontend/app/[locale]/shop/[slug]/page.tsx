@@ -11,6 +11,11 @@ import { useToast } from '@/hooks';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ImageGallery from '@/components/shop/ImageGallery';
 
+// Generate a placeholder page for static export; actual slug is read client-side via useParams()
+export function generateStaticParams() {
+  return [{ slug: '_' }];
+}
+
 export default function ProductDetailPage() {
   const params = useParams();
   const locale = useLocale();
