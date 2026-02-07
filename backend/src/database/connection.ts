@@ -50,8 +50,8 @@ const dataSourceOptions: DataSourceOptions = {
     Personaggio,
     Fumetto,
   ],
-  // Use synchronize only in development, migrations in production
-  synchronize: isDevelopment(),
+  // TEMPORARY: Enable synchronize to create tables (TODO: generate proper migrations)
+  synchronize: true,
   logging: config.logging.level === 'debug',
   migrations: ['dist/database/migrations/*.js'],
   migrationsTableName: 'migrations',
@@ -64,6 +64,11 @@ export const initializeDatabase = async (): Promise<void> => {
     console.log(`Connecting to database at ${config.database.host}:${config.database.port}...`);
     await AppDataSource.initialize();
     console.log('Database connection established successfully');
+    
+    // Always run synchronize to ensure tables are created
+    console.log('Running schema synchronization...');
+    await AppDataSource.synchronize();
+    console.log('Schema synchronization completed');
     
     if (isProduction()) {
       console.log('Checking for database migrations...');

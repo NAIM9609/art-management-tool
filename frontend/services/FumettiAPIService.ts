@@ -65,9 +65,9 @@ export class FumettiAPIService {
     return response.fumetti || (Array.isArray(response) ? response as FumettoDTO[] : []);
   }
 
-  // GET /api/admin/fumetti - Ottieni tutti i fumetti attivi (admin)
+  // GET /api/fumetti - Ottieni tutti i fumetti attivi (admin)
   static async getAllFumettiAdmin(): Promise<FumettoDTO[]> {
-    const response = await this.fetchJSON<FumettiListResponse>('/api/admin/fumetti', {}, true);
+    const response = await this.fetchJSON<FumettiListResponse>('/api/fumetti', {}, true);
     return response.fumetti || (Array.isArray(response) ? response as FumettoDTO[] : []);
   }
 
@@ -76,48 +76,48 @@ export class FumettiAPIService {
     return this.fetchJSON<FumettoDTO>(`/api/fumetti/${id}`);
   }
 
-  // GET /api/admin/fumetti/{id} - Ottieni un fumetto specifico (admin)
+  // GET /api/fumetti/{id} - Ottieni un fumetto specifico (admin)
   static async getFumettoAdmin(id: number): Promise<FumettoDTO> {
-    return this.fetchJSON<FumettoDTO>(`/api/admin/fumetti/${id}`, {}, true);
+    return this.fetchJSON<FumettoDTO>(`/api/fumetti/${id}`, {}, true);
   }
 
-  // POST /api/admin/fumetti - Crea un nuovo fumetto
+  // POST /api/fumetti - Crea un nuovo fumetto
   static async createFumetto(data: Omit<FumettoDTO, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Promise<FumettoDTO> {
-    return this.fetchJSON<FumettoDTO>('/api/admin/fumetti', {
+    return this.fetchJSON<FumettoDTO>('/api/fumetti', {
       method: 'POST',
       body: JSON.stringify(data),
     }, true);
   }
 
-  // PUT /api/admin/fumetti/{id} - Aggiorna un fumetto esistente
+  // PUT /api/fumetti/{id} - Aggiorna un fumetto esistente
   static async updateFumetto(id: number, data: Partial<FumettoDTO>): Promise<FumettoDTO> {
-    return this.fetchJSON<FumettoDTO>(`/api/admin/fumetti/${id}`, {
+    return this.fetchJSON<FumettoDTO>(`/api/fumetti/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }, true);
   }
 
-  // DELETE /api/admin/fumetti/{id} - Soft delete di un fumetto
+  // DELETE /api/fumetti/{id} - Soft delete di un fumetto
   static async deleteFumetto(id: number): Promise<{ message: string; id: string }> {
-    return this.fetchJSON<{ message: string; id: string }>(`/api/admin/fumetti/${id}`, {
+    return this.fetchJSON<{ message: string; id: string }>(`/api/fumetti/${id}`, {
       method: 'DELETE',
     }, true);
   }
 
-  // POST /api/admin/fumetti/{id}/restore - Ripristina un fumetto cancellato
+  // POST /api/fumetti/{id}/restore - Ripristina un fumetto cancellato
   static async restoreFumetto(id: number): Promise<FumettoDTO> {
-    return this.fetchJSON<FumettoDTO>(`/api/admin/fumetti/${id}/restore`, {
+    return this.fetchJSON<FumettoDTO>(`/api/fumetti/${id}/restore`, {
       method: 'POST',
     }, true);
   }
 
-  // GET /api/admin/fumetti/deleted - Ottieni tutti i fumetti cancellati
+  // GET /api/fumetti/deleted - Ottieni tutti i fumetti cancellati
   static async getDeletedFumetti(): Promise<FumettoDTO[]> {
-    const response = await this.fetchJSON<FumettiListResponse>('/api/admin/fumetti/deleted', {}, true);
+    const response = await this.fetchJSON<FumettiListResponse>('/api/fumetti/deleted', {}, true);
     return response.fumetti || (Array.isArray(response) ? response as FumettoDTO[] : []);
   }
 
-  // POST /api/admin/fumetti/{id}/upload - Upload pagina per un fumetto
+  // POST /api/fumetti/{id}/upload - Upload pagina per un fumetto
   static async uploadPage(id: number, file: File, type: 'cover' | 'page'): Promise<{ message: string; url: string; type: string }> {
     const formData = new FormData();
     formData.append('file', file);
@@ -126,7 +126,7 @@ export class FumettiAPIService {
     const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null;
     const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
 
-    const response = await fetch(`${API_BASE_URL}/api/admin/fumetti/${id}/upload`, {
+    const response = await fetch(`${API_BASE_URL}/api/fumetti/${id}/upload`, {
       method: 'POST',
       headers,
       body: formData,
@@ -140,7 +140,7 @@ export class FumettiAPIService {
     return response.json();
   }
 
-  // DELETE /api/admin/fumetti/{id}/pages - Elimina una pagina da un fumetto
+  // DELETE /api/fumetti/{id}/pages - Elimina una pagina da un fumetto
   static async deletePage(id: number, pageUrl: string, type: 'cover' | 'page'): Promise<{ message: string }> {
     const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null;
     const headers: HeadersInit = {
@@ -150,7 +150,7 @@ export class FumettiAPIService {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/admin/fumetti/${id}/pages`, {
+    const response = await fetch(`${API_BASE_URL}/api/fumetti/${id}/pages`, {
       method: 'DELETE',
       headers,
       body: JSON.stringify({ pageUrl, type }),

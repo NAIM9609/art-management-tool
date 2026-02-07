@@ -69,7 +69,7 @@ export default function ProductDetailPage() {
     );
   }
 
-  const currentPrice = product.base_price || 0;
+  const currentPrice = typeof product.base_price === 'string' ? parseFloat(product.base_price) : (product.base_price || 0);
   const productImages = product.images || [];
 
   return (

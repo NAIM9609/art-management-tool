@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: ${DB_NAME:-artmanagement}
       POSTGRES_USER: ${DB_USER:-artuser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dbpass}
       POSTGRES_INITDB_ARGS: "-E UTF8"
     ports:
       - "${DB_PORT:-5432}:5432"
@@ -50,9 +50,9 @@ services:
       # Database Configuration (override host to use Docker service name)
       - DB_HOST=postgres
       - DB_PORT=${DB_PORT:-5432}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER:-artuser}
+      - DB_PASSWORD=${DB_PASSWORD:-dbpass}
+      - DB_NAME=${DB_NAME:-artmanagement}
       - DB_SSLMODE=${DB_SSLMODE:-disable}
       
       # Auto-Migration & Seeding
@@ -60,10 +60,7 @@ services:
       - AUTO_SEED=${AUTO_SEED:-false}
       
       # JWT Configuration
-      - JWT_SECRET=${JWT_SECRET}
-      
-      # CORS Configuration
-      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      - JWT_SECRET=${JWT_SECRET:-jwtpass}
       
       # Payment Configuration
       - PAYMENT_PROVIDER=${PAYMENT_PROVIDER:-stripe}
@@ -138,7 +135,7 @@ services:
       args:
         # Build-time argument for NEXT_PUBLIC_API_URL
         # This MUST be set during build, not runtime
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_API_URL: http://localhost:8080
         # BACKEND_URL needed for Next.js rewrites configuration
         BACKEND_URL: ${BACKEND_URL:-http://backend:8080}
     container_name: art-frontend-prod
@@ -148,8 +145,8 @@ services:
       - .env.production
     environment:
       - PORT=3000
-      # NEXT_PUBLIC_* vars are for browser, so use empty string to use relative paths
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+      # NEXT_PUBLIC_* vars are for browser, so use localhost:8080 for client-side requests
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
       # BACKEND_URL is for server-side rewrites in Next.js
       - BACKEND_URL=${BACKEND_URL:-http://backend:8080}
       - NODE_ENV=${NODE_ENV:-production}

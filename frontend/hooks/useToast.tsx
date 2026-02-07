@@ -1,4 +1,4 @@
-import { useRef, ReactNode } from 'react';
+import { useRef, ReactNode, useCallback } from 'react';
 import { Toast } from 'primereact/toast';
 
 export type ToastSeverity = 'success' | 'info' | 'warn' | 'error';
@@ -24,7 +24,7 @@ export interface UseToastReturn {
 export function useToast(): UseToastReturn {
   const toast = useRef<Toast>(null);
 
-  const showToast = ({
+  const showToast = useCallback(({
     severity,
     summary,
     detail,
@@ -36,23 +36,23 @@ export function useToast(): UseToastReturn {
       detail,
       life,
     });
-  };
+  }, []);
 
-  const showSuccess = (summary: string, detail?: string, life?: number) => {
+  const showSuccess = useCallback((summary: string, detail?: string, life?: number) => {
     showToast({ severity: 'success', summary, detail, life });
-  };
+  }, [showToast]);
 
-  const showError = (summary: string, detail?: string, life?: number) => {
+  const showError = useCallback((summary: string, detail?: string, life?: number) => {
     showToast({ severity: 'error', summary, detail, life });
-  };
+  }, [showToast]);
 
-  const showInfo = (summary: string, detail?: string, life?: number) => {
+  const showInfo = useCallback((summary: string, detail?: string, life?: number) => {
     showToast({ severity: 'info', summary, detail, life });
-  };
+  }, [showToast]);
 
-  const showWarning = (summary: string, detail?: string, life?: number) => {
+  const showWarning = useCallback((summary: string, detail?: string, life?: number) => {
     showToast({ severity: 'warn', summary, detail, life });
-  };
+  }, [showToast]);
 
   return {
     toast: <Toast ref={toast} />,
