@@ -115,7 +115,7 @@ export default function ImageUpload({
 
           const token = localStorage.getItem('adminToken');
           const response = await fetch(
-            `${API_BASE_URL}/api/admin/${uploadEndpoint}/${currentEntityId}/upload`,
+            `${API_BASE_URL}/api/${uploadEndpoint}/${currentEntityId}/upload`,
             {
               method: 'POST',
               headers: {

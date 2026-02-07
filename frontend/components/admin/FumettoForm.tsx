@@ -13,7 +13,7 @@ interface FumettoFormProps {
   isEditing: boolean;
   onHide: () => void;
   onSave: () => void;
-  onChange: (field: keyof FumettoDTO, value: string | number | null) => void;
+  onChange: (field: keyof FumettoDTO, value: string | string[] | number | null) => void;
   onSaveForUpload: () => Promise<number | undefined>;
   onSaveAfterUpload: () => Promise<void>;
 }

@@ -69,7 +69,7 @@ export default function ProductDetailPage() {
     );
   }
 
-  const currentPrice = product.base_price || 0;
+  const currentPrice = typeof product.base_price === 'string' ? parseFloat(product.base_price) : (product.base_price || 0);
   const productImages = product.images || [];
 
   return (
@@ -107,7 +107,7 @@ export default function ProductDetailPage() {
               {/* Price */}
               <div className="flex items-baseline gap-3">
                 <span className="text-4xl font-bold text-blue-600">
-                  {product.currency === 'EUR' ? '€' : '$'}{currentPrice.toFixed(2)}
+                  {product.currency === 'EUR' ? '€' : '$'}{(typeof currentPrice === 'string' ? parseFloat(currentPrice) : currentPrice).toFixed(2)}
                 </span>
               </div>
 

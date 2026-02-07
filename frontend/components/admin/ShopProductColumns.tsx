@@ -15,7 +15,8 @@ export const statusBodyTemplate = (rowData: Product) => {
 };
 
 export const priceBodyTemplate = (rowData: Product) => {
-  return `${rowData.currency === 'EUR' ? '€' : '$'}${rowData.base_price.toFixed(2)}`;
+  const price = typeof rowData.base_price === 'string' ? parseFloat(rowData.base_price) : rowData.base_price;
+  return `${rowData.currency === 'EUR' ? '€' : '$'}${price.toFixed(2)}`;
 };
 
 export const stockBodyTemplate = (rowData: Product) => {

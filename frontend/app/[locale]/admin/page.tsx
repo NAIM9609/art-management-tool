@@ -190,7 +190,7 @@ export default function AdminDashboard() {
     },
     {
       title: 'Total Revenue',
-      value: `$${stats.totalRevenue.toFixed(2)}`,
+      value: `$${(typeof stats.totalRevenue === 'string' ? parseFloat(stats.totalRevenue) : stats.totalRevenue).toFixed(2)}`,
       icon: 'pi pi-dollar',
       color: 'from-orange-500 to-orange-600',
       textColor: 'text-orange-600',

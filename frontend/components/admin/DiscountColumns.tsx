@@ -18,7 +18,7 @@ export function getDiscountColumns(
   const valueBodyTemplate = (rowData: DiscountDTO) => {
     return rowData.type === 'percentage' 
       ? `${rowData.value}%` 
-      : `€${rowData.value.toFixed(2)}`;
+      : `€${(typeof rowData.value === 'string' ? parseFloat(rowData.value) : rowData.value).toFixed(2)}`;
   };
 
   const statusBodyTemplate = (rowData: DiscountDTO) => {
