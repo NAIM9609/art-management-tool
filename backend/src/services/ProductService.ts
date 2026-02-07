@@ -1,4 +1,4 @@
-import { Repository } from 'typeorm';
+import { Repository, FindOptionsWhere, ILike, In } from 'typeorm';
 import { AppDataSource } from '../database/connection';
 import { EnhancedProduct, ProductStatus } from '../entities/EnhancedProduct';
 import { ProductVariant } from '../entities/ProductVariant';
