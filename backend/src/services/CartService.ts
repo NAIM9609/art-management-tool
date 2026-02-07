@@ -19,6 +19,12 @@ export class CartService {
     this.variantRepo = AppDataSource.getRepository(ProductVariant);
   }
 
+  private validateStock(variant: ProductVariant | null, quantity: number): void {
+    if (variant && variant.stock < quantity) {
+      throw new Error('Product out of stock');
+    }
+  }
+
   async getOrCreateCart(sessionId: string, userId?: number): Promise<Cart> {
     let cart = await this.cartRepo.findOne({
       where: { session_id: sessionId },
@@ -48,7 +54,7 @@ export class CartService {
     }
 
     let variant: ProductVariant | null = null;
-    if (variantId !== null && variantId !== undefined) {
+    if (variantId != null) {
       variant = await this.variantRepo.findOne({ where: { id: variantId } });
       if (!variant) {
         throw new Error('Variant not found');
@@ -61,7 +67,7 @@ export class CartService {
       where: {
         cart_id: cart.id,
         product_id: productId,
-        variant_id: variantId !== null && variantId !== undefined ? variantId : undefined,
+        variant_id: variantId ?? undefined,
       },
     });
 
@@ -69,17 +75,13 @@ export class CartService {
       const finalQuantity = existingItem.quantity + quantity;
       
       // Validate stock for the final quantity
-      if (variant && variant.stock < finalQuantity) {
-        throw new Error('Product out of stock');
-      }
+      this.validateStock(variant, finalQuantity);
       
       existingItem.quantity = finalQuantity;
       await this.cartItemRepo.save(existingItem);
     } else {
       // Validate stock for new items
-      if (variant && variant.stock < quantity) {
-        throw new Error('Product out of stock');
-      }
+      this.validateStock(variant, quantity);
       
       const newItem = this.cartItemRepo.create({
         cart_id: cart.id,
