@@ -19,11 +19,6 @@ export default function AdminSidebar() {
 
   const menuItems: MenuItem[] = [
     {
-      label: 'Dashboard',
-      icon: 'pi pi-home',
-      path: `/${locale}/admin`,
-    },
-    {
       label: 'Personaggi',
       icon: 'pi pi-users',
       path: `/${locale}/admin/personaggi`,
@@ -42,16 +37,6 @@ export default function AdminSidebar() {
       label: 'Orders',
       icon: 'pi pi-list',
       path: `/${locale}/admin/shop-orders`,
-    },
-    {
-      label: 'Etsy Sync',
-      icon: 'pi pi-sync',
-      path: `/${locale}/admin/etsy-sync`,
-    },
-    {
-      label: 'Settings',
-      icon: 'pi pi-cog',
-      path: `/${locale}/admin/settings`,
     },
   ];
 

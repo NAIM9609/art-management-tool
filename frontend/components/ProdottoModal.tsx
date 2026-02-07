@@ -225,7 +225,7 @@ export default function ProdottoModal({ visible, onHide, prodotto }: ProdottoMod
                                         fontFamily: 'var(--font-kranji), sans-serif',
                                     }}
                                 >
-                                    {prodotto.currency === 'EUR' ? '€' : '$'}{prodotto.base_price.toFixed(2)}
+                                    {prodotto.currency === 'EUR' ? '€' : '$'}{(typeof prodotto.base_price === 'string' ? parseFloat(prodotto.base_price) : prodotto.base_price).toFixed(2)}
                                 </span>
                             </div>
                         )}

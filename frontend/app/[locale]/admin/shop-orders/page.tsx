@@ -148,8 +148,9 @@ export default function ShopOrdersManagement() {
     return new Date(dateString).toLocaleString();
   };
 
-  const formatCurrency = (amount: number, currency: string = 'EUR') => {
-    return `${currency === 'EUR' ? '€' : '$'}${amount.toFixed(2)}`;
+  const formatCurrency = (amount: number | string, currency: string = 'EUR') => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    return `${currency === 'EUR' ? '€' : '$'}${num.toFixed(2)}`;
   };
 
   const paymentStatusBodyTemplate = (rowData: Order) => {
@@ -357,11 +358,20 @@ export default function ShopOrdersManagement() {
 
             <div>
               <h3 className="text-lg font-semibold mb-3">Shipping Address</h3>
-              <div className="bg-gray-50 p-4 rounded">
-                <p>{selectedOrder.shipping_address.street}</p>
-                <p>{selectedOrder.shipping_address.city}, {selectedOrder.shipping_address.state} {selectedOrder.shipping_address.zip_code}</p>
-                <p>{selectedOrder.shipping_address.country}</p>
-              </div>
+              {selectedOrder.shipping_address ? (
+                <div className="bg-gray-50 p-4 rounded">
+                  <p>{selectedOrder.shipping_address.street}</p>
+                  <p>
+                    {selectedOrder.shipping_address.city}
+                    {selectedOrder.shipping_address.state &&
+                      `, ${selectedOrder.shipping_address.state}`}
+                    {' '}{selectedOrder.shipping_address.zip_code}
+                  </p>
+                  <p>{selectedOrder.shipping_address.country}</p>
+                </div>
+              ) : (
+                <p className="text-gray-500 italic">No shipping address provided</p>
+              )}
             </div>
 
             <div>

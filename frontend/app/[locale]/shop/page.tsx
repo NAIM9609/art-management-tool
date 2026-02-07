@@ -274,7 +274,7 @@ export default function ShopPage() {
                         {product.title}
                       </h3>
                       <div className="text-lg font-bold text-black">
-                        €{product.base_price.toFixed(2)}
+                        €{(typeof product.base_price === 'string' ? parseFloat(product.base_price) : product.base_price).toFixed(2)}
                       </div>
                     </div>
                   </div>

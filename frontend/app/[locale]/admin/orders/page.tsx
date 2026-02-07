@@ -57,8 +57,9 @@ export default function OrdersPage() {
     }
   };
 
-  const formatCurrency = (value: number) => {
-    return `$${value.toFixed(2)}`;
+  const formatCurrency = (value: number | string) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    return `$${num.toFixed(2)}`;
   };
 
   const formatDate = (dateString: string) => {

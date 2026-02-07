@@ -92,7 +92,10 @@ export default function ProductVariantManagement({
               <Column
                 field="price_adjustment"
                 header="Price Adjustment"
-                body={(rowData) => `${rowData.price_adjustment > 0 ? '+' : ''}${rowData.price_adjustment.toFixed(2)}`}
+                body={(rowData) => {
+                  const adj = typeof rowData.price_adjustment === 'string' ? parseFloat(rowData.price_adjustment) : rowData.price_adjustment;
+                  return `${adj > 0 ? '+' : ''}${adj.toFixed(2)}`;
+                }}
               />
               <Column field="stock" header="Stock" />
               <Column

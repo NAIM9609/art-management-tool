@@ -40,7 +40,8 @@ export function ProductColumns({ onEdit, onDelete }: ProductColumnsProps) {
   };
 
   const priceBodyTemplate = (rowData: Product) => {
-    return `$${rowData.price.toFixed(2)}`;
+    const price = typeof rowData.price === 'string' ? parseFloat(rowData.price) : rowData.price;
+    return `$${price.toFixed(2)}`;
   };
 
   const descriptionBodyTemplate = (rowData: Product) => {

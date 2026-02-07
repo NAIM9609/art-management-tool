@@ -22,6 +22,7 @@ export default function CartSummary({
   onCheckout,
 }: CartSummaryProps) {
   const currencySymbol = currency === 'EUR' ? '€' : '$';
+  const toNum = (v: number | string) => typeof v === 'string' ? parseFloat(v) : v;
 
   return (
     <Card title="Riepilogo Ordine" className="border-2 border-gray-200 sticky top-24">
@@ -29,24 +30,24 @@ export default function CartSummary({
         <div className="flex justify-between text-gray-700">
           <span>Subtotal:</span>
           <span className="font-semibold">
-            {currencySymbol}{subtotal.toFixed(2)}
+            {currencySymbol}{toNum(subtotal).toFixed(2)}
           </span>
         </div>
 
-        {discount > 0 && (
+        {toNum(discount) > 0 && (
           <div className="flex justify-between text-green-600">
             <span>Discount:</span>
             <span className="font-semibold">
-              -{currencySymbol}{discount.toFixed(2)}
+              -{currencySymbol}{toNum(discount).toFixed(2)}
             </span>
           </div>
         )}
 
-        {tax > 0 && (
+        {toNum(tax) > 0 && (
           <div className="flex justify-between text-gray-700">
             <span>Tax:</span>
             <span className="font-semibold">
-              {currencySymbol}{tax.toFixed(2)}
+              {currencySymbol}{toNum(tax).toFixed(2)}
             </span>
           </div>
         )}
@@ -54,7 +55,7 @@ export default function CartSummary({
         <div className="border-t pt-3 flex justify-between text-lg font-bold text-black">
           <span>Totale:</span>
           <span className="text-black">
-            {currencySymbol}{total.toFixed(2)}
+            {currencySymbol}{toNum(total).toFixed(2)}
           </span>
         </div>
 

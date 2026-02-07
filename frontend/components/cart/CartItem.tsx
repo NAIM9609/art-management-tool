@@ -21,8 +21,8 @@ export default function CartItem({ item, updating, onUpdateQuantity, onRemove }:
   }
 
   // Calculate price with variant adjustment
-  const basePrice = product.base_price || 0;
-  const priceAdjustment = variant?.price_adjustment || 0;
+  const basePrice = typeof product.base_price === 'string' ? parseFloat(product.base_price) : (product.base_price || 0);
+  const priceAdjustment = typeof variant?.price_adjustment === 'string' ? parseFloat(variant.price_adjustment) : (variant?.price_adjustment || 0);
   const finalPrice = basePrice + priceAdjustment;
   const total = finalPrice * item.quantity;
 
