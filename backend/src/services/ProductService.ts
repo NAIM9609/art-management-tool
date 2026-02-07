@@ -27,16 +27,6 @@ export class ProductService {
   }
 
   async listProducts(filters: ProductFilters = {}, page: number = 1, perPage: number = 20): Promise<{ products: EnhancedProduct[]; total: number }> {
-    const where: FindOptionsWhere<EnhancedProduct> = {};
-
-    if (filters.status) {
-      where.status = filters.status;
-    }
-
-    if (filters.search) {
-      where.title = ILike(`%${filters.search}%`);
-    }
-
     const queryBuilder = this.productRepo.createQueryBuilder('product')
       .leftJoinAndSelect('product.categories', 'category')
       .leftJoinAndSelect('product.images', 'image')
