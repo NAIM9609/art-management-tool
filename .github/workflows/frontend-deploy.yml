@@ -118,27 +118,46 @@ jobs:
             --metadata "build-date=$(date -u +%Y-%m-%dT%H:%M:%SZ),commit-sha=${{ github.sha }}" \
             --cache-control "no-cache"
       
-      # Step 8: Trigger Amplify deployment
-      # Triggers either via AWS Amplify API or webhook (not both)
-      # Required secrets: AMPLIFY_APP_ID (for API) or AMPLIFY_WEBHOOK_URL (for webhook)
-      - name: Update Amplify deployment
+      # Step 8: Deploy to Amplify via CreateDeployment + StartDeployment
+      # This method works for Amplify apps NOT connected to a repository provider.
+      # Required secrets: AMPLIFY_APP_ID, AMPLIFY_BRANCH_NAME (optional, defaults to 'main')
+      - name: Deploy to Amplify
         run: |
-          # Check if AMPLIFY_APP_ID is set (preferred method)
           if [ -n "${{ secrets.AMPLIFY_APP_ID }}" ]; then
-            echo "Triggering Amplify deployment for app: ${{ secrets.AMPLIFY_APP_ID }}"
-            
-            # Start a new deployment job
-            aws amplify start-job \
+            BRANCH_NAME="${{ secrets.AMPLIFY_BRANCH_NAME }}"
+            BRANCH_NAME="${BRANCH_NAME:-main}"
+            echo "Creating Amplify deployment for app: ${{ secrets.AMPLIFY_APP_ID }}, branch: ${BRANCH_NAME}"
+
+            # Step 8a: Create a deployment to get a pre-signed upload URL
+            DEPLOYMENT=$(aws amplify create-deployment \
               --app-id ${{ secrets.AMPLIFY_APP_ID }} \
-              --branch-name ${{ secrets.AMPLIFY_BRANCH_NAME || 'main' }} \
-              --job-type RELEASE
-            
-            echo "Amplify deployment triggered successfully via API"
+              --branch-name "${BRANCH_NAME}" \
+              --output json)
+
+            UPLOAD_URL=$(echo "$DEPLOYMENT" | jq -r '.zipUploadUrl')
+            JOB_ID=$(echo "$DEPLOYMENT" | jq -r '.jobId')
+
+            echo "Got deployment job ID: ${JOB_ID}"
+
+            # Step 8b: Upload the build zip to the pre-signed URL
+            echo "Uploading build artifact to Amplify..."
+            curl --fail --silent --show-error \
+              -T ../frontend-build-latest.zip \
+              "${UPLOAD_URL}"
+
+            echo "Upload complete."
+
+            # Step 8c: Start the deployment with the uploaded artifact
+            aws amplify start-deployment \
+              --app-id ${{ secrets.AMPLIFY_APP_ID }} \
+              --branch-name "${BRANCH_NAME}" \
+              --job-id "${JOB_ID}"
+
+            echo "Amplify deployment started successfully (job: ${JOB_ID})"
             echo "AMPLIFY_TRIGGERED=api" >> $GITHUB_ENV
-          # Alternative: Use webhook if configured (only if AMPLIFY_APP_ID not set)
           elif [ -n "${{ secrets.AMPLIFY_WEBHOOK_URL }}" ]; then
             echo "Triggering Amplify via webhook"
-            curl -X POST "${{ secrets.AMPLIFY_WEBHOOK_URL }}" \Expand commentComment on lines R121 to R141Resolved
+            curl -X POST "${{ secrets.AMPLIFY_WEBHOOK_URL }}" \
               -H "Content-Type: application/json" \
               -d "{\"source\":\"github-actions\",\"commit\":\"${{ github.sha }}\"}"
             echo "Amplify deployment triggered successfully via webhook"
