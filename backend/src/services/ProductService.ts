@@ -1,4 +1,4 @@
-import { Repository, FindOptionsWhere, ILike } from 'typeorm';
+import { Repository } from 'typeorm';
 import { AppDataSource } from '../database/connection';
 import { EnhancedProduct, ProductStatus } from '../entities/EnhancedProduct';
 import { ProductVariant } from '../entities/ProductVariant';
@@ -27,16 +27,6 @@ export class ProductService {
   }
 
   async listProducts(filters: ProductFilters = {}, page: number = 1, perPage: number = 20): Promise<{ products: EnhancedProduct[]; total: number }> {
-    const where: FindOptionsWhere<EnhancedProduct> = {};
-
-    if (filters.status) {
-      where.status = filters.status;
-    }
-
-    if (filters.search) {
-      where.title = ILike(`%${filters.search}%`);
-    }
-
     const queryBuilder = this.productRepo.createQueryBuilder('product')
       .leftJoinAndSelect('product.categories', 'category')
       .leftJoinAndSelect('product.images', 'image')
