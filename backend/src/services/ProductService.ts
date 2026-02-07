@@ -120,12 +120,16 @@ export class ProductService {
       return;
     }
 
-    // Extract all variant IDs and fetch them in a single query
-    const variantIds = adjustments.map(adj => adj.variantId);
-    const variants = await this.variantRepo.findBy({ id: In(variantIds) });
+    // Extract unique variant IDs and sum adjustments for duplicates
+    const adjustmentMap = new Map<number, number>();
+    adjustments.forEach(adj => {
+      const current = adjustmentMap.get(adj.variantId) || 0;
+      adjustmentMap.set(adj.variantId, current + adj.quantity);
+    });
 
-    // Create a map of adjustments for quick lookup
-    const adjustmentMap = new Map(adjustments.map(adj => [adj.variantId, adj.quantity]));
+    // Fetch all variants in a single query
+    const variantIds = Array.from(adjustmentMap.keys());
+    const variants = await this.variantRepo.findBy({ id: In(variantIds) });
 
     // Apply adjustments to each variant
     variants.forEach(variant => {
