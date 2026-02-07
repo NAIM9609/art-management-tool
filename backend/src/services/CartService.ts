@@ -1,4 +1,4 @@
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { AppDataSource } from '../database/connection';
 import { Cart } from '../entities/Cart';
 import { CartItem } from '../entities/CartItem';
@@ -152,9 +152,9 @@ export class CartService {
       const productIds = cart.items.map(item => item.product_id);
       const variantIds = cart.items.filter(item => item.variant_id).map(item => item.variant_id!);
       
-      const products = await this.productRepo.findByIds(productIds);
+      const products = await this.productRepo.findBy({ id: In(productIds) });
       const variants = variantIds.length > 0 
-        ? await this.variantRepo.findByIds(variantIds)
+        ? await this.variantRepo.findBy({ id: In(variantIds) })
         : [];
       
       // Create lookup maps for O(1) access
