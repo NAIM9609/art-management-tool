@@ -48,13 +48,10 @@ export class CartService {
     }
 
     let variant: ProductVariant | null = null;
-    if (variantId) {
+    if (variantId !== null && variantId !== undefined) {
       variant = await this.variantRepo.findOne({ where: { id: variantId } });
       if (!variant) {
         throw new Error('Variant not found');
-      }
-      if (variant.stock < quantity) {
-        throw new Error('Product out of stock');
       }
     }
 
@@ -64,14 +61,26 @@ export class CartService {
       where: {
         cart_id: cart.id,
         product_id: productId,
-        variant_id: variantId || undefined,
+        variant_id: variantId !== null && variantId !== undefined ? variantId : undefined,
       },
     });
 
     if (existingItem) {
-      existingItem.quantity += quantity;
+      const finalQuantity = existingItem.quantity + quantity;
+      
+      // Validate stock for the final quantity
+      if (variant && variant.stock < finalQuantity) {
+        throw new Error('Product out of stock');
+      }
+      
+      existingItem.quantity = finalQuantity;
       await this.cartItemRepo.save(existingItem);
     } else {
+      // Validate stock for new items
+      if (variant && variant.stock < quantity) {
+        throw new Error('Product out of stock');
+      }
+      
       const newItem = this.cartItemRepo.create({
         cart_id: cart.id,
         product_id: productId,
