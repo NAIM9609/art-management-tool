@@ -372,7 +372,7 @@ export function validateImageFile(file: File, maxSizeMB: number = 10): Validatio
   }
 
   // Check allowed extensions
-  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.avif'];
   const fileName = file.name.toLowerCase();
   const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
   

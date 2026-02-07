@@ -1,9 +1,37 @@
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { ProductService } from '../../services/ProductService';
 import { OrderService } from '../../services/OrderService';
 import { NotificationService } from '../../services/NotificationService';
 import { AppDataSource } from '../../database/connection';
 import { Category } from '../../entities/Category';
+import { config } from '../../config';
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.join(config.uploadBaseDir, 'products');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: config.uploadMaxFileSize },
+  fileFilter: (_req, file, cb) => {
+    if (config.uploadAllowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${file.mimetype} not allowed`));
+    }
+  },
+});
 
 export function createAdminRoutes(
   productService: ProductService,
@@ -230,6 +258,65 @@ export function createAdminRoutes(
       const categoryRepo = AppDataSource.getRepository(Category);
       await categoryRepo.softDelete(parseInt(req.params.id));
       res.json({ message: 'Category deleted' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== Product Images ====================
+
+  router.get('/shop/products/:id/images', async (req: Request, res: Response) => {
+    try {
+      const images = await productService.listImages(parseInt(req.params.id));
+      res.json({ images });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post('/shop/products/:id/images', upload.single('file'), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const imageUrl = `/uploads/products/${req.file.filename}`;
+      const altText = req.body.alt_text || '';
+      const position = req.body.position !== undefined ? parseInt(req.body.position) : undefined;
+
+      const image = await productService.addImage(
+        parseInt(req.params.id),
+        imageUrl,
+        altText,
+        position
+      );
+
+      res.status(201).json({ message: 'Image uploaded', image });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  router.patch('/shop/products/:id/images/:imageId', async (req: Request, res: Response) => {
+    try {
+      const image = await productService.updateImage(
+        parseInt(req.params.id),
+        parseInt(req.params.imageId),
+        req.body
+      );
+      res.json({ message: 'Image updated', image });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  router.delete('/shop/products/:id/images/:imageId', async (req: Request, res: Response) => {
+    try {
+      await productService.deleteImage(
+        parseInt(req.params.id),
+        parseInt(req.params.imageId)
+      );
+      res.json({ message: 'Image deleted' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

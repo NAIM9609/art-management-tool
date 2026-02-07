@@ -110,7 +110,7 @@ export class PersonaggiAPIService {
   }
 
   // POST /api/personaggi/{id}/upload - Upload immagine per un personaggio
-  static async uploadImage(id: number, file: File, type: 'icon' | 'image'): Promise<{ message: string; url: string; type: string }> {
+  static async uploadImage(id: number, file: File, type: 'icon' | 'gallery' | 'background'): Promise<{ message: string; url: string; type: string }> {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('type', type);
@@ -125,7 +125,7 @@ export class PersonaggiAPIService {
   }
 
   // DELETE /api/personaggi/{id}/images - Elimina un'immagine da un personaggio
-  static async deleteImage(id: number, imageUrl: string, type: 'icon' | 'image'): Promise<{ message: string }> {
+  static async deleteImage(id: number, imageUrl: string, type: 'icon' | 'gallery' | 'background'): Promise<{ message: string }> {
     return fetchWithAuth<{ message: string }>(`/api/personaggi/${id}/images`, {
       method: 'DELETE',
       body: JSON.stringify({ imageUrl, type }),

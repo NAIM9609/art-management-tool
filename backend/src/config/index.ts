@@ -136,7 +136,7 @@ export const config: Config = {
   stripeApiKey: process.env.STRIPE_API_KEY,
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
   uploadMaxFileSize: getEnvInt('UPLOAD_MAX_FILE_SIZE', 10485760),
-  uploadAllowedTypes: getEnv('UPLOAD_ALLOWED_TYPES', 'image/jpeg,image/jpg,image/png,image/gif,image/webp').split(','),
+  uploadAllowedTypes: getEnv('UPLOAD_ALLOWED_TYPES', 'image/jpeg,image/jpg,image/png,image/gif,image/webp,image/svg+xml,image/avif').split(','),
   uploadBaseDir: getEnv('UPLOAD_BASE_DIR', './uploads'),
   taxRate: parseFloat(getEnv('TAX_RATE', '0.0')),
 };

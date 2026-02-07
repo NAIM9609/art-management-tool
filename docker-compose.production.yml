@@ -140,7 +140,7 @@ services:
         BACKEND_URL: ${BACKEND_URL:-http://backend:8080}
     container_name: art-frontend-prod
     ports:
-      - "3100:3000"
+      - "3000:3000"
     env_file:
       - .env.production
     environment:

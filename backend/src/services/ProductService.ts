@@ -124,4 +124,47 @@ export class ProductService {
       }
     }
   }
+
+  // ==================== Product Images ====================
+
+  async listImages(productId: number): Promise<ProductImage[]> {
+    return this.imageRepo.find({
+      where: { product_id: productId },
+      order: { position: 'ASC' },
+    });
+  }
+
+  async addImage(productId: number, url: string, altText?: string, position?: number): Promise<ProductImage> {
+    const product = await this.getProductById(productId);
+    if (!product) {
+      throw new Error(`Product with id ${productId} not found`);
+    }
+
+    const finalPosition = position ?? (await this.imageRepo.count({ where: { product_id: productId } }));
+    const image = this.imageRepo.create({
+      product_id: productId,
+      url,
+      alt_text: altText,
+      position: finalPosition,
+    });
+    return this.imageRepo.save(image);
+  }
+
+  async updateImage(productId: number, imageId: number, data: { position?: number; alt_text?: string }): Promise<ProductImage> {
+    const image = await this.imageRepo.findOne({ where: { id: imageId, product_id: productId } });
+    if (!image) {
+      throw new Error(`Image with id ${imageId} not found for product ${productId}`);
+    }
+    if (data.position !== undefined) image.position = data.position;
+    if (data.alt_text !== undefined) image.alt_text = data.alt_text;
+    return this.imageRepo.save(image);
+  }
+
+  async deleteImage(productId: number, imageId: number): Promise<void> {
+    const image = await this.imageRepo.findOne({ where: { id: imageId, product_id: productId } });
+    if (!image) {
+      throw new Error(`Image with id ${imageId} not found for product ${productId}`);
+    }
+    await this.imageRepo.remove(image);
+  }
 }
