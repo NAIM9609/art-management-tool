@@ -21,7 +21,7 @@ export class CartService {
 
   private validateStock(variant: ProductVariant | null, quantity: number): void {
     if (variant && variant.stock < quantity) {
-      throw new Error('Product out of stock');
+      throw new Error(`Insufficient stock available. Requested: ${quantity}, Available: ${variant.stock}`);
     }
   }
 
