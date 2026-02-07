@@ -48,7 +48,7 @@ export class CartService {
     }
 
     let variant: ProductVariant | null = null;
-    if (variantId) {
+    if (variantId !== undefined && variantId !== null) {
       variant = await this.variantRepo.findOne({ where: { id: variantId } });
       if (!variant) {
         throw new Error('Variant not found');
@@ -150,7 +150,7 @@ export class CartService {
     if (cart.items && cart.items.length > 0) {
       // Fetch all products and variants in bulk to avoid N+1 queries
       const productIds = cart.items.map(item => item.product_id);
-      const variantIds = cart.items.filter(item => item.variant_id).map(item => item.variant_id!);
+      const variantIds = cart.items.filter(item => item.variant_id !== undefined && item.variant_id !== null).map(item => item.variant_id!);
       
       const products = await this.productRepo.findByIds(productIds);
       const variants = variantIds.length > 0 
@@ -167,7 +167,7 @@ export class CartService {
           let itemPrice = parseFloat(product.base_price.toString());
           
           // Add variant price adjustment if applicable
-          if (item.variant_id) {
+          if (item.variant_id !== undefined && item.variant_id !== null) {
             const variant = variantMap.get(item.variant_id);
             if (variant) {
               itemPrice += parseFloat(variant.price_adjustment.toString());
