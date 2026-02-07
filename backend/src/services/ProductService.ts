@@ -1,4 +1,4 @@
-import { Repository, FindOptionsWhere, ILike } from 'typeorm';
+import { Repository, FindOptionsWhere, ILike, In } from 'typeorm';
 import { AppDataSource } from '../database/connection';
 import { EnhancedProduct, ProductStatus } from '../entities/EnhancedProduct';
 import { ProductVariant } from '../entities/ProductVariant';
@@ -116,13 +116,29 @@ export class ProductService {
   }
 
   async updateInventory(adjustments: Array<{ variantId: number; quantity: number }>): Promise<void> {
-    for (const adj of adjustments) {
-      const variant = await this.variantRepo.findOne({ where: { id: adj.variantId } });
-      if (variant) {
-        variant.stock += adj.quantity;
-        await this.variantRepo.save(variant);
-      }
+    if (adjustments.length === 0) {
+      return;
     }
+
+    // Extract all variant IDs and fetch them in a single query
+    const variantIds = adjustments.map(adj => adj.variantId);
+    const variants = await this.variantRepo.findBy({ id: In(variantIds) });
+
+    // Create a map of adjustments for quick lookup
+    const adjustmentMap = new Map(adjustments.map(adj => [adj.variantId, adj.quantity]));
+
+    // Apply adjustments to each variant
+    variants.forEach(variant => {
+      const adjustment = adjustmentMap.get(variant.id);
+      if (adjustment !== undefined) {
+        variant.stock += adjustment;
+      }
+    });
+
+    // Save all variants in a single transaction
+    await AppDataSource.transaction(async (transactionalEntityManager) => {
+      await transactionalEntityManager.save(ProductVariant, variants);
+    });
   }
 
   // ==================== Product Images ====================
