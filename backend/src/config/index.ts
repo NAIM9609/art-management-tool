@@ -47,9 +47,21 @@ interface LoggingConfig {
   format: string;
 }
 
+interface AWSConfig {
+  region: string;
+  endpoint?: string;
+}
+
+interface DynamoDBConfig {
+  tableName: string;
+  enabled: boolean;
+}
+
 export interface Config {
   server: ServerConfig;
   database: DatabaseConfig;
+  aws: AWSConfig;
+  dynamodb: DynamoDBConfig;
   etsy: EtsyConfig;
   scheduler: SchedulerConfig;
   rateLimit: RateLimitConfig;
@@ -102,6 +114,14 @@ export const config: Config = {
     password: getEnv('DB_PASSWORD', 'dbpass'),
     name: getEnv('DB_NAME', 'artmanagement'),
     sslMode: getEnv('DB_SSLMODE', 'disable'),
+  },
+  aws: {
+    region: getEnv('AWS_REGION', 'eu-west-1'),
+    endpoint: process.env.DYNAMODB_ENDPOINT, // For local DynamoDB
+  },
+  dynamodb: {
+    tableName: getEnv('DYNAMODB_TABLE_NAME', 'ArtManagementTable'),
+    enabled: getEnvBool('DYNAMODB_ENABLED', false),
   },
   etsy: {
     apiKey: getEnv('ETSY_API_KEY', ''),
