@@ -160,9 +160,7 @@ class MigrationRunner {
             name: category.name,
             slug: category.slug,
             description: category.description,
-            parentId: category.parent_id || null,
-            displayOrder: 0,
-            isActive: true,
+            parent_id: category.parent_id || undefined,
           });
         }
         stats.migrated++;
@@ -189,11 +187,15 @@ class MigrationRunner {
         if (!DRY_RUN) {
           await (PersonaggioRepository as any).create({
             name: item.name,
-            slug: this.generateSlug(item.name),
             description: item.description,
-            image: item.icon,
-            displayOrder: item.order,
-            isActive: true,
+            icon: item.icon,
+            images: (item as any).images || undefined,
+            backgroundColor: (item as any).backgroundColor || undefined,
+            backgroundType: (item as any).backgroundType || undefined,
+            gradientFrom: (item as any).gradientFrom || undefined,
+            gradientTo: (item as any).gradientTo || undefined,
+            backgroundImage: (item as any).backgroundImage || undefined,
+            order: item.order,
           });
         }
         stats.migrated++;
@@ -220,12 +222,10 @@ class MigrationRunner {
         if (!DRY_RUN) {
           await (FumettoRepository as any).create({
             title: item.title,
-            slug: this.generateSlug(item.title),
             description: item.description,
             coverImage: item.coverImage,
             pages: item.pages || [],
-            displayOrder: item.order,
-            isActive: true,
+            order: item.order,
           });
         }
         stats.migrated++;
@@ -252,13 +252,13 @@ class MigrationRunner {
         if (!DRY_RUN) {
           await (DiscountCodeRepository as any).create({
             code: item.code.toUpperCase(),
-            discountType: item.type,
-            discountValue: Number(item.value),
-            minPurchaseAmount: item.min_order_value ? Number(item.min_order_value) : undefined,
-            maxUses: item.max_uses,
-            currentUses: item.times_used || 0,
-            expiresAt: item.valid_until ? new Date(item.valid_until).toISOString() : undefined,
-            isActive: item.is_active,
+            type: item.type,
+            value: Number(item.value),
+            min_order_value: item.min_order_value ? Number(item.min_order_value) : undefined,
+            max_uses: item.max_uses,
+            valid_from: item.valid_from ? new Date(item.valid_from).toISOString() : undefined,
+            valid_until: item.valid_until ? new Date(item.valid_until).toISOString() : undefined,
+            is_active: item.is_active,
           });
         }
         stats.migrated++;
@@ -284,32 +284,39 @@ class MigrationRunner {
       try {
         if (!DRY_RUN) {
           await (ProductRepository as any).create({
-            name: item.title,
+            title: item.title,
             slug: item.slug,
-            description: item.long_description || item.short_description,
-            price: Number(item.base_price),
+            short_description: item.short_description,
+            long_description: item.long_description,
+            base_price: Number(item.base_price),
+            currency: (item as any).currency || 'EUR',
+            sku: (item as any).sku || undefined,
+            gtin: (item as any).gtin || undefined,
             status: item.status,
-            categoryIds: item.categories?.map((c: any) => c.id) || [],
+            character_id: (item as any).character_id || undefined,
+            character_value: (item as any).character_value || undefined,
+            etsy_link: (item as any).etsy_link || undefined,
           });
 
           for (const image of item.images || []) {
             await (ProductImageRepository as any).create({
-              productId: item.id,
+              product_id: item.id,
               url: (image as any).url,
-              alt: (image as any).alt_text || '',
-              displayOrder: (image as any).sort_order || 0,
-              isPrimary: (image as any).is_primary || false,
+              alt_text: (image as any).alt_text || undefined,
+              position: (image as any).sort_order || 0,
             });
           }
 
           for (const variant of item.variants || []) {
+            const variantPrice = Number((variant as any).price || item.base_price);
+            const basePrice = Number(item.base_price || 0);
             await (ProductVariantRepository as any).create({
-              productId: item.id,
+              product_id: item.id,
               sku: (variant as any).sku,
               name: (variant as any).name,
-              price: Number((variant as any).price || item.base_price),
+              attributes: (variant as any).attributes || undefined,
+              price_adjustment: variantPrice - basePrice,
               stock: (variant as any).stock_quantity || 0,
-              isActive: (variant as any).is_active ?? true,
             });
           }
         }
@@ -336,28 +343,30 @@ class MigrationRunner {
       try {
         if (!DRY_RUN) {
           await (OrderRepository as any).createWithItems({
-            orderNumber: (item as any).order_number,
-            customerEmail: (item as any).customer_email,
-            customerName: (item as any).customer_name,
-            shippingAddress: (item as any).shipping_address,
-            billingAddress: (item as any).billing_address,
+            user_id: (item as any).user_id,
+            customer_email: (item as any).customer_email,
+            customer_name: (item as any).customer_name,
+            shipping_address: (item as any).shipping_address,
+            billing_address: (item as any).billing_address,
             subtotal: Number((item as any).subtotal || 0),
             tax: Number((item as any).tax || 0),
-            shipping: Number((item as any).shipping_cost || 0),
             discount: Number((item as any).discount_amount || 0),
             total: Number((item as any).total || 0),
-            paymentStatus: (item as any).payment_status,
-            fulfillmentStatus: (item as any).fulfillment_status,
+            currency: (item as any).currency || 'EUR',
+            payment_status: (item as any).payment_status,
+            payment_intent_id: (item as any).payment_intent_id || undefined,
+            payment_method: (item as any).payment_method || undefined,
+            fulfillment_status: (item as any).fulfillment_status,
             notes: (item as any).notes,
           }, ((item as any).items || []).map((orderItem: any) => ({
-            productId: orderItem.product_id,
-            variantId: orderItem.variant_id,
-            productName: orderItem.product_name || '',
-            variantName: orderItem.variant_name || '',
+            product_id: orderItem.product_id,
+            variant_id: orderItem.variant_id,
+            product_name: orderItem.product_name || '',
+            variant_name: orderItem.variant_name || '',
             sku: orderItem.sku || '',
             quantity: orderItem.quantity,
-            unitPrice: Number(orderItem.unit_price),
-            totalPrice: Number(orderItem.total_price),
+            unit_price: Number(orderItem.unit_price),
+            total_price: Number(orderItem.total_price),
           })));
         }
         stats.migrated++;
@@ -383,21 +392,21 @@ class MigrationRunner {
       try {
         if (!DRY_RUN) {
           await (CartRepository as any).create({
-            sessionId: (item as any).session_id,
-            userId: (item as any).user_id,
-            subtotal: 0,
-            total: 0,
+            session_id: (item as any).session_id,
+            user_id: (item as any).user_id,
           });
 
           for (const cartItem of (item as any).items || []) {
             await (CartItemRepository as any).create({
-              cartId: item.id,
-              productId: cartItem.product_id,
-              variantId: cartItem.variant_id,
-              productName: cartItem.product?.title || '',
+              cart_id: (item as any).session_id,
+              product_id: cartItem.product_id,
+              variant_id: cartItem.variant_id,
+              product_name: cartItem.product?.title || undefined,
+              product_slug: cartItem.product?.slug || undefined,
+              variant_name: cartItem.variant?.name || undefined,
+              product_image: cartItem.product?.images?.[0]?.url || undefined,
               quantity: cartItem.quantity,
-              unitPrice: Number(cartItem.price || 0),
-              totalPrice: Number(cartItem.quantity * (cartItem.price || 0)),
+              price_at_time: Number(cartItem.price || 0),
             });
           }
         }
@@ -427,9 +436,10 @@ class MigrationRunner {
             type: (item as any).type || 'info',
             title: (item as any).title || '',
             message: (item as any).message || '',
-            data: (item as any).metadata || {},
-            isRead: (item as any).is_read || false,
-            userId: (item as any).user_id,
+            metadata: {
+              ...(item as any).metadata,
+              ...(item as any).user_id ? { user_id: (item as any).user_id } : {},
+            },
           });
         }
         stats.migrated++;
@@ -455,13 +465,13 @@ class MigrationRunner {
       try {
         if (!DRY_RUN) {
           await (AuditLogRepository as any).create({
-            entityType: (item as any).entity_type,
-            entityId: (item as any).entity_id,
+            entity_type: (item as any).entity_type,
+            entity_id: (item as any).entity_id,
             action: (item as any).action,
             changes: (item as any).changes || {},
-            userId: (item as any).user_id,
-            userEmail: (item as any).email,
-            ipAddress: (item as any).ip_address,
+            user_id: (item as any).user_id,
+            ip_address: (item as any).ip_address,
+            user_agent: (item as any).user_agent || undefined,
           });
         }
         stats.migrated++;
@@ -484,12 +494,11 @@ class MigrationRunner {
       try {
         if (!DRY_RUN) {
           await (EtsyOAuthTokenRepository as any).create({
-            userId: (token as any).user_id,
-            shopId: (token as any).shop_id,
-            accessToken: (token as any).access_token,
-            refreshToken: (token as any).refresh_token,
-            tokenType: (token as any).token_type || 'Bearer',
-            expiresAt: new Date((token as any).expires_at).toISOString(),
+            shop_id: (token as any).shop_id,
+            access_token: (token as any).access_token,
+            refresh_token: (token as any).refresh_token,
+            token_type: (token as any).token_type || 'Bearer',
+            expires_at: new Date((token as any).expires_at).toISOString(),
             scope: (token as any).scope,
           });
         }
@@ -507,16 +516,11 @@ class MigrationRunner {
       try {
         if (!DRY_RUN) {
           await (EtsyProductRepository as any).create({
-            listingId: (product as any).listing_id,
-            shopId: (product as any).shop_id,
-            title: (product as any).title,
-            description: (product as any).description,
-            price: Number((product as any).price || 0),
-            currencyCode: (product as any).currency_code || 'EUR',
-            quantity: (product as any).quantity,
-            state: (product as any).state,
-            localProductId: (product as any).local_product_id,
-            syncStatus: (product as any).sync_status,
+            local_product_id: (product as any).local_product_id,
+            etsy_listing_id: (product as any).listing_id,
+            etsy_inventory_id: (product as any).inventory_id || undefined,
+            sync_status: (product as any).sync_status,
+            last_synced_at: (product as any).last_synced_at || undefined,
           });
         }
       } catch (error: any) {
@@ -533,13 +537,16 @@ class MigrationRunner {
       try {
         if (!DRY_RUN) {
           await (EtsyReceiptRepository as any).create({
-            receiptId: (receipt as any).receipt_id,
-            shopId: (receipt as any).shop_id,
-            buyerEmail: (receipt as any).buyer_email || '',
-            totalPrice: Number((receipt as any).total_price || 0),
-            currencyCode: (receipt as any).currency_code || 'EUR',
+            etsy_receipt_id: (receipt as any).receipt_id,
+            local_order_id: (receipt as any).local_order_id,
+            shop_id: (receipt as any).shop_id,
+            buyer_email: (receipt as any).buyer_email || undefined,
+            buyer_name: (receipt as any).buyer_name || undefined,
             status: (receipt as any).status || 'pending',
-            localOrderId: (receipt as any).local_order_id,
+            is_paid: Boolean((receipt as any).is_paid),
+            is_shipped: Boolean((receipt as any).is_shipped),
+            grand_total: Number((receipt as any).total_price || 0),
+            currency: (receipt as any).currency_code || 'EUR',
           });
         }
       } catch (error: any) {
@@ -561,9 +568,11 @@ class MigrationRunner {
       try {
         if (!DRY_RUN) {
           await (ShopifyLinkRepository as any).create({
-            localProductId: (item as any).local_product_id,
-            shopifyProductId: String((item as any).shopify_product_id),
-            syncStatus: (item as any).sync_status,
+            local_product_id: (item as any).local_product_id,
+            shopify_product_id: String((item as any).shopify_product_id),
+            shopify_variant_id: (item as any).shopify_variant_id ? String((item as any).shopify_variant_id) : undefined,
+            sync_status: (item as any).sync_status,
+            last_synced_at: (item as any).last_synced_at || undefined,
           });
         }
         stats.migrated++;
@@ -615,9 +624,6 @@ class MigrationRunner {
     }
   }
 
-  private generateSlug(text: string): string {
-    return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  }
 }
 
 // Run migration
