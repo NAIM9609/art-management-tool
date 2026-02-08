@@ -279,17 +279,65 @@ export class OrderRepository {
    * Create order with items (transactional)
    */
   static async createWithItems(orderData: Omit<Order, 'id' | 'order_number' | 'created_at' | 'updated_at'>, items: Omit<OrderItem, 'id' | 'order_id' | 'created_at' | 'updated_at'>[]): Promise<Order> {
-    const order = await this.create(orderData);
+    const maxTransactItems = 25;
+    if (items.length + 1 > maxTransactItems) {
+      throw new Error(`Order has too many items for a single transaction. Max items per order: ${maxTransactItems - 1}`);
+    }
 
-    // Create all items
+    const id = await DynamoDBHelper.getNextId(EntityPrefix.ORDER);
+    const now = new Date().toISOString();
+    const orderNumber = `ORD-${String(id).padStart(8, '0')}`;
+
+    const order: Order = {
+      ...orderData,
+      id,
+      order_number: orderNumber,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const orderItemRecords: OrderItem[] = [];
     for (const item of items) {
-      await OrderItemRepository.create({
+      const itemId = await DynamoDBHelper.getNextId(EntityPrefix.ORDER_ITEM);
+      orderItemRecords.push({
         ...item,
-        order_id: order.id,
+        id: itemId,
+        order_id: id,
+        created_at: now,
+        updated_at: now,
       });
     }
 
-    order.items = await OrderItemRepository.findByOrderId(order.id);
+    await DynamoDBHelper.transactWrite([
+      {
+        type: 'Put',
+        item: {
+          PK: `${EntityPrefix.ORDER}#${id}`,
+          SK: 'METADATA',
+          GSI1PK: `ORDER_NUMBER#${orderNumber}`,
+          GSI1SK: `${EntityPrefix.ORDER}#${id}`,
+          GSI2PK: `ORDER_EMAIL#${orderData.customer_email.toLowerCase()}`,
+          GSI2SK: now,
+          GSI3PK: `ORDER_STATUS#${orderData.payment_status}`,
+          GSI3SK: now,
+          entity_type: 'Order',
+          ...order,
+        },
+      },
+      ...orderItemRecords.map(orderItem => ({
+        type: 'Put' as const,
+        item: {
+          PK: `${EntityPrefix.ORDER}#${id}`,
+          SK: `ITEM#${orderItem.id}`,
+          GSI1PK: `ORDERITEM#${orderItem.id}`,
+          GSI1SK: 'METADATA',
+          entity_type: 'OrderItem',
+          ...orderItem,
+        },
+      })),
+    ]);
+
+    order.items = orderItemRecords;
     return order;
   }
 
