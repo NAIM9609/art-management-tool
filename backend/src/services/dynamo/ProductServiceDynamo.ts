@@ -3,7 +3,6 @@
  * Provides full API compatibility with the original TypeORM-based service
  */
 
-import { config } from '../../config';
 import { 
   ProductRepository, 
   ProductImageRepository, 
