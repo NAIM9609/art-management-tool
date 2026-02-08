@@ -281,24 +281,56 @@ export class DynamoDBHelper {
    */
   static async batchGet(keys: Array<{PK: string; SK: string}>): Promise<any[]> {
     if (keys.length === 0) return [];
-    
+
     // DynamoDB limits batch get to 100 items
     const chunks: Array<Array<{PK: string; SK: string}>> = [];
     for (let i = 0; i < keys.length; i += 100) {
       chunks.push(keys.slice(i, i + 100));
     }
 
+    const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+    const maxRetries = 5;
+    const baseDelayMs = 100;
+
     const results: any[] = [];
     for (const chunk of chunks) {
-      const result = await dynamoDB.send(new BatchGetCommand({
-        RequestItems: {
-          [TABLE_NAME]: {
-            Keys: chunk,
+      let unprocessedKeysChunk: Array<{ PK: string; SK: string }> = chunk;
+      let attempt = 0;
+
+      while (unprocessedKeysChunk.length > 0) {
+        const result = await dynamoDB.send(new BatchGetCommand({
+          RequestItems: {
+            [TABLE_NAME]: {
+              Keys: unprocessedKeysChunk,
+            },
           },
-        },
-      }));
-      if (result.Responses?.[TABLE_NAME]) {
-        results.push(...result.Responses[TABLE_NAME]);
+        }));
+
+        if (result.Responses?.[TABLE_NAME]) {
+          results.push(...result.Responses[TABLE_NAME]);
+        }
+
+        const unprocessed =
+          result.UnprocessedKeys &&
+          result.UnprocessedKeys[TABLE_NAME] &&
+          Array.isArray(result.UnprocessedKeys[TABLE_NAME].Keys)
+            ? result.UnprocessedKeys[TABLE_NAME].Keys as Array<{ PK: string; SK: string }>
+            : [];
+
+        if (!unprocessed || unprocessed.length === 0) {
+          break;
+        }
+
+        attempt += 1;
+        if (attempt > maxRetries) {
+          throw new Error(
+            `DynamoDB BatchGetItem still has ${unprocessed.length} unprocessed keys after ${maxRetries} retries`
+          );
+        }
+
+        unprocessedKeysChunk = unprocessed;
+        const backoffMs = baseDelayMs * Math.pow(2, attempt - 1);
+        await delay(backoffMs);
       }
     }
     return results;
