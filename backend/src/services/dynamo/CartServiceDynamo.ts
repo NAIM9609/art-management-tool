@@ -8,6 +8,7 @@ import {
   CartRepository, 
   CartItemRepository,
   ProductRepository,
+  ProductImageRepository,
   ProductVariantRepository,
   Cart,
   CartItem,
@@ -157,20 +158,40 @@ export class CartServiceDynamo {
 
     // Populate product details for each item
     if (cart.items) {
+      const productCache = new Map<number, any>();
+      const variantCache = new Map<number, any>();
+      const productIds = new Set<number>();
+
       for (const item of cart.items) {
-        const product = await ProductRepository.findById(item.product_id);
+        productIds.add(item.product_id);
+      }
+
+      const imageCache = new Map<number, string | undefined>();
+      await Promise.all(
+        Array.from(productIds).map(async productId => {
+          const images = await ProductImageRepository.findByProductId(productId);
+          imageCache.set(productId, images.length > 0 ? images[0].url : undefined);
+        })
+      );
+
+      for (const item of cart.items) {
+        let product = productCache.get(item.product_id);
+        if (!product) {
+          product = await ProductRepository.findById(item.product_id);
+          productCache.set(item.product_id, product);
+        }
         if (product) {
           item.product_name = product.title;
           item.product_slug = product.slug;
-          
-          const images = await (await import('../../repositories')).ProductImageRepository.findByProductId(product.id);
-          if (images.length > 0) {
-            item.product_image = images[0].url;
-          }
+          item.product_image = imageCache.get(product.id);
         }
         
         if (item.variant_id) {
-          const variant = await ProductVariantRepository.findById(item.variant_id);
+          let variant = variantCache.get(item.variant_id);
+          if (!variant) {
+            variant = await ProductVariantRepository.findById(item.variant_id);
+            variantCache.set(item.variant_id, variant);
+          }
           if (variant) {
             item.variant_name = variant.name;
           }
