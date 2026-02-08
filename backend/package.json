@@ -8,9 +8,19 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typeorm": "typeorm-ts-node-commonjs",
-    "seed": "ts-node src/database/seed.ts"
+    "seed": "ts-node src/database/seed.ts",
+    "build:lambda": "tsc && cd dist && zip -r lambda.zip . && mv lambda.zip ../",
+    "build:lambda:win": "tsc && cd dist && powershell Compress-Archive -Path * -DestinationPath ../lambda.zip -Force",
+    "deploy": "npm run build:lambda && cd ../infrastructure && terraform apply -auto-approve",
+    "deploy:plan": "npm run build:lambda && cd ../infrastructure && terraform plan",
+    "migrate:test": "DRY_RUN=true ts-node src/scripts/migrate-to-dynamodb.ts",
+    "migrate:production": "ts-node src/scripts/migrate-to-dynamodb.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.985.0",
+    "@aws-sdk/lib-dynamodb": "^3.985.0",
+    "@vendia/serverless-express": "^4.12.6",
+    "aws-sdk": "^2.1693.0",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",

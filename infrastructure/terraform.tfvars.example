@@ -1,0 +1,38 @@
+# Example Terraform Variables
+# Copy this file to terraform.tfvars and fill in the values
+
+# AWS Region (default: eu-west-1)
+aws_region = "eu-west-1"
+
+# Project name used for resource naming
+project_name = "art-management-tool"
+
+# Environment (dev, staging, prod)
+environment = "prod"
+
+# JWT secret for authentication (REQUIRED - generate a secure random string)
+jwt_secret = "your-secure-jwt-secret-here"
+
+# CORS allowed origins (comma-separated)
+cors_allowed_origins = "https://your-amplify-app.amplifyapp.com,http://localhost:3000"
+
+# Path to Lambda deployment package
+lambda_zip_path = "../backend/lambda.zip"
+
+# Log level for Lambda function
+log_level = "info"
+
+# Whether to create a dev DynamoDB table
+create_dev_table = false
+
+# Whether to create an S3 bucket for file uploads
+create_s3_bucket = true
+
+# S3 bucket name (leave empty for auto-generated name)
+s3_bucket_name = ""
+
+# Custom domain for API Gateway (optional)
+api_domain_name = ""
+
+# ACM certificate ARN for custom domain (required if api_domain_name is set)
+api_certificate_arn = ""
