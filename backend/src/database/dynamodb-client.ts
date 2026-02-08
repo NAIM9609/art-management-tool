@@ -330,11 +330,33 @@ export class DynamoDBHelper {
         return null;
       }).filter(Boolean);
 
-      await dynamoDB.send(new BatchWriteCommand({
-        RequestItems: {
-          [TABLE_NAME]: writeRequests as any,
-        },
-      }));
+      // Handle potential partial success by retrying UnprocessedItems with backoff
+      let unprocessed: Record<string, any> | undefined = {
+        [TABLE_NAME]: writeRequests as any,
+      };
+      const maxRetries = 5;
+      let attempt = 0;
+
+      while (unprocessed && Object.keys(unprocessed).length > 0) {
+        const response = await dynamoDB.send(new BatchWriteCommand({
+          RequestItems: unprocessed,
+        }));
+
+        unprocessed = response.UnprocessedItems as Record<string, any> | undefined;
+
+        if (!unprocessed || Object.keys(unprocessed).length === 0) {
+          break;
+        }
+
+        attempt += 1;
+        if (attempt > maxRetries) {
+          throw new Error("Failed to process all batch write items after retries");
+        }
+
+        // Exponential backoff with a capped delay
+        const delayMs = Math.min(100 * Math.pow(2, attempt), 2000);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
     }
   }
 
