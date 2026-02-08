@@ -5,8 +5,7 @@
 
 import { config } from '../../config';
 import { 
-  OrderRepository, 
-  OrderItemRepository,
+  OrderRepository,
   CartRepository,
   CartItemRepository,
   ProductRepository,

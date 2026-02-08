@@ -56,7 +56,7 @@ export class CartServiceDynamo {
       }
     }
 
-    const cart = await this.getOrCreateCart(sessionId);
+    await this.getOrCreateCart(sessionId);
 
     // Check existing item
     const existingItem = await CartItemRepository.findByProductVariant(sessionId, productId, variantId);

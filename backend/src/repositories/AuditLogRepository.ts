@@ -46,7 +46,7 @@ export class AuditLogRepository {
       // For querying by action
       GSI3PK: `AUDIT_ACTION#${data.action}`,
       GSI3SK: now.toISOString(),
-      //entity_type: 'AuditLog',
+      _type: 'AuditLog',
       ttl: Math.floor(expiresAt.getTime() / 1000),
       ...audit,
     });

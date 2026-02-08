@@ -154,7 +154,6 @@ export class CategoryRepository {
    */
   static async getCategoryTree(): Promise<Category[]> {
     const allCategories = await this.findAll();
-    const rootCategories = allCategories.filter(c => !c.parent_id);
 
     const buildTree = (categories: Category[], parentId?: number): Category[] => {
       return categories
