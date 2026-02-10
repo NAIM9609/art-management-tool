@@ -13,6 +13,7 @@
 import {
   DynamoDBClient,
   DynamoDBClientConfig,
+  ReturnConsumedCapacity,
 } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
@@ -96,11 +97,13 @@ export class DynamoDBOptimized {
   private tableName: string;
   private maxRetries: number;
   private retryDelay: number;
+  private returnConsumedCapacity: ReturnConsumedCapacity;
 
   constructor(config: DynamoDBConfig) {
     this.tableName = config.tableName || TABLE_NAME;
     this.maxRetries = config.maxRetries ?? 3;
     this.retryDelay = config.retryDelay ?? 100; // Base delay in ms
+    this.returnConsumedCapacity = config.returnConsumedCapacity ?? 'TOTAL';
 
     const dynamoConfig: DynamoDBClientConfig = {
       region: config.region || process.env.AWS_REGION || 'us-east-1',
@@ -213,7 +216,7 @@ export class DynamoDBOptimized {
       ExclusiveStartKey: params.exclusiveStartKey,
       ScanIndexForward: params.scanIndexForward,
       IndexName: params.indexName,
-      ReturnConsumedCapacity: this.config?.returnConsumedCapacity ?? 'TOTAL',
+      ReturnConsumedCapacity: this.returnConsumedCapacity,
     };
 
     const result = await this.executeWithRetry(
@@ -267,7 +270,7 @@ export class DynamoDBOptimized {
             ConsistentRead: params.consistentRead || false,
           },
         },
-        ReturnConsumedCapacity: 'TOTAL',
+        ReturnConsumedCapacity: this.returnConsumedCapacity,
       };
 
       const result = await this.executeWithRetry(
@@ -351,7 +354,7 @@ export class DynamoDBOptimized {
         RequestItems: {
           [this.tableName]: requestItems,
         },
-        ReturnConsumedCapacity: 'TOTAL',
+        ReturnConsumedCapacity: this.returnConsumedCapacity,
       };
 
       const result = await this.executeWithRetry(
@@ -476,7 +479,7 @@ export class DynamoDBOptimized {
       ExpressionAttributeValues: expressionAttributeValues,
       ConditionExpression: params.conditionExpression,
       ReturnValues: params.returnValues || 'ALL_NEW',
-      ReturnConsumedCapacity: 'TOTAL',
+      ReturnConsumedCapacity: this.returnConsumedCapacity,
     };
 
     const result = await this.executeWithRetry(
@@ -549,7 +552,7 @@ export class DynamoDBOptimized {
       ProjectionExpression: params.projectionExpression,
       ExpressionAttributeNames: params.expressionAttributeNames,
       ConsistentRead: params.consistentRead || false,
-      ReturnConsumedCapacity: 'TOTAL',
+      ReturnConsumedCapacity: this.returnConsumedCapacity,
     };
 
     const result = await this.executeWithRetry(
@@ -582,7 +585,7 @@ export class DynamoDBOptimized {
       ExpressionAttributeNames: params.expressionAttributeNames,
       ExpressionAttributeValues: params.expressionAttributeValues,
       ReturnValues: params.returnValues || 'NONE',
-      ReturnConsumedCapacity: 'TOTAL',
+      ReturnConsumedCapacity: this.returnConsumedCapacity,
     };
 
     const result = await this.executeWithRetry(
@@ -615,7 +618,7 @@ export class DynamoDBOptimized {
       ExpressionAttributeNames: params.expressionAttributeNames,
       ExpressionAttributeValues: params.expressionAttributeValues,
       ReturnValues: params.returnValues || 'NONE',
-      ReturnConsumedCapacity: 'TOTAL',
+      ReturnConsumedCapacity: this.returnConsumedCapacity,
     };
 
     const result = await this.executeWithRetry(
