@@ -99,12 +99,13 @@ export class DynamoDBOptimized {
 
   constructor(config: DynamoDBConfig) {
     // Require tableName to be explicitly provided to avoid accidental writes to wrong table
-    if (!config.tableName && !TABLE_NAME) {
+    const tableName = config.tableName || TABLE_NAME;
+    if (!tableName) {
       throw new Error(
         'tableName must be provided in DynamoDBConfig or set DYNAMODB_TABLE_NAME environment variable'
       );
     }
-    this.tableName = config.tableName || TABLE_NAME!;
+    this.tableName = tableName;
     this.maxRetries = config.maxRetries ?? 3;
     this.retryDelay = config.retryDelay ?? 100; // Base delay in ms
     this.returnConsumedCapacity = config.returnConsumedCapacity ?? 'TOTAL';
