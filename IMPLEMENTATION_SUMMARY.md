@@ -81,17 +81,15 @@ s3: {
 ```
 
 ### Dependencies Added
-```json
-{
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.x",
-    "@aws-sdk/s3-request-presigner": "^3.x",
-    "sharp": "latest"
-  },
-  "devDependencies": {
-    "@types/sharp": "latest"
-  }
-}
+```text
+Dependencies:
+- @aws-sdk/client-s3
+- @aws-sdk/s3-request-presigner
+- sharp
+
+DevDependencies:
+- @types/sharp
+```
 ```
 
 ## Features

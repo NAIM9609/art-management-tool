@@ -37,32 +37,36 @@ describe('Image Processing Utilities', () => {
 
   describe('generateUniqueFileName', () => {
     it('should generate unique file names', () => {
-      const fileName1 = generateUniqueFileName('test.jpg');
-      const fileName2 = generateUniqueFileName('test.jpg');
+      const fileName1 = generateUniqueFileName('image/jpeg');
+      const fileName2 = generateUniqueFileName('image/jpeg');
       
       expect(fileName1).not.toBe(fileName2);
       expect(fileName1).toMatch(/\.jpg$/);
       expect(fileName2).toMatch(/\.jpg$/);
     });
 
-    it('should preserve file extension', () => {
-      const jpegFile = generateUniqueFileName('image.jpeg');
-      const pngFile = generateUniqueFileName('photo.png');
-      const webpFile = generateUniqueFileName('graphic.webp');
+    it('should derive extension from content type', () => {
+      const jpegFile = generateUniqueFileName('image/jpeg');
+      const jpgFile = generateUniqueFileName('image/jpg');
+      const pngFile = generateUniqueFileName('image/png');
+      const webpFile = generateUniqueFileName('image/webp');
+      const avifFile = generateUniqueFileName('image/avif');
       
-      expect(jpegFile).toMatch(/\.jpeg$/);
+      expect(jpegFile).toMatch(/\.jpg$/);
+      expect(jpgFile).toMatch(/\.jpg$/);
       expect(pngFile).toMatch(/\.png$/);
       expect(webpFile).toMatch(/\.webp$/);
+      expect(avifFile).toMatch(/\.avif$/);
     });
 
-    it('should handle uppercase extensions', () => {
-      const file = generateUniqueFileName('test.JPG');
+    it('should handle case insensitive content types', () => {
+      const file = generateUniqueFileName('IMAGE/JPEG');
       expect(file).toMatch(/\.jpg$/);
     });
 
-    it('should handle files with no extension', () => {
-      const file = generateUniqueFileName('test');
-      expect(file).not.toMatch(/\./);
+    it('should handle unknown content types with .bin extension', () => {
+      const file = generateUniqueFileName('application/pdf');
+      expect(file).toMatch(/\.bin$/);
     });
   });
 
@@ -123,25 +127,35 @@ describe('Image Processing Utilities', () => {
       expect(result).toBe(largeBuffer);
     });
 
-    it('should handle all supported formats', async () => {
-      const smallBuffer = await sharp({
+    it('should handle all supported formats and apply optimization', async () => {
+      // Create a large enough buffer to trigger optimization
+      // We'll create an image with some complexity to make it larger
+      const largeImageBuffer = await sharp({
         create: {
-          width: 50,
-          height: 50,
+          width: 1000,
+          height: 1000,
           channels: 4,
-          background: { r: 255, g: 0, b: 0, alpha: 1 },
+          background: { r: 128, g: 128, b: 128, alpha: 1 },
         },
       })
-        .jpeg()
+        .png({ compressionLevel: 0 })
         .toBuffer();
 
       // Test all supported formats
-      const formats = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/avif'];
+      const formats: Array<[string, number]> = [
+        ['image/jpeg', 80],
+        ['image/jpg', 80],
+        ['image/png', 80],
+        ['image/webp', 80],
+        ['image/avif', 80],
+      ];
       
-      for (const format of formats) {
-        const result = await optimizeImage(smallBuffer, format);
+      for (const [format, quality] of formats) {
+        const result = await optimizeImage(largeImageBuffer, format);
         expect(result).toBeDefined();
         expect(Buffer.isBuffer(result)).toBe(true);
+        // Result should be valid (either optimized or original)
+        expect(result.length).toBeGreaterThan(0);
       }
     });
 

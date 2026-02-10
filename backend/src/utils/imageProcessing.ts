@@ -6,7 +6,6 @@
 
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
 
 // Allowed image MIME types
 const ALLOWED_IMAGE_TYPES = [
@@ -20,6 +19,15 @@ const ALLOWED_IMAGE_TYPES = [
 // Maximum file size before optimization (500KB in bytes)
 const MAX_SIZE_BEFORE_OPTIMIZATION = 500 * 1024;
 
+// MIME type to extension mapping
+const MIME_TO_EXTENSION: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/avif': '.avif',
+};
+
 /**
  * Validate if the content type is an allowed image type
  * @param contentType The MIME type to validate
@@ -30,13 +38,13 @@ export function validateImageType(contentType: string): boolean {
 }
 
 /**
- * Generate a unique file name based on UUID
- * @param originalName The original file name
- * @returns A unique file name with the original extension
+ * Generate a unique file name based on UUID with extension derived from content type
+ * @param contentType The MIME type to determine the file extension
+ * @returns A unique file name with the appropriate extension
  */
-export function generateUniqueFileName(originalName: string): string {
-  const ext = path.extname(originalName).toLowerCase();
+export function generateUniqueFileName(contentType: string): string {
   const uuid = uuidv4();
+  const ext = MIME_TO_EXTENSION[contentType.toLowerCase()] || '.bin';
   return `${uuid}${ext}`;
 }
 

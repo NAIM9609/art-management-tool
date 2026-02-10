@@ -18,8 +18,8 @@ import { config } from '../../config';
 import {
   validateImageType,
   generateUniqueFileName,
-  getImageDimensions,
   optimizeImage,
+  getImageDimensions,
 } from '../../utils/imageProcessing';
 
 // Pre-signed URL expiration time (5 minutes)
@@ -52,12 +52,16 @@ export class S3Service {
     region?: string,
     cdnUrl?: string
   ) {
-    this.bucketName = bucketName || config.s3.bucketName;
-    this.cdnUrl = cdnUrl || config.s3.cdnUrl;
-    this.region = region || config.s3.region;
+    this.bucketName = bucketName ?? config.s3.bucketName;
+    this.cdnUrl = cdnUrl ?? config.s3.cdnUrl;
+    this.region = region ?? config.s3.region;
 
     if (!this.bucketName) {
       throw new Error('S3_BUCKET_NAME is required');
+    }
+
+    if (!this.region) {
+      throw new Error('S3_REGION is required');
     }
 
     this.s3Client = new S3Client({
@@ -67,7 +71,7 @@ export class S3Service {
 
   /**
    * Generate a pre-signed URL for direct upload to S3
-   * @param fileName Original file name
+   * @param fileName Original file name (not used, kept for API compatibility)
    * @param contentType MIME type of the file
    * @param folder Optional folder path in S3
    * @returns Object with uploadUrl, cdnUrl, and key
@@ -82,8 +86,8 @@ export class S3Service {
       throw new Error(`Invalid content type: ${contentType}. Only image types are allowed (jpg, png, webp, avif)`);
     }
 
-    // Generate unique file name
-    const uniqueFileName = generateUniqueFileName(fileName);
+    // Generate unique file name from content type
+    const uniqueFileName = generateUniqueFileName(contentType);
     const key = folder ? `${folder}/${uniqueFileName}` : uniqueFileName;
 
     // Create PutObject command
@@ -113,13 +117,13 @@ export class S3Service {
    * Upload an image file directly to S3
    * @param file File buffer
    * @param folder Optional folder path in S3
-   * @param fileName Original file name
+   * @param fileName Original file name (not used, kept for API compatibility)
    * @param contentType MIME type of the file
    * @returns Object with cdnUrl and key
    */
   async uploadImage(
     file: Buffer,
-    folder: string,
+    folder: string | undefined,
     fileName: string,
     contentType: string
   ): Promise<UploadImageResponse> {
@@ -128,11 +132,18 @@ export class S3Service {
       throw new Error(`Invalid content type: ${contentType}. Only image types are allowed (jpg, png, webp, avif)`);
     }
 
-    // Optimize image if needed
+    // Validate that the buffer is actually a decodable image
+    try {
+      await getImageDimensions(file);
+    } catch (error) {
+      throw new Error('Invalid image data: unable to decode image buffer');
+    }
+
+    // Optimize image if needed (may fall back to original buffer on optimization failure)
     const optimizedBuffer = await optimizeImage(file, contentType);
 
-    // Generate unique file name
-    const uniqueFileName = generateUniqueFileName(fileName);
+    // Generate unique file name from content type
+    const uniqueFileName = generateUniqueFileName(contentType);
     const key = folder ? `${folder}/${uniqueFileName}` : uniqueFileName;
 
     // Upload to S3
@@ -206,11 +217,16 @@ export class S3Service {
     try {
       await this.s3Client.send(new HeadObjectCommand(params));
       return true;
-    } catch (error: any) {
-      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
-        return false;
+    } catch (error: unknown) {
+      if (error && typeof error === 'object') {
+        const anyError = error as any;
+        if (anyError.name === 'NotFound' || anyError.$metadata?.httpStatusCode === 404) {
+          return false;
+        }
       }
-      throw new Error(`Failed to check image existence: ${error.message}`);
+
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to check image existence: ${message}`);
     }
   }
 

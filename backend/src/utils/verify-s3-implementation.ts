@@ -8,9 +8,10 @@ import {
   validateImageType,
   generateUniqueFileName,
   getAllowedImageTypes,
-} from '../utils/imageProcessing';
+} from './imageProcessing';
 
-console.log('=== S3 Service Implementation Verification ===\n');
+function main() {
+  console.log('=== S3 Service Implementation Verification ===\n');
 
 // Acceptance Criteria 1: Only allow image/* content types (jpg, png, webp, avif)
 console.log('1. Allowed image content types:');
@@ -27,8 +28,8 @@ console.log('   application/pdf:', validateImageType('application/pdf') ? '✓ A
 
 // Acceptance Criteria 3: UUID-based file naming
 console.log('3. UUID-based unique file naming:');
-const file1 = generateUniqueFileName('test.jpg');
-const file2 = generateUniqueFileName('test.jpg');
+const file1 = generateUniqueFileName('image/jpeg');
+const file2 = generateUniqueFileName('image/jpeg');
 console.log('   First file:', file1);
 console.log('   Second file:', file2);
 console.log('   Are different:', file1 !== file2 ? '✓ Yes' : '✗ No');
@@ -109,3 +110,9 @@ console.log(`
   // Delete image
   await s3Service.deleteImage('uploads/photo.jpg');
 `);
+}
+
+// Execute main function when run directly
+if (require.main === module) {
+  main();
+}

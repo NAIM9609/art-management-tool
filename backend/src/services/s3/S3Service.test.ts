@@ -39,6 +39,10 @@ describe('S3Service', () => {
     it('should throw error if bucket name is not provided', () => {
       expect(() => new S3Service('', 'us-east-1', '')).toThrow('S3_BUCKET_NAME is required');
     });
+
+    it('should throw error if region is not provided', () => {
+      expect(() => new S3Service('test-bucket', '', '')).toThrow('S3_REGION is required');
+    });
   });
 
   describe('generatePresignedUploadUrl', () => {
@@ -156,8 +160,26 @@ describe('S3Service', () => {
     });
 
     it('should optimize large images before upload', async () => {
-      // Create large image (> 500KB)
-      const largeBuffer = Buffer.alloc(600 * 1024); // 600KB buffer
+      // Create a real large image (> 500KB) with low compression
+      const largeBuffer = await sharp({
+        create: {
+          width: 1500,
+          height: 1500,
+          channels: 4,
+          background: { r: 128, g: 128, b: 128, alpha: 1 },
+        },
+      })
+        .png({ compressionLevel: 0 })
+        .toBuffer();
+
+      // Ensure it's actually large enough
+      if (largeBuffer.length <= 500 * 1024) {
+        // If not large enough due to efficient encoding, skip the optimization check
+        // and just verify upload works
+        await s3Service.uploadImage(largeBuffer, 'uploads', 'large.jpg', 'image/jpeg');
+        expect(s3Mock.calls()).toHaveLength(1);
+        return;
+      }
 
       await s3Service.uploadImage(largeBuffer, 'uploads', 'large.jpg', 'image/jpeg');
 
@@ -165,9 +187,19 @@ describe('S3Service', () => {
       const input = putObjectCall.args[0].input as any;
       const uploadedBuffer = input.Body as Buffer;
       
-      // Since it's not a valid image, optimization will fail and return the same buffer
+      // Optimized buffer should be defined and be a buffer
       expect(uploadedBuffer).toBeDefined();
       expect(Buffer.isBuffer(uploadedBuffer)).toBe(true);
+      // The uploaded buffer should be smaller than or equal to the original
+      expect(uploadedBuffer.length).toBeLessThanOrEqual(largeBuffer.length);
+    });
+
+    it('should reject invalid image buffers', async () => {
+      const invalidBuffer = Buffer.from('not an image');
+
+      await expect(
+        s3Service.uploadImage(invalidBuffer, 'uploads', 'test.jpg', 'image/jpeg')
+      ).rejects.toThrow('Invalid image data');
     });
   });
 
