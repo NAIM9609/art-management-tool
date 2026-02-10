@@ -41,10 +41,16 @@ export function validateImageType(contentType: string): boolean {
  * Generate a unique file name based on UUID with extension derived from content type
  * @param contentType The MIME type to determine the file extension
  * @returns A unique file name with the appropriate extension
+ * @throws Error if contentType is not a valid image type
  */
 export function generateUniqueFileName(contentType: string): string {
   const uuid = uuidv4();
-  const ext = MIME_TO_EXTENSION[contentType.toLowerCase()] || '.bin';
+  const ext = MIME_TO_EXTENSION[contentType.toLowerCase()];
+  
+  if (!ext) {
+    throw new Error(`Unsupported content type: ${contentType}`);
+  }
+  
   return `${uuid}${ext}`;
 }
 

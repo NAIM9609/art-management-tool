@@ -64,9 +64,8 @@ describe('Image Processing Utilities', () => {
       expect(file).toMatch(/\.jpg$/);
     });
 
-    it('should handle unknown content types with .bin extension', () => {
-      const file = generateUniqueFileName('application/pdf');
-      expect(file).toMatch(/\.bin$/);
+    it('should throw error for unknown content types', () => {
+      expect(() => generateUniqueFileName('application/pdf')).toThrow('Unsupported content type');
     });
   });
 
