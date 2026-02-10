@@ -158,7 +158,7 @@ data "aws_availability_zones" "available" {
 
 # DynamoDB Table
 resource "aws_dynamodb_table" "art_management" {
-  name         = var.table_name != "" ? var.table_name : "${var.project_name}-${var.environment}-art-management"
+  name         = var.table_name != null ? var.table_name : "${var.project_name}-${var.environment}-art-management"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "PK"
   range_key    = "SK"
