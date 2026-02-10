@@ -78,8 +78,9 @@ export async function optimizeImage(
       return buffer;
     }
 
-    // Get image format from content type
-    const format = contentType.split('/')[1] as keyof sharp.FormatEnum;
+    // Get image format from content type and validate
+    const formatPart = contentType.split('/')[1];
+    const format = formatPart?.toLowerCase();
     
     let sharpInstance = sharp(buffer);
 
