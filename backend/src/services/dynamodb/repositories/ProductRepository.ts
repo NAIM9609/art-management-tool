@@ -256,15 +256,31 @@ export class ProductRepository {
     if (data.slug !== undefined) {
       updates.GSI1PK = `PRODUCT_SLUG#${data.slug}`;
     }
+    
+    // For GSI2, we need current title/status if only one is being updated
+    // Use projection to minimize read cost
     if (data.status !== undefined || data.title !== undefined) {
-      const current = await this.findById(id);
-      if (!current) return null;
+      const current = await this.dynamoDB.get({
+        key: {
+          PK: `PRODUCT#${id}`,
+          SK: 'METADATA',
+        },
+        projectionExpression: '#title, #status',
+        expressionAttributeNames: {
+          '#title': 'title',
+          '#status': 'status',
+        },
+        consistentRead: true,
+      });
       
-      const newStatus = data.status || current.status;
-      const newTitle = data.title || current.title;
+      if (!current.data) return null;
+      
+      const newStatus = data.status || current.data.status;
+      const newTitle = data.title || current.data.title;
       updates.GSI2PK = `PRODUCT_STATUS#${newStatus}`;
       updates.GSI2SK = `${newTitle}#${id}`;
     }
+    
     if (data.character_id !== undefined) {
       updates.GSI3PK = `CHARACTER#${data.character_id}`;
     }
@@ -458,6 +474,7 @@ export class ProductRepository {
   /**
    * Search products by term (simulated full-text search)
    * Uses filter expression on title and description
+   * Note: DynamoDB contains() is case-sensitive, so searches are case-sensitive
    */
   async search(
     term: string,
@@ -468,15 +485,16 @@ export class ProductRepository {
       keyConditionExpression: 'GSI2PK = :gsi2pk',
       expressionAttributeValues: {
         ':gsi2pk': `PRODUCT_STATUS#${ProductStatus.PUBLISHED}`,
-        ':term': term.toLowerCase(),
+        ':term': term,
       },
-      filterExpression: 'contains(title, :term) OR contains(short_description, :term)',
+      filterExpression: 'contains(#title, :term) OR contains(short_description, :term)',
       limit: params.limit || 30,
       exclusiveStartKey: params.lastEvaluatedKey,
       // Use projection expression to minimize data transfer
-      projectionExpression: 'id, slug, title, short_description, base_price, currency, #status, created_at, updated_at',
+      projectionExpression: 'id, slug, #title, short_description, base_price, currency, #status, created_at, updated_at',
       expressionAttributeNames: {
         '#status': 'status',
+        '#title': 'title',
       },
     });
 
