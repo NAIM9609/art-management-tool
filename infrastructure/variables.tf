@@ -15,3 +15,9 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "table_name" {
+  description = "DynamoDB table name for art management. If not provided, defaults to '{project_name}-{environment}-art-management'"
+  type        = string
+  default     = null
+}

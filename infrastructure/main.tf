@@ -1,6 +1,6 @@
 terraform {
   required_version = ">= 1.0"
-  
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -11,6 +11,13 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+}
+
+# Local values
+locals {
+  gsi1_name = "GSI1"
+  gsi2_name = "GSI2"
+  gsi3_name = "GSI3"
 }
 
 # VPC Configuration
@@ -147,4 +154,93 @@ resource "aws_security_group" "frontend" {
 # Data source for availability zones
 data "aws_availability_zones" "available" {
   state = "available"
+}
+
+# DynamoDB Table
+resource "aws_dynamodb_table" "art_management" {
+  name         = var.table_name != null ? var.table_name : "${var.project_name}-${var.environment}-art-management"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "PK"
+  range_key    = "SK"
+
+  attribute {
+    name = "PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "SK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI1PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI1SK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI2PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI2SK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI3PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI3SK"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = local.gsi1_name
+    hash_key        = "GSI1PK"
+    range_key       = "GSI1SK"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = local.gsi2_name
+    hash_key        = "GSI2PK"
+    range_key       = "GSI2SK"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = local.gsi3_name
+    hash_key        = "GSI3PK"
+    range_key       = "GSI3SK"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  server_side_encryption {
+    enabled = true
+  }
+
+  tags = {
+    Name        = var.table_name
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  }
 }
