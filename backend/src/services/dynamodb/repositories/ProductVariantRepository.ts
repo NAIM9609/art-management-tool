@@ -114,9 +114,16 @@ export class ProductVariantRepository {
   }
 
   /**
-   * Find variant by ID only (requires scan - less efficient)
-   * Note: Without product_id in the key schema, this requires filtering.
-   * For better performance, use findByIdAndProductId when product_id is known.
+   * Find variant by ID only (requires GSI query with filtering)
+   * 
+   * Performance Note: Without product_id in the key schema, this requires a
+   * GSI query with filter expression. This is less efficient than findByIdAndProductId
+   * as it may scan through multiple items before filtering. For better performance,
+   * use findByIdAndProductId when product_id is known.
+   * 
+   * Future Optimization: Consider adding a dedicated GSI with variant ID as the
+   * partition key (GSI2PK: VARIANT#{id}) for efficient ID-only lookups if this
+   * operation becomes a common access pattern.
    */
   async findById(id: string): Promise<ProductVariant | null> {
     // Query using SK pattern to find the variant
@@ -358,6 +365,10 @@ export class ProductVariantRepository {
   /**
    * Decrement stock atomically (cannot go below 0)
    * Validates quantity is positive before decrementing
+   * 
+   * Note: Uses raw UpdateCommand instead of DynamoDBOptimized wrapper
+   * because it requires arithmetic operation (stock - :quantity) which
+   * is not supported by the wrapper's SET-only update expression builder.
    */
   async decrementStock(id: string, productId: number, quantity: number): Promise<ProductVariant | null> {
     // Validate quantity is positive
@@ -400,6 +411,10 @@ export class ProductVariantRepository {
   /**
    * Increment stock atomically
    * Validates quantity is positive before incrementing
+   * 
+   * Note: Uses raw UpdateCommand instead of DynamoDBOptimized wrapper
+   * because it requires arithmetic operation (stock + :quantity) which
+   * is not supported by the wrapper's SET-only update expression builder.
    */
   async incrementStock(id: string, productId: number, quantity: number): Promise<ProductVariant | null> {
     // Validate quantity is positive
