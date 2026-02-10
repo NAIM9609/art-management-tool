@@ -51,10 +51,8 @@ import {
   DynamoDBConfig,
 } from './types';
 
-// Export TABLE_NAME constant from environment variable
-// Note: For production use, pass tableName explicitly in DynamoDBConfig
-// to avoid using the default fallback value
-export const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'default-table';
+// Export TABLE_NAME constant from environment variable (if set)
+export const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
 
 /**
  * Logger for consumed capacity tracking
@@ -100,7 +98,13 @@ export class DynamoDBOptimized {
   private returnConsumedCapacity: ReturnConsumedCapacity;
 
   constructor(config: DynamoDBConfig) {
-    this.tableName = config.tableName || TABLE_NAME;
+    // Require tableName to be explicitly provided to avoid accidental writes to wrong table
+    if (!config.tableName && !TABLE_NAME) {
+      throw new Error(
+        'tableName must be provided in DynamoDBConfig or set DYNAMODB_TABLE_NAME environment variable'
+      );
+    }
+    this.tableName = config.tableName || TABLE_NAME!;
     this.maxRetries = config.maxRetries ?? 3;
     this.retryDelay = config.retryDelay ?? 100; // Base delay in ms
     this.returnConsumedCapacity = config.returnConsumedCapacity ?? 'TOTAL';
