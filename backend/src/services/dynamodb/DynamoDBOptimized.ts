@@ -213,7 +213,7 @@ export class DynamoDBOptimized {
       ExclusiveStartKey: params.exclusiveStartKey,
       ScanIndexForward: params.scanIndexForward,
       IndexName: params.indexName,
-      ReturnConsumedCapacity: 'TOTAL',
+      ReturnConsumedCapacity: this.config?.returnConsumedCapacity ?? 'TOTAL',
     };
 
     const result = await this.executeWithRetry(
