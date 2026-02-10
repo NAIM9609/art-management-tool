@@ -42,3 +42,18 @@ output "gsi3_name" {
   description = "Name of GSI3"
   value       = local.gsi3_name
 }
+
+output "s3_bucket_name" {
+  description = "Name of the S3 bucket for images"
+  value       = aws_s3_bucket.images.id
+}
+
+output "cdn_url" {
+  description = "CloudFront distribution domain name"
+  value       = aws_cloudfront_distribution.images.domain_name
+}
+
+output "cloudfront_distribution_id" {
+  description = "ID of the CloudFront distribution"
+  value       = aws_cloudfront_distribution.images.id
+}

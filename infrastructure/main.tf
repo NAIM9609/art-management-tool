@@ -244,3 +244,199 @@ resource "aws_dynamodb_table" "art_management" {
     ManagedBy   = "Terraform"
   }
 }
+
+# S3 Bucket for Image Storage
+resource "aws_s3_bucket" "images" {
+  bucket = "art-management-images-${var.environment}"
+
+  tags = {
+    Name        = "art-management-images-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  }
+}
+
+# S3 Bucket Versioning (suspended as per requirements)
+resource "aws_s3_bucket_versioning" "images" {
+  bucket = aws_s3_bucket.images.id
+
+  versioning_configuration {
+    status = "Suspended"
+  }
+}
+
+# S3 Bucket Public Access Block
+resource "aws_s3_bucket_public_access_block" "images" {
+  bucket = aws_s3_bucket.images.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# S3 Bucket Default Server-Side Encryption
+resource "aws_s3_bucket_server_side_encryption_configuration" "images" {
+  bucket = aws_s3_bucket.images.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# S3 Lifecycle Rules
+resource "aws_s3_bucket_lifecycle_configuration" "images" {
+  bucket = aws_s3_bucket.images.id
+
+  rule {
+    id     = "delete-temp-objects"
+    status = "Enabled"
+
+    filter {
+      prefix = "temp/"
+    }
+
+    expiration {
+      days = 365
+    }
+  }
+
+  rule {
+    id     = "glacier-transition"
+    status = "Enabled"
+
+    filter {}
+
+    transition {
+      days          = 180
+      storage_class = "GLACIER"
+    }
+  }
+}
+
+# CloudFront Origin Access Identity
+resource "aws_cloudfront_origin_access_identity" "images" {
+  comment = "OAI for art-management-images-${var.environment}"
+}
+
+# S3 Bucket Policy - Allow CloudFront OAI only
+resource "aws_s3_bucket_policy" "images" {
+  bucket = aws_s3_bucket.images.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowCloudFrontOAI"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_cloudfront_origin_access_identity.images.iam_arn
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.images.arn}/*"
+      }
+    ]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.images]
+}
+
+# CloudFront Cache Policy for Images
+resource "aws_cloudfront_cache_policy" "images" {
+  name        = "art-management-images-cache-policy-${var.environment}"
+  comment     = "Cache policy for image delivery with WebP support"
+  default_ttl = 604800   # 7 days
+  min_ttl     = 86400    # 1 day
+  max_ttl     = 31536000 # 1 year
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    cookies_config {
+      cookie_behavior = "none"
+    }
+
+    headers_config {
+      header_behavior = "whitelist"
+      headers {
+        items = ["Accept", "Accept-Encoding"]
+      }
+    }
+
+    query_strings_config {
+      query_string_behavior = "none"
+    }
+
+    enable_accept_encoding_gzip   = true
+    enable_accept_encoding_brotli = true
+  }
+}
+
+# CloudFront Response Headers Policy for Security
+resource "aws_cloudfront_response_headers_policy" "security" {
+  name    = "art-management-security-headers-${var.environment}"
+  comment = "Security headers for art management CDN"
+
+  security_headers_config {
+    content_type_options {
+      override = true
+    }
+
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      override                   = true
+    }
+  }
+}
+
+# CloudFront Distribution
+resource "aws_cloudfront_distribution" "images" {
+  enabled             = true
+  is_ipv6_enabled     = true
+  comment             = "CDN for art-management-images-${var.environment}"
+  price_class         = "PriceClass_100"
+  wait_for_deployment = false
+
+  origin {
+    domain_name = aws_s3_bucket.images.bucket_regional_domain_name
+    origin_id   = "S3-${aws_s3_bucket.images.id}"
+
+    s3_origin_config {
+      origin_access_identity = aws_cloudfront_origin_access_identity.images.cloudfront_access_identity_path
+    }
+  }
+
+  default_cache_behavior {
+    target_origin_id       = "S3-${aws_s3_bucket.images.id}"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    cache_policy_id            = aws_cloudfront_cache_policy.images.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags = {
+    Name        = "art-management-cdn-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  }
+}
