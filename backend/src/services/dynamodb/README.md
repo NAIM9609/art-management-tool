@@ -17,7 +17,7 @@ A production-ready DynamoDB client wrapper with advanced features including cost
 ## Installation
 
 ```bash
-npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb @aws-sdk/util-dynamodb
 ```
 
 ## Configuration
