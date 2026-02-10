@@ -141,15 +141,9 @@ describe('Image Processing Utilities', () => {
         .toBuffer();
 
       // Test all supported formats
-      const formats: Array<[string, number]> = [
-        ['image/jpeg', 80],
-        ['image/jpg', 80],
-        ['image/png', 80],
-        ['image/webp', 80],
-        ['image/avif', 80],
-      ];
+      const formats = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/avif'];
       
-      for (const [format, quality] of formats) {
+      for (const format of formats) {
         const result = await optimizeImage(largeImageBuffer, format);
         expect(result).toBeDefined();
         expect(Buffer.isBuffer(result)).toBe(true);
