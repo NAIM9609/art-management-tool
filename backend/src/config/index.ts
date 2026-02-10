@@ -47,6 +47,12 @@ interface LoggingConfig {
   format: string;
 }
 
+interface S3Config {
+  bucketName: string;
+  region: string;
+  cdnUrl: string;
+}
+
 export interface Config {
   server: ServerConfig;
   database: DatabaseConfig;
@@ -54,6 +60,7 @@ export interface Config {
   scheduler: SchedulerConfig;
   rateLimit: RateLimitConfig;
   logging: LoggingConfig;
+  s3: S3Config;
   jwtSecret: string;
   corsAllowedOrigins: string[];
   paymentProvider: string;
@@ -129,6 +136,11 @@ export const config: Config = {
   logging: {
     level: getEnv('LOG_LEVEL', 'info'),
     format: getEnv('LOG_FORMAT', 'json'),
+  },
+  s3: {
+    bucketName: getEnv('S3_BUCKET_NAME', ''),
+    region: getEnv('AWS_REGION', 'us-east-1'),
+    cdnUrl: getEnv('CDN_URL', ''),
   },
   jwtSecret: getJwtSecret(),
   corsAllowedOrigins: getEnv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:3001').split(','),
