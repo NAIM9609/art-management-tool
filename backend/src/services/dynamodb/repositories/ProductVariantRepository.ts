@@ -25,9 +25,11 @@ import { v4 as uuidv4 } from 'uuid';
 
 export class ProductVariantRepository {
   private dynamoDB: DynamoDBOptimized;
+  private tableName: string;
   
   constructor(dynamoDB: DynamoDBOptimized) {
     this.dynamoDB = dynamoDB;
+    this.tableName = (dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME || 'products';
   }
 
   /**
@@ -292,9 +294,8 @@ export class ProductVariantRepository {
    * Update stock atomically
    */
   async updateStock(id: string, productId: number, quantity: number): Promise<ProductVariant | null> {
-    const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
     const command = new UpdateCommand({
-      TableName: (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME,
+      TableName: this.tableName,
       Key: {
         PK: `PRODUCT#${productId}`,
         SK: `VARIANT#${id}`,
@@ -329,9 +330,8 @@ export class ProductVariantRepository {
    * Decrement stock atomically (cannot go below 0)
    */
   async decrementStock(id: string, productId: number, quantity: number): Promise<ProductVariant | null> {
-    const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
     const command = new UpdateCommand({
-      TableName: (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME,
+      TableName: this.tableName,
       Key: {
         PK: `PRODUCT#${productId}`,
         SK: `VARIANT#${id}`,
@@ -340,7 +340,6 @@ export class ProductVariantRepository {
       ExpressionAttributeValues: {
         ':quantity': quantity,
         ':now': new Date().toISOString(),
-        ':zero': 0,
       },
       ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(deleted_at) AND stock >= :quantity',
       ReturnValues: 'ALL_NEW',
@@ -367,9 +366,8 @@ export class ProductVariantRepository {
    * Increment stock atomically
    */
   async incrementStock(id: string, productId: number, quantity: number): Promise<ProductVariant | null> {
-    const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
     const command = new UpdateCommand({
-      TableName: (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME,
+      TableName: this.tableName,
       Key: {
         PK: `PRODUCT#${productId}`,
         SK: `VARIANT#${id}`,
