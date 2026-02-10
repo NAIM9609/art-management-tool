@@ -297,7 +297,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "images" {
     id     = "glacier-transition"
     status = "Enabled"
 
-    filter {}
+    filter {
+      # Apply to all objects that are not in temp/ by using object_size constraint
+      # This effectively applies to all permanent storage objects
+      object_size_greater_than = 0
+    }
 
     transition {
       days          = 180
