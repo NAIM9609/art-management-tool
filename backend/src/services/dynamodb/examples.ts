@@ -31,6 +31,7 @@ async function queryUsers() {
     keyConditionExpression: 'userId = :userId',
     expressionAttributeValues: {
       ':userId': 'user-123',
+      ':status': 'ACTIVE',
     },
     filterExpression: 'status = :status',
     projectionExpression: 'userId, name, email',
@@ -92,7 +93,6 @@ async function createPremiumUser() {
     item: user,
     gsiConfig: [
       {
-        gsiName: 'premium-users-index',
         partitionKey: 'gsi_status',
         sortKey: 'gsi_tier',
         condition: (item) => item.status === 'premium',
@@ -145,6 +145,7 @@ async function getUser(userId: string) {
   const params: GetParams = {
     key: { userId },
     projectionExpression,
+    expressionAttributeNames,
     consistentRead: false,
   };
 

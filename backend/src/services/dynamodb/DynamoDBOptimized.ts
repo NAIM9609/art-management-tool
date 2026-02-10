@@ -51,6 +51,8 @@ import {
 } from './types';
 
 // Export TABLE_NAME constant from environment variable
+// Note: For production use, pass tableName explicitly in DynamoDBConfig
+// to avoid using the default fallback value
 export const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'default-table';
 
 /**
@@ -97,8 +99,8 @@ export class DynamoDBOptimized {
 
   constructor(config: DynamoDBConfig) {
     this.tableName = config.tableName || TABLE_NAME;
-    this.maxRetries = config.maxRetries || 3;
-    this.retryDelay = config.retryDelay || 100; // Base delay in ms
+    this.maxRetries = config.maxRetries ?? 3;
+    this.retryDelay = config.retryDelay ?? 100; // Base delay in ms
 
     const dynamoConfig: DynamoDBClientConfig = {
       region: config.region || process.env.AWS_REGION || 'us-east-1',
@@ -261,6 +263,7 @@ export class DynamoDBOptimized {
           [this.tableName]: {
             Keys: batch,
             ProjectionExpression: params.projectionExpression,
+            ExpressionAttributeNames: params.expressionAttributeNames,
             ConsistentRead: params.consistentRead || false,
           },
         },
@@ -322,11 +325,25 @@ export class DynamoDBOptimized {
 
     // Process each batch
     for (const batch of batches) {
-      const requestItems = batch.map(item => {
+      const requestItems = batch.map((item, index) => {
         if (item.type === 'put') {
+          if (item.item == null) {
+            throw new Error(
+              `Invalid BatchWriteItem at index ${index}: missing 'item' for put operation.`
+            );
+          }
           return { PutRequest: { Item: item.item } };
-        } else {
+        } else if (item.type === 'delete') {
+          if (item.key == null) {
+            throw new Error(
+              `Invalid BatchWriteItem at index ${index}: missing 'key' for delete operation.`
+            );
+          }
           return { DeleteRequest: { Key: item.key } };
+        } else {
+          throw new Error(
+            `Invalid BatchWriteItem at index ${index}: unknown type '${(item as any).type}'.`
+          );
         }
       });
 
@@ -421,7 +438,12 @@ export class DynamoDBOptimized {
   /**
    * Update item with atomic updates
    */
-  async update<T = any>(params: UpdateParams): Promise<DynamoDBResponse<T>> {
+  async update<T = any>(params: UpdateParams): Promise<DynamoDBResponse<T | null>> {
+    // Validate updates are provided
+    if (!params.updates || Object.keys(params.updates).length === 0) {
+      throw new Error('Update operation requires at least one attribute to update.');
+    }
+
     // Build update expression
     const updateParts: string[] = [];
     const expressionAttributeNames: Record<string, string> = { 
@@ -431,10 +453,15 @@ export class DynamoDBOptimized {
       ...params.expressionAttributeValues 
     };
 
+    // Find next available index to avoid collisions with existing placeholders
     let attrIndex = 0;
+    while (expressionAttributeNames[`#upd${attrIndex}`] || expressionAttributeValues[`:upd${attrIndex}`]) {
+      attrIndex++;
+    }
+
     Object.entries(params.updates).forEach(([key, value]) => {
-      const nameKey = `#attr${attrIndex}`;
-      const valueKey = `:val${attrIndex}`;
+      const nameKey = `#upd${attrIndex}`;
+      const valueKey = `:upd${attrIndex}`;
       expressionAttributeNames[nameKey] = key;
       expressionAttributeValues[valueKey] = value;
       updateParts.push(`${nameKey} = ${valueKey}`);
@@ -461,7 +488,7 @@ export class DynamoDBOptimized {
     CapacityLogger.logConsumedCapacity('Update', result.ConsumedCapacity);
 
     return {
-      data: result.Attributes as T,
+      data: (result.Attributes as T) || null,
       consumedCapacity: result.ConsumedCapacity ? {
         tableName: result.ConsumedCapacity.TableName,
         capacityUnits: result.ConsumedCapacity.CapacityUnits,
@@ -474,7 +501,7 @@ export class DynamoDBOptimized {
   /**
    * Soft delete item
    */
-  async softDelete<T = any>(params: SoftDeleteParams): Promise<DynamoDBResponse<T>> {
+  async softDelete<T = any>(params: SoftDeleteParams): Promise<DynamoDBResponse<T | null>> {
     const deletedAtField = params.deletedAtField || 'deletedAt';
     const deletedByField = params.deletedByField || 'deletedBy';
     const now = new Date().toISOString();
@@ -487,9 +514,28 @@ export class DynamoDBOptimized {
       updates[deletedByField] = params.deletedBy;
     }
 
+    // Ensure we don't create a new "ghost" item if the key does not exist.
+    // Derive the partition key attribute name from the provided key and
+    // require that it already exists.
+    let conditionExpression = params.conditionExpression;
+    let expressionAttributeNames = params.expressionAttributeNames;
+    let expressionAttributeValues = params.expressionAttributeValues;
+
+    if (!conditionExpression) {
+      const keyAttributeNames = Object.keys(params.key || {});
+      if (keyAttributeNames.length > 0) {
+        const partitionKeyName = keyAttributeNames[0];
+        conditionExpression = 'attribute_exists(#pk)';
+        expressionAttributeNames = { ...expressionAttributeNames, '#pk': partitionKeyName };
+      }
+    }
+
     return this.update<T>({
       key: params.key,
       updates,
+      conditionExpression,
+      expressionAttributeNames,
+      expressionAttributeValues,
     });
   }
 
@@ -501,6 +547,7 @@ export class DynamoDBOptimized {
       TableName: this.tableName,
       Key: params.key,
       ProjectionExpression: params.projectionExpression,
+      ExpressionAttributeNames: params.expressionAttributeNames,
       ConsistentRead: params.consistentRead || false,
       ReturnConsumedCapacity: 'TOTAL',
     };

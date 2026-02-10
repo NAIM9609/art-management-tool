@@ -13,8 +13,8 @@ describe('DynamoDB Module Exports', () => {
     expect(dynamoDBModule.TABLE_NAME).toBeDefined();
   });
 
-  it('should export all type interfaces', () => {
-    // These are types, so we just verify they're in the module
+  it('should expose DynamoDBOptimized as a constructor function', () => {
+    // Runtime check: ensure the DynamoDBOptimized class is exported as a function
     expect(typeof dynamoDBModule.DynamoDBOptimized).toBe('function');
   });
 });

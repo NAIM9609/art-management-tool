@@ -320,7 +320,6 @@ describe('DynamoDBOptimized', () => {
         item,
         gsiConfig: [
           {
-            gsiName: 'status-index',
             partitionKey: 'gsi_status',
             sortKey: 'gsi_category',
             condition: (item) => item.status === 'active',
@@ -346,7 +345,6 @@ describe('DynamoDBOptimized', () => {
         item,
         gsiConfig: [
           {
-            gsiName: 'featured-index',
             partitionKey: 'gsi_featured',
             condition: (item) => item.featured === true,
             partitionKeyValue: () => 'yes',
@@ -370,7 +368,6 @@ describe('DynamoDBOptimized', () => {
         item,
         gsiConfig: [
           {
-            gsiName: 'status-index',
             partitionKey: 'gsi_status',
             condition: (item) => item.status === 'active',
             partitionKeyValue: (item) => item.status,
@@ -394,13 +391,11 @@ describe('DynamoDBOptimized', () => {
         item,
         gsiConfig: [
           {
-            gsiName: 'status-index',
             partitionKey: 'gsi_status',
             condition: (item) => item.status === 'active',
             partitionKeyValue: (item) => item.status,
           },
           {
-            gsiName: 'featured-index',
             partitionKey: 'gsi_featured',
             condition: (item) => item.featured === true,
             partitionKeyValue: () => 'featured',
@@ -790,13 +785,10 @@ describe('DynamoDBOptimized', () => {
         key: { id: '1' },
       };
 
-      try {
-        await dynamoDB.get(params);
-        fail('Should have thrown an error');
-      } catch (error: any) {
-        expect(error.name).toBe('AccessDeniedException');
-        expect(error.statusCode).toBe(403);
-      }
+      await expect(dynamoDB.get(params)).rejects.toMatchObject({
+        name: 'AccessDeniedException',
+        statusCode: 403,
+      });
     });
   });
 

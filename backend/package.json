@@ -16,7 +16,6 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.986.0",
     "@aws-sdk/lib-dynamodb": "^3.986.0",
-    "@aws-sdk/util-dynamodb": "^3.986.0",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",

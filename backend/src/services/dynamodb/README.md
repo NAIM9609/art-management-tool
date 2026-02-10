@@ -53,12 +53,9 @@ const params: QueryEventuallyConsistentParams = {
   keyConditionExpression: 'userId = :userId',
   expressionAttributeValues: {
     ':userId': 'user-123',
-  },
-  filterExpression: 'status = :status',
-  expressionAttributeValues: {
-    ':userId': 'user-123',
     ':status': 'active',
   },
+  filterExpression: 'status = :status',
   limit: 50,
 };
 
@@ -132,7 +129,6 @@ const params: CreateGSIAttributesParams = {
   item,
   gsiConfig: [
     {
-      gsiName: 'status-category-index',
       partitionKey: 'gsi_status',
       sortKey: 'gsi_category',
       condition: (item) => item.status === 'premium', // Only add GSI for premium users
@@ -140,7 +136,6 @@ const params: CreateGSIAttributesParams = {
       sortKeyValue: (item) => item.category,
     },
     {
-      gsiName: 'featured-index',
       partitionKey: 'gsi_featured',
       condition: (item) => item.featured === true, // Only add GSI for featured items
       partitionKeyValue: () => 'featured',
@@ -172,6 +167,7 @@ const { projectionExpression, expressionAttributeNames } =
 const result = await dynamoDB.get({
   key: { userId: 'user-123' },
   projectionExpression,
+  expressionAttributeNames,
 });
 ```
 

@@ -25,6 +25,7 @@ export interface QueryEventuallyConsistentParams {
 export interface BatchGetParams {
   keys: Record<string, any>[];
   projectionExpression?: string;
+  expressionAttributeNames?: Record<string, string>;
   consistentRead?: boolean;
 }
 
@@ -35,11 +36,19 @@ export interface BatchWriteParams {
   items: BatchWriteItem[];
 }
 
-export interface BatchWriteItem {
-  type: 'put' | 'delete';
-  item?: Record<string, any>;
-  key?: Record<string, any>;
+export interface PutBatchWriteItem {
+  type: 'put';
+  item: Record<string, any>;
+  key?: never;
 }
+
+export interface DeleteBatchWriteItem {
+  type: 'delete';
+  key: Record<string, any>;
+  item?: never;
+}
+
+export type BatchWriteItem = PutBatchWriteItem | DeleteBatchWriteItem;
 
 /**
  * Parameters for creating GSI attributes conditionally
@@ -50,7 +59,6 @@ export interface CreateGSIAttributesParams {
 }
 
 export interface GSIConfig {
-  gsiName: string;
   partitionKey: string;
   sortKey?: string;
   condition: (item: Record<string, any>) => boolean;
@@ -85,6 +93,9 @@ export interface SoftDeleteParams {
   deletedAtField?: string;
   deletedByField?: string;
   deletedBy?: string;
+  conditionExpression?: string;
+  expressionAttributeNames?: Record<string, string>;
+  expressionAttributeValues?: Record<string, any>;
 }
 
 /**
@@ -93,6 +104,7 @@ export interface SoftDeleteParams {
 export interface GetParams {
   key: Record<string, any>;
   projectionExpression?: string;
+  expressionAttributeNames?: Record<string, string>;
   consistentRead?: boolean;
 }
 
