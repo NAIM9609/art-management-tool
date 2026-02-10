@@ -30,15 +30,15 @@ output "table_arn" {
 
 output "gsi1_name" {
   description = "Name of GSI1"
-  value       = "GSI1"
+  value       = local.gsi1_name
 }
 
 output "gsi2_name" {
   description = "Name of GSI2"
-  value       = "GSI2"
+  value       = local.gsi2_name
 }
 
 output "gsi3_name" {
   description = "Name of GSI3"
-  value       = "GSI3"
+  value       = local.gsi3_name
 }

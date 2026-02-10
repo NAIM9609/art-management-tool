@@ -19,5 +19,5 @@ variable "environment" {
 variable "table_name" {
   description = "DynamoDB table name for art management"
   type        = string
-  default     = "ArtManagementTable"
+  default     = ""
 }
