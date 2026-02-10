@@ -21,11 +21,12 @@ This directory contains Terraform configuration for deploying the Art Management
 
 ### Storage & CDN
 - **S3 Bucket** (`art-management-images-${environment}`)
-  - Versioning: Disabled
+  - Versioning: Suspended
   - Public access: Blocked (all 4 settings enabled)
+  - Server-side encryption: AES256 (SSE-S3) by default
   - Lifecycle rules:
     - Delete objects in `temp/` folder after 365 days
-    - Transition objects to Glacier storage after 180 days
+    - Transition all objects to Glacier storage after 180 days
     - Note: Temp objects are transitioned to Glacier at 180 days and deleted at 365 days (cost optimization)
   
 - **CloudFront Distribution**
