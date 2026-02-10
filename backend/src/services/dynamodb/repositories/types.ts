@@ -1,0 +1,80 @@
+/**
+ * Types and interfaces for ProductRepository
+ */
+
+export enum ProductStatus {
+  DRAFT = 'draft',
+  PUBLISHED = 'published',
+  ARCHIVED = 'archived',
+}
+
+export interface Product {
+  id: number;
+  slug: string;
+  title: string;
+  short_description?: string;
+  long_description?: string;
+  base_price: number;
+  currency: string;
+  sku?: string;
+  gtin?: string;
+  status: ProductStatus;
+  character_id?: number;
+  character_value?: string;
+  etsy_link?: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface ProductCategory {
+  product_id: number;
+  category_id: number;
+  created_at: string;
+}
+
+export interface PaginationParams {
+  limit?: number;
+  lastEvaluatedKey?: Record<string, any>;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  lastEvaluatedKey?: Record<string, any>;
+  count: number;
+}
+
+export interface ProductFilters {
+  status?: ProductStatus;
+  character_id?: number;
+}
+
+export interface CreateProductData {
+  slug: string;
+  title: string;
+  short_description?: string;
+  long_description?: string;
+  base_price: number;
+  currency?: string;
+  sku?: string;
+  gtin?: string;
+  status?: ProductStatus;
+  character_id?: number;
+  character_value?: string;
+  etsy_link?: string;
+}
+
+export interface UpdateProductData {
+  slug?: string;
+  title?: string;
+  short_description?: string;
+  long_description?: string;
+  base_price?: number;
+  currency?: string;
+  sku?: string;
+  gtin?: string;
+  status?: ProductStatus;
+  character_id?: number;
+  character_value?: string;
+  etsy_link?: string;
+}
