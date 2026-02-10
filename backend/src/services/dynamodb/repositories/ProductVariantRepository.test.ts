@@ -92,6 +92,55 @@ describe('ProductVariantRepository', () => {
       expect(putItem.GSI1PK).toBe('VARIANT_SKU#TEST-SKU-003');
       expect(putItem.GSI1SK).toBe('1');
     });
+
+    it('should throw error if stock is negative', async () => {
+      const createData: CreateProductVariantData = {
+        product_id: 1,
+        sku: 'TEST-SKU-004',
+        name: 'Invalid Variant',
+        stock: -5,
+      };
+
+      await expect(repository.create(createData)).rejects.toThrow('Stock cannot be negative');
+    });
+  });
+
+  describe('findById', () => {
+    it('should find variant by ID using GSI1 query', async () => {
+      const mockItems = [{
+        id: '123',
+        product_id: 1,
+        sku: 'TEST-SKU-001',
+        name: 'Test Variant',
+        price_adjustment: 0,
+        stock: 10,
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      }];
+
+      ddbMock.on(QueryCommand).resolves({
+        Items: mockItems,
+        Count: 1,
+        ScannedCount: 1,
+      });
+
+      const variant = await repository.findById('123');
+
+      expect(variant).not.toBeNull();
+      expect(variant?.id).toBe('123');
+    });
+
+    it('should return null if variant not found', async () => {
+      ddbMock.on(QueryCommand).resolves({
+        Items: [],
+        Count: 0,
+        ScannedCount: 0,
+      });
+
+      const variant = await repository.findById('999');
+
+      expect(variant).toBeNull();
+    });
   });
 
   describe('findByIdAndProductId', () => {
@@ -317,6 +366,14 @@ describe('ProductVariantRepository', () => {
       const calls = ddbMock.commandCalls(UpdateCommand);
       expect(calls[0].args[0].input.ConditionExpression).toContain('attribute_not_exists(deleted_at)');
     });
+
+    it('should throw error if stock is negative', async () => {
+      const updateData: UpdateProductVariantData = {
+        stock: -10,
+      };
+
+      await expect(repository.update('123', 1, updateData)).rejects.toThrow('Stock cannot be negative');
+    });
   });
 
   describe('softDelete', () => {
@@ -441,9 +498,6 @@ describe('ProductVariantRepository', () => {
       const variant = await repository.updateStock('123', 1, 50);
 
       expect(variant?.stock).toBe(50);
-      
-      const calls = ddbMock.commandCalls(UpdateCommand);
-      expect(calls[0].args[0].input.UpdateExpression).toContain('SET stock = :quantity');
     });
 
     it('should return null if variant does not exist', async () => {
@@ -452,6 +506,10 @@ describe('ProductVariantRepository', () => {
       const variant = await repository.updateStock('999', 1, 50);
 
       expect(variant).toBeNull();
+    });
+
+    it('should throw error if quantity is negative', async () => {
+      await expect(repository.updateStock('123', 1, -10)).rejects.toThrow('Stock quantity cannot be negative');
     });
   });
 
@@ -505,6 +563,11 @@ describe('ProductVariantRepository', () => {
       const calls = ddbMock.commandCalls(UpdateCommand);
       expect(calls[0].args[0].input.ConditionExpression).toContain('attribute_not_exists(deleted_at)');
     });
+
+    it('should throw error if quantity is not positive', async () => {
+      await expect(repository.decrementStock('123', 1, 0)).rejects.toThrow('Decrement quantity must be positive');
+      await expect(repository.decrementStock('123', 1, -5)).rejects.toThrow('Decrement quantity must be positive');
+    });
   });
 
   describe('incrementStock', () => {
@@ -545,6 +608,11 @@ describe('ProductVariantRepository', () => {
 
       const calls = ddbMock.commandCalls(UpdateCommand);
       expect(calls[0].args[0].input.ConditionExpression).toContain('attribute_not_exists(deleted_at)');
+    });
+
+    it('should throw error if quantity is not positive', async () => {
+      await expect(repository.incrementStock('123', 1, 0)).rejects.toThrow('Increment quantity must be positive');
+      await expect(repository.incrementStock('123', 1, -5)).rejects.toThrow('Increment quantity must be positive');
     });
   });
 

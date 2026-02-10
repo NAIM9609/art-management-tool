@@ -85,14 +85,20 @@ export class ProductVariantRepository {
     const now = new Date().toISOString();
     const id = uuidv4();
 
+    // Validate stock is non-negative
+    const stock = data.stock ?? 0;
+    if (stock < 0) {
+      throw new Error('Stock cannot be negative');
+    }
+
     const variant: ProductVariant = {
       id,
       product_id: data.product_id,
       sku: data.sku,
       name: data.name,
       attributes: data.attributes,
-      price_adjustment: data.price_adjustment || 0,
-      stock: data.stock || 0,
+      price_adjustment: data.price_adjustment ?? 0,
+      stock,
       created_at: now,
       updated_at: now,
     };
@@ -108,17 +114,30 @@ export class ProductVariantRepository {
   }
 
   /**
-   * Find variant by ID (strongly consistent read)
+   * Find variant by ID only (requires scan - less efficient)
+   * Note: Without product_id in the key schema, this requires filtering.
+   * For better performance, use findByIdAndProductId when product_id is known.
    */
   async findById(id: string): Promise<ProductVariant | null> {
-    // We need to know the product_id to construct the PK
-    // So we'll query GSI1 first to get the full item
-    // Alternative: Store product_id in the id or pass it as parameter
-    // For now, we'll scan for the variant (not optimal, but works)
-    
-    // Better approach: Use a query on a different GSI or pass product_id
-    // Let's create a helper method that requires product_id
-    throw new Error('findById requires product_id. Use findByIdAndProductId instead.');
+    // Query using SK pattern to find the variant
+    // This is less efficient than findByIdAndProductId but provides ID-only lookup
+    const result = await this.dynamoDB.queryEventuallyConsistent({
+      indexName: 'GSI1',
+      keyConditionExpression: 'begins_with(GSI1PK, :prefix)',
+      filterExpression: 'SK = :sk AND entity_type = :entityType',
+      expressionAttributeValues: {
+        ':prefix': 'VARIANT_SKU#',
+        ':sk': `VARIANT#${id}`,
+        ':entityType': 'ProductVariant',
+      },
+      limit: 1,
+    });
+
+    if (result.data.length === 0) {
+      return null;
+    }
+
+    return this.mapToVariant(result.data[0]);
   }
 
   /**
@@ -192,7 +211,14 @@ export class ProductVariantRepository {
     if (data.name !== undefined) updates.name = data.name;
     if (data.attributes !== undefined) updates.attributes = data.attributes;
     if (data.price_adjustment !== undefined) updates.price_adjustment = data.price_adjustment;
-    if (data.stock !== undefined) updates.stock = data.stock;
+    
+    // Validate stock is non-negative if provided
+    if (data.stock !== undefined) {
+      if (data.stock < 0) {
+        throw new Error('Stock cannot be negative');
+      }
+      updates.stock = data.stock;
+    }
 
     // Update GSI1 attributes if SKU is changed
     if (data.sku !== undefined) {
@@ -292,32 +318,35 @@ export class ProductVariantRepository {
 
   /**
    * Update stock atomically
+   * Sets stock to a specific non-negative value
    */
   async updateStock(id: string, productId: number, quantity: number): Promise<ProductVariant | null> {
-    const command = new UpdateCommand({
-      TableName: this.tableName,
-      Key: {
-        PK: `PRODUCT#${productId}`,
-        SK: `VARIANT#${id}`,
-      },
-      UpdateExpression: 'SET stock = :quantity, updated_at = :now',
-      ExpressionAttributeValues: {
-        ':quantity': quantity,
-        ':now': new Date().toISOString(),
-      },
-      ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(deleted_at)',
-      ReturnValues: 'ALL_NEW',
-    });
+    // Validate quantity is non-negative
+    if (quantity < 0) {
+      throw new Error('Stock quantity cannot be negative');
+    }
 
+    const now = new Date().toISOString();
+    
     try {
-      const client = (this.dynamoDB as any).client;
-      const result = await client.send(command);
-      
-      if (!result.Attributes) {
+      const result = await this.dynamoDB.update({
+        key: {
+          PK: `PRODUCT#${productId}`,
+          SK: `VARIANT#${id}`,
+        },
+        updates: {
+          stock: quantity,
+          updated_at: now,
+        },
+        conditionExpression: 'attribute_exists(PK) AND attribute_not_exists(deleted_at)',
+        returnValues: 'ALL_NEW',
+      });
+
+      if (!result.data) {
         return null;
       }
 
-      return this.mapToVariant(result.Attributes);
+      return this.mapToVariant(result.data);
     } catch (error: any) {
       if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
         return null;
@@ -328,8 +357,14 @@ export class ProductVariantRepository {
 
   /**
    * Decrement stock atomically (cannot go below 0)
+   * Validates quantity is positive before decrementing
    */
   async decrementStock(id: string, productId: number, quantity: number): Promise<ProductVariant | null> {
+    // Validate quantity is positive
+    if (quantity <= 0) {
+      throw new Error('Decrement quantity must be positive');
+    }
+
     const command = new UpdateCommand({
       TableName: this.tableName,
       Key: {
@@ -364,8 +399,14 @@ export class ProductVariantRepository {
 
   /**
    * Increment stock atomically
+   * Validates quantity is positive before incrementing
    */
   async incrementStock(id: string, productId: number, quantity: number): Promise<ProductVariant | null> {
+    // Validate quantity is positive
+    if (quantity <= 0) {
+      throw new Error('Increment quantity must be positive');
+    }
+
     const command = new UpdateCommand({
       TableName: this.tableName,
       Key: {
