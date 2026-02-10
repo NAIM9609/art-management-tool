@@ -371,7 +371,7 @@ export class ProductRepository {
 
     return result.data.map(item => ({
       product_id: productId,
-      category_id: parseInt(item.SK.replace('CATEGORY#', '')),
+      category_id: parseInt(item.SK.replace('CATEGORY#', ''), 10),
       created_at: item.created_at,
     }));
   }
@@ -487,14 +487,15 @@ export class ProductRepository {
         ':gsi2pk': `PRODUCT_STATUS#${ProductStatus.PUBLISHED}`,
         ':term': term,
       },
-      filterExpression: 'contains(#title, :term) OR contains(short_description, :term)',
+      filterExpression: 'contains(#title, :term) OR contains(#desc, :term)',
       limit: params.limit || 30,
       exclusiveStartKey: params.lastEvaluatedKey,
       // Use projection expression to minimize data transfer
-      projectionExpression: 'id, slug, #title, short_description, base_price, currency, #status, created_at, updated_at',
+      projectionExpression: 'id, slug, #title, #desc, base_price, currency, #status, created_at, updated_at',
       expressionAttributeNames: {
         '#status': 'status',
         '#title': 'title',
+        '#desc': 'short_description',
       },
     });
 
