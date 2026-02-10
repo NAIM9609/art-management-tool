@@ -34,33 +34,32 @@ export class ProductRepository {
 
   /**
    * Get next auto-increment ID using atomic counter
+   * Uses a true atomic increment to avoid race conditions
    */
   async getNextId(): Promise<number> {
-    // First try to get current counter value
-    const current = await this.dynamoDB.get({
-      key: {
+    // Use atomic ADD operation to increment counter
+    // This is done via UpdateCommand with ADD expression
+    const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
+    const command = new UpdateCommand({
+      TableName: (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME,
+      Key: {
         PK: this.COUNTER_PK,
         SK: this.COUNTER_SK,
       },
-      consistentRead: true,
+      UpdateExpression: 'SET #v = if_not_exists(#v, :zero) + :one',
+      ExpressionAttributeNames: {
+        '#v': 'value',
+      },
+      ExpressionAttributeValues: {
+        ':zero': 0,
+        ':one': 1,
+      },
+      ReturnValues: 'ALL_NEW',
     });
 
-    const currentValue = current.data?.value || 0;
-    const nextValue = currentValue + 1;
-
-    // Update counter with new value
-    const result = await this.dynamoDB.update<{ value: number }>({
-      key: {
-        PK: this.COUNTER_PK,
-        SK: this.COUNTER_SK,
-      },
-      updates: {
-        value: nextValue,
-      },
-      returnValues: 'ALL_NEW',
-    });
-
-    return result.data?.value || 1;
+    const client = (this.dynamoDB as any).client;
+    const result = await client.send(command);
+    return result.Attributes?.value || 1;
   }
 
   /**
@@ -110,17 +109,17 @@ export class ProductRepository {
       GSI2SK: `${product.title}#${product.id}`,
     };
 
-    // Add optional fields
-    if (product.short_description) item.short_description = product.short_description;
-    if (product.long_description) item.long_description = product.long_description;
-    if (product.sku) item.sku = product.sku;
-    if (product.gtin) item.gtin = product.gtin;
-    if (product.character_value) item.character_value = product.character_value;
-    if (product.etsy_link) item.etsy_link = product.etsy_link;
-    if (product.deleted_at) item.deleted_at = product.deleted_at;
+    // Add optional fields - use !== undefined to preserve empty strings and 0 values
+    if (product.short_description !== undefined) item.short_description = product.short_description;
+    if (product.long_description !== undefined) item.long_description = product.long_description;
+    if (product.sku !== undefined) item.sku = product.sku;
+    if (product.gtin !== undefined) item.gtin = product.gtin;
+    if (product.character_value !== undefined) item.character_value = product.character_value;
+    if (product.etsy_link !== undefined) item.etsy_link = product.etsy_link;
+    if (product.deleted_at !== undefined) item.deleted_at = product.deleted_at;
 
-    // GSI3 - Sparse index for character_id (only if character_id exists)
-    if (product.character_id) {
+    // GSI3 - Sparse index for character_id (only if character_id exists and is not null)
+    if (product.character_id !== undefined && product.character_id !== null) {
       item.character_id = product.character_id;
       item.GSI3PK = `CHARACTER#${product.character_id}`;
       item.GSI3SK = product.created_at;
@@ -131,6 +130,8 @@ export class ProductRepository {
 
   /**
    * Create a new product with auto-increment ID
+   * Note: This does not enforce slug uniqueness at the DynamoDB level.
+   * If slug uniqueness is required, implement additional validation or use a separate slug lock mechanism.
    */
   async create(data: CreateProductData): Promise<Product> {
     const now = new Date().toISOString();
@@ -204,7 +205,8 @@ export class ProductRepository {
   }
 
   /**
-   * Find all products with pagination (eventually consistent)
+   * Find published products with pagination (eventually consistent)
+   * For listing products by other statuses, use findByStatus()
    */
   async findAll(params: PaginationParams = {}): Promise<PaginatedResponse<Product>> {
     const result = await this.dynamoDB.queryEventuallyConsistent({
@@ -220,6 +222,8 @@ export class ProductRepository {
       expressionAttributeNames: {
         '#status': 'status',
       },
+      // Exclude soft-deleted products
+      filterExpression: 'attribute_not_exists(deleted_at)',
     });
 
     return {
@@ -258,14 +262,20 @@ export class ProductRepository {
     }
     
     // For GSI2, we need current title/status if only one is being updated
-    // Use projection to minimize read cost
-    if (data.status !== undefined || data.title !== undefined) {
-      const current = await this.dynamoDB.get({
+    // For GSI3, we need current created_at to populate the sort key
+    const needsGSI2Update = data.status !== undefined || data.title !== undefined;
+    const needsGSI3Update = data.character_id !== undefined;
+
+    let current: any | null = null;
+
+    if (needsGSI2Update || needsGSI3Update) {
+      const currentResult = await this.dynamoDB.get({
         key: {
           PK: `PRODUCT#${id}`,
           SK: 'METADATA',
         },
-        projectionExpression: '#title, #status',
+        // Project only the fields we need for GSI recalculations
+        projectionExpression: '#title, #status, created_at',
         expressionAttributeNames: {
           '#title': 'title',
           '#status': 'status',
@@ -273,33 +283,51 @@ export class ProductRepository {
         consistentRead: true,
       });
       
-      if (!current.data) return null;
-      
-      const newStatus = data.status || current.data.status;
-      const newTitle = data.title || current.data.title;
+      if (!currentResult.data) return null;
+      current = currentResult.data;
+    }
+    
+    if (needsGSI2Update && current) {
+      const newStatus = data.status ?? current.status;
+      const newTitle = data.title ?? current.title;
       updates.GSI2PK = `PRODUCT_STATUS#${newStatus}`;
       updates.GSI2SK = `${newTitle}#${id}`;
     }
     
     if (data.character_id !== undefined) {
-      updates.GSI3PK = `CHARACTER#${data.character_id}`;
+      if (data.character_id !== null) {
+        // Adding or updating character association
+        updates.GSI3PK = `CHARACTER#${data.character_id}`;
+        const createdAtForGSI3 = current?.created_at || now;
+        updates.GSI3SK = createdAtForGSI3;
+      }
+      // Note: To remove character association completely, would need REMOVE operation
+      // which is not supported by the current update method
     }
 
-    const result = await this.dynamoDB.update({
-      key: {
-        PK: `PRODUCT#${id}`,
-        SK: 'METADATA',
-      },
-      updates,
-      conditionExpression: 'attribute_exists(PK)',
-      returnValues: 'ALL_NEW',
-    });
+    try {
+      const result = await this.dynamoDB.update({
+        key: {
+          PK: `PRODUCT#${id}`,
+          SK: 'METADATA',
+        },
+        updates,
+        conditionExpression: 'attribute_exists(PK)',
+        returnValues: 'ALL_NEW',
+      });
 
-    if (!result.data) {
-      return null;
+      if (!result.data) {
+        return null;
+      }
+
+      return this.mapToProduct(result.data);
+    } catch (error: any) {
+      // If item doesn't exist, return null
+      if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
+        return null;
+      }
+      throw error;
     }
-
-    return this.mapToProduct(result.data);
   }
 
   /**
@@ -331,29 +359,47 @@ export class ProductRepository {
 
   /**
    * Restore soft-deleted product
+   * Uses UPDATE with REMOVE to clear deleted_at without overwriting other fields
    */
   async restore(id: number): Promise<Product | null> {
-    // Get the current product first
+    // Check if product exists and is deleted
     const current = await this.findById(id);
     if (!current || !current.deleted_at) {
       return null;
     }
 
-    // Update the product and manually remove deleted_at
-    // We'll need to update the item without the deleted_at field
-    const updatedProduct: Product = {
-      ...current,
-      deleted_at: undefined,
-      updated_at: new Date().toISOString(),
-    };
-
-    const item = this.buildProductItem(updatedProduct);
-
-    await this.dynamoDB.put({
-      item,
+    // Use UpdateCommand directly to REMOVE deleted_at attribute
+    const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
+    const command = new UpdateCommand({
+      TableName: (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME,
+      Key: {
+        PK: `PRODUCT#${id}`,
+        SK: 'METADATA',
+      },
+      UpdateExpression: 'REMOVE deleted_at SET updated_at = :now',
+      ExpressionAttributeValues: {
+        ':now': new Date().toISOString(),
+      },
+      ConditionExpression: 'attribute_exists(PK) AND attribute_exists(deleted_at)',
+      ReturnValues: 'ALL_NEW',
     });
 
-    return updatedProduct;
+    try {
+      const client = (this.dynamoDB as any).client;
+      const result = await client.send(command);
+      
+      if (!result.Attributes) {
+        return null;
+      }
+
+      return this.mapToProduct(result.Attributes);
+    } catch (error: any) {
+      // If item doesn't exist or is not deleted, return null
+      if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -415,6 +461,7 @@ export class ProductRepository {
 
   /**
    * Find products by status using GSI2 (eventually consistent)
+   * Excludes soft-deleted products
    */
   async findByStatus(
     status: ProductStatus,
@@ -433,6 +480,8 @@ export class ProductRepository {
       expressionAttributeNames: {
         '#status': 'status',
       },
+      // Exclude soft-deleted products
+      filterExpression: 'attribute_not_exists(deleted_at)',
     });
 
     return {
@@ -444,6 +493,7 @@ export class ProductRepository {
 
   /**
    * Find products by character using GSI3 (sparse index, eventually consistent)
+   * Excludes soft-deleted products
    */
   async findByCharacter(
     characterId: number,
@@ -462,6 +512,8 @@ export class ProductRepository {
       expressionAttributeNames: {
         '#status': 'status',
       },
+      // Exclude soft-deleted products
+      filterExpression: 'attribute_not_exists(deleted_at)',
     });
 
     return {
@@ -475,6 +527,7 @@ export class ProductRepository {
    * Search products by term (simulated full-text search)
    * Uses filter expression on title and description
    * Note: DynamoDB contains() is case-sensitive, so searches are case-sensitive
+   * Excludes soft-deleted products
    */
   async search(
     term: string,
@@ -487,7 +540,7 @@ export class ProductRepository {
         ':gsi2pk': `PRODUCT_STATUS#${ProductStatus.PUBLISHED}`,
         ':term': term,
       },
-      filterExpression: 'contains(#title, :term) OR contains(#desc, :term)',
+      filterExpression: '(contains(#title, :term) OR contains(#desc, :term)) AND attribute_not_exists(deleted_at)',
       limit: params.limit || 30,
       exclusiveStartKey: params.lastEvaluatedKey,
       // Use projection expression to minimize data transfer

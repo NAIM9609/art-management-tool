@@ -333,7 +333,11 @@ describe('ProductRepository', () => {
 
       await repository.update(1, updateData);
 
-      expect(updateExpression.ExpressionAttributeValues[':upd2']).toBe('PRODUCT_STATUS#archived');
+      // Assert that the GSI2PK value is set correctly
+      expect(Object.values(updateExpression.ExpressionAttributeValues)).toContain('PRODUCT_STATUS#archived');
+      // Check that GSI2PK is in the attribute names mapping
+      const hasGSI2PK = Object.values(updateExpression.ExpressionAttributeNames || {}).includes('GSI2PK');
+      expect(hasGSI2PK).toBe(true);
     });
 
     it('should return null if product does not exist', async () => {
@@ -387,7 +391,16 @@ describe('ProductRepository', () => {
         },
       });
 
-      ddbMock.on(PutCommand).resolves({});
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: {
+          id: 1,
+          slug: 'test-product',
+          title: 'Test Product',
+          status: ProductStatus.PUBLISHED,
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-02T00:00:00.000Z',
+        },
+      });
 
       const product = await repository.restore(1);
 

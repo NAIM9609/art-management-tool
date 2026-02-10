@@ -112,7 +112,13 @@ describe('ProductRepository Integration Tests', () => {
           deleted_at: '2024-01-01T00:00:00.000Z',
         },
       });
-      ddbMock.on(PutCommand).resolves({});
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: {
+          ...created,
+          updated_at: new Date().toISOString(),
+          // deleted_at is removed in the restore operation
+        },
+      });
 
       const restored = await repository.restore(created.id);
       expect(restored).toBeDefined();
