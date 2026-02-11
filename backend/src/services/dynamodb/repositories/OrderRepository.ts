@@ -366,7 +366,11 @@ export class OrderRepository {
 
   /**
    * Find orders within a date range
-   * Uses GSI3 with status filter or table query
+   * Uses GSI3 with status filter or queries all statuses
+   * 
+   * Note: When status is not provided, this method queries all statuses sequentially
+   * which may result in higher read costs. For production use, consider providing a status
+   * or implementing a dedicated GSI with created_at as the partition key.
    */
   async findByDateRange(
     startDate: string,
@@ -405,10 +409,11 @@ export class OrderRepository {
       };
     } else {
       // Without status, query all statuses and filter by date
-      // This is less efficient but still better than a full table scan
-      // In production, consider adding a GSI with created_at as the partition key
+      // Warning: This queries each status sequentially and may be expensive
+      // Performance: 6 queries (one per status) with reduced limit per query
       const allOrders: Order[] = [];
       const statuses = Object.values(OrderStatus);
+      const perStatusLimit = Math.ceil(limit / statuses.length); // Distribute limit across statuses
       
       for (const orderStatus of statuses) {
         const result = await this.dynamoDB.queryEventuallyConsistent({
@@ -419,7 +424,7 @@ export class OrderRepository {
             ':start': startDate,
             ':end': endDate,
           },
-          limit: 100, // Reasonable limit per status
+          limit: perStatusLimit,
           projectionExpression: 'id, order_number, customer_email, customer_name, total, #status, created_at',
           expressionAttributeNames: {
             '#status': 'status',
