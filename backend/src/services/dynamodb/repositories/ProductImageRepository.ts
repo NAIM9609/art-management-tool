@@ -326,7 +326,7 @@ export class ProductImageRepository {
     // Build image items
     const items = images.map(data => {
       const id = uuidv4();
-      const position = data.position ?? nextPosition++;
+      const position = data.position !== undefined ? data.position : nextPosition++;
       
       const image: ProductImage = {
         id,
@@ -380,18 +380,23 @@ export class ProductImageRepository {
 
     // Build transaction items
     const now = new Date().toISOString();
-    const transactItems = imageIds.map((imageId, newPosition) => {
+    const transactWrites: any[] = [];
+    
+    for (let i = 0; i < imageIds.length; i++) {
+      const imageId = imageIds[i];
+      const newPosition = i;
       const currentImage = currentImageMap.get(imageId)!;
-      const oldSK = `IMAGE#${String(currentImage.position).padStart(10, '0')}`;
-      const newSK = `IMAGE#${String(newPosition).padStart(10, '0')}`;
-
+      
       // If position hasn't changed, skip
       if (currentImage.position === newPosition) {
-        return null;
+        continue;
       }
-
-      return {
-        // Delete old item
+      
+      const oldSK = `IMAGE#${String(currentImage.position).padStart(10, '0')}`;
+      const newSK = `IMAGE#${String(newPosition).padStart(10, '0')}`;
+      
+      // Delete old item
+      transactWrites.push({
         Delete: {
           TableName: this.tableName,
           Key: {
@@ -399,7 +404,10 @@ export class ProductImageRepository {
             SK: oldSK,
           },
         },
-        // Put new item with new position
+      });
+      
+      // Put new item with new position
+      transactWrites.push({
         Put: {
           TableName: this.tableName,
           Item: this.buildImageItem({
@@ -409,20 +417,15 @@ export class ProductImageRepository {
             updated_at: now,
           }),
         },
-      };
-    }).filter(item => item !== null);
+      });
+    }
 
     // If no changes needed, return current images
-    if (transactItems.length === 0) {
+    if (transactWrites.length === 0) {
       return currentImages;
     }
 
     // Execute transaction
-    const transactWrites = transactItems.flatMap(item => [
-      { Delete: item!.Delete },
-      { Put: item!.Put },
-    ]);
-
     const command = new TransactWriteCommand({
       TransactItems: transactWrites,
     });
