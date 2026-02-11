@@ -68,18 +68,16 @@ describe('OrderRepository', () => {
     });
 
     it('should use atomic counter to ensure uniqueness', async () => {
-      const updateSpy = jest.fn().mockResolvedValue({
+      ddbMock.on(UpdateCommand).resolves({
         Attributes: { value: 1 },
       });
 
-      ddbMock.on(UpdateCommand).callsFake(updateSpy);
-
       await repository.generateOrderNumber();
 
-      expect(updateSpy).toHaveBeenCalledTimes(1);
-      const callArgs = updateSpy.mock.calls[0][0];
-      expect(callArgs.input.UpdateExpression).toContain('if_not_exists');
-      expect(callArgs.input.ReturnValues).toBe('ALL_NEW');
+      const calls = ddbMock.commandCalls(UpdateCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.UpdateExpression).toContain('if_not_exists');
+      expect(calls[0].args[0].input.ReturnValues).toBe('ALL_NEW');
     });
   });
 
@@ -174,22 +172,22 @@ describe('OrderRepository', () => {
       };
 
       ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 1 } });
-      
-      const putSpy = jest.fn().mockResolvedValue({});
-      ddbMock.on(PutCommand).callsFake(putSpy);
+      ddbMock.on(PutCommand).resolves({});
 
       await repository.create(createData);
 
-      expect(putSpy).toHaveBeenCalledTimes(1);
-      const item = putSpy.mock.calls[0][0].input.Item;
+      const calls = ddbMock.commandCalls(PutCommand);
+      expect(calls).toHaveLength(1);
+      const item = calls[0].args[0].input.Item;
       
-      expect(item.PK).toMatch(/^ORDER#/);
-      expect(item.SK).toBe('METADATA');
-      expect(item.GSI1PK).toMatch(/^ORDER_NUMBER#ORD-/);
-      expect(item.GSI2PK).toBe('ORDER_EMAIL#test@example.com');
-      expect(item.GSI2SK).toBeDefined();
-      expect(item.GSI3PK).toBe('ORDER_STATUS#processing');
-      expect(item.GSI3SK).toBeDefined();
+      expect(item).toBeDefined();
+      expect(item?.PK).toMatch(/^ORDER#/);
+      expect(item?.SK).toBe('METADATA');
+      expect(item?.GSI1PK).toMatch(/^ORDER_NUMBER#ORD-/);
+      expect(item?.GSI2PK).toBe('ORDER_EMAIL#test@example.com');
+      expect(item?.GSI2SK).toBeDefined();
+      expect(item?.GSI3PK).toBe('ORDER_STATUS#processing');
+      expect(item?.GSI3SK).toBeDefined();
     });
   });
 
@@ -231,14 +229,13 @@ describe('OrderRepository', () => {
     });
 
     it('should use consistent read for findById', async () => {
-      const getSpy = jest.fn().mockResolvedValue({});
-      ddbMock.on(GetCommand).callsFake(getSpy);
+      ddbMock.on(GetCommand).resolves({});
 
       await repository.findById('test-id');
 
-      expect(getSpy).toHaveBeenCalledTimes(1);
-      const callArgs = getSpy.mock.calls[0][0];
-      expect(callArgs.input.ConsistentRead).toBe(true);
+      const calls = ddbMock.commandCalls(GetCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.ConsistentRead).toBe(true);
     });
   });
 
@@ -276,15 +273,14 @@ describe('OrderRepository', () => {
     });
 
     it('should query GSI1 with correct parameters', async () => {
-      const querySpy = jest.fn().mockResolvedValue({ Items: [] });
-      ddbMock.on(QueryCommand).callsFake(querySpy);
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
 
       await repository.findByOrderNumber('ORD-20260211-0001');
 
-      expect(querySpy).toHaveBeenCalledTimes(1);
-      const callArgs = querySpy.mock.calls[0][0];
-      expect(callArgs.input.IndexName).toBe('GSI1');
-      expect(callArgs.input.KeyConditionExpression).toContain('GSI1PK');
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.IndexName).toBe('GSI1');
+      expect(calls[0].args[0].input.KeyConditionExpression).toContain('GSI1PK');
     });
   });
 
@@ -341,43 +337,40 @@ describe('OrderRepository', () => {
     });
 
     it('should use GSI3 with pagination', async () => {
-      const querySpy = jest.fn().mockResolvedValue({ Items: [] });
-      ddbMock.on(QueryCommand).callsFake(querySpy);
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
 
       await repository.findAll(
         { status: OrderStatus.PENDING },
         { limit: 10, lastEvaluatedKey: { PK: 'test' } }
       );
 
-      expect(querySpy).toHaveBeenCalledTimes(1);
-      const callArgs = querySpy.mock.calls[0][0];
-      expect(callArgs.input.IndexName).toBe('GSI3');
-      expect(callArgs.input.Limit).toBe(10);
-      expect(callArgs.input.ExclusiveStartKey).toEqual({ PK: 'test' });
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.IndexName).toBe('GSI3');
+      expect(calls[0].args[0].input.Limit).toBe(10);
+      expect(calls[0].args[0].input.ExclusiveStartKey).toEqual({ PK: 'test' });
     });
 
     it('should use projection expression for cost optimization', async () => {
-      const querySpy = jest.fn().mockResolvedValue({ Items: [] });
-      ddbMock.on(QueryCommand).callsFake(querySpy);
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
 
       await repository.findAll();
 
-      expect(querySpy).toHaveBeenCalledTimes(1);
-      const callArgs = querySpy.mock.calls[0][0];
-      expect(callArgs.input.ProjectionExpression).toBeDefined();
-      expect(callArgs.input.ProjectionExpression).toContain('id');
-      expect(callArgs.input.ProjectionExpression).toContain('order_number');
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.ProjectionExpression).toBeDefined();
+      expect(calls[0].args[0].input.ProjectionExpression).toContain('id');
+      expect(calls[0].args[0].input.ProjectionExpression).toContain('order_number');
     });
 
     it('should filter out soft-deleted orders', async () => {
-      const querySpy = jest.fn().mockResolvedValue({ Items: [] });
-      ddbMock.on(QueryCommand).callsFake(querySpy);
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
 
       await repository.findAll();
 
-      expect(querySpy).toHaveBeenCalledTimes(1);
-      const callArgs = querySpy.mock.calls[0][0];
-      expect(callArgs.input.FilterExpression).toContain('deleted_at');
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.FilterExpression).toContain('deleted_at');
     });
   });
 
@@ -515,27 +508,25 @@ describe('OrderRepository', () => {
     });
 
     it('should query GSI2 with correct parameters', async () => {
-      const querySpy = jest.fn().mockResolvedValue({ Items: [] });
-      ddbMock.on(QueryCommand).callsFake(querySpy);
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
 
       await repository.findByCustomerEmail('test@example.com');
 
-      expect(querySpy).toHaveBeenCalledTimes(1);
-      const callArgs = querySpy.mock.calls[0][0];
-      expect(callArgs.input.IndexName).toBe('GSI2');
-      expect(callArgs.input.KeyConditionExpression).toContain('GSI2PK');
-      expect(callArgs.input.ScanIndexForward).toBe(false); // Most recent first
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.IndexName).toBe('GSI2');
+      expect(calls[0].args[0].input.KeyConditionExpression).toContain('GSI2PK');
+      expect(calls[0].args[0].input.ScanIndexForward).toBe(false); // Most recent first
     });
 
     it('should use projection expression for cost optimization', async () => {
-      const querySpy = jest.fn().mockResolvedValue({ Items: [] });
-      ddbMock.on(QueryCommand).callsFake(querySpy);
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
 
       await repository.findByCustomerEmail('test@example.com');
 
-      expect(querySpy).toHaveBeenCalledTimes(1);
-      const callArgs = querySpy.mock.calls[0][0];
-      expect(callArgs.input.ProjectionExpression).toBeDefined();
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.ProjectionExpression).toBeDefined();
     });
   });
 
@@ -560,15 +551,14 @@ describe('OrderRepository', () => {
     });
 
     it('should query GSI3 with correct parameters', async () => {
-      const querySpy = jest.fn().mockResolvedValue({ Items: [] });
-      ddbMock.on(QueryCommand).callsFake(querySpy);
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
 
       await repository.findByStatus(OrderStatus.PROCESSING);
 
-      expect(querySpy).toHaveBeenCalledTimes(1);
-      const callArgs = querySpy.mock.calls[0][0];
-      expect(callArgs.input.IndexName).toBe('GSI3');
-      expect(callArgs.input.ScanIndexForward).toBe(false); // Most recent first
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.IndexName).toBe('GSI3');
+      expect(calls[0].args[0].input.ScanIndexForward).toBe(false); // Most recent first
     });
   });
 
@@ -598,8 +588,7 @@ describe('OrderRepository', () => {
     });
 
     it('should query GSI3 with BETWEEN condition', async () => {
-      const querySpy = jest.fn().mockResolvedValue({ Items: [] });
-      ddbMock.on(QueryCommand).callsFake(querySpy);
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
 
       await repository.findByDateRange(
         '2026-02-01',
@@ -607,9 +596,9 @@ describe('OrderRepository', () => {
         OrderStatus.PENDING
       );
 
-      expect(querySpy).toHaveBeenCalledTimes(1);
-      const callArgs = querySpy.mock.calls[0][0];
-      expect(callArgs.input.KeyConditionExpression).toContain('BETWEEN');
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.KeyConditionExpression).toContain('BETWEEN');
     });
 
     it('should find orders by date range without status', async () => {
@@ -669,14 +658,14 @@ describe('OrderRepository', () => {
     });
 
     it('should use correct keys for batch get', async () => {
-      const batchGetSpy = jest.fn().mockResolvedValue({
+      ddbMock.on(BatchGetCommand).resolves({
         Responses: { 'test-table': [] },
       });
-      ddbMock.on(BatchGetCommand).callsFake(batchGetSpy);
 
       await repository.batchGet(['order-1', 'order-2']);
 
-      expect(batchGetSpy).toHaveBeenCalledTimes(1);
+      const calls = ddbMock.commandCalls(BatchGetCommand);
+      expect(calls).toHaveLength(1);
     });
   });
 
