@@ -3,7 +3,7 @@
  */
 
 import { mockClient } from 'aws-sdk-client-mock';
-import { DynamoDBDocumentClient, PutCommand, QueryCommand, DeleteCommand, UpdateCommand, TransactWriteCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, QueryCommand, DeleteCommand, UpdateCommand, TransactWriteCommand, BatchWriteCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
 import { ProductImageRepository } from './ProductImageRepository';
 import { CreateProductImageData, UpdateProductImageData } from './types';
@@ -206,9 +206,13 @@ describe('ProductImageRepository', () => {
         updated_at: '2024-01-01T00:00:00Z',
       };
 
-      // Mock findByIdAndProductId
-      ddbMock.on(QueryCommand).resolves({
-        Items: [currentImage],
+      // Mock findByIdAndProductId - first Get for pointer, then Get for image
+      ddbMock.on(GetCommand).resolvesOnce({
+        Item: { position: 0 }, // Pointer item
+        ConsumedCapacity: { CapacityUnits: 0.5 },
+      }).resolvesOnce({
+        Item: currentImage, // Image item
+        ConsumedCapacity: { CapacityUnits: 0.5 },
       });
 
       ddbMock.on(UpdateCommand).resolves({
@@ -217,6 +221,7 @@ describe('ProductImageRepository', () => {
           alt_text: 'New alt text',
           updated_at: '2024-01-02T00:00:00Z',
         },
+        ConsumedCapacity: { CapacityUnits: 1.0 },
       });
 
       const updateData: UpdateProductImageData = {
@@ -239,13 +244,16 @@ describe('ProductImageRepository', () => {
         updated_at: '2024-01-01T00:00:00Z',
       };
 
-      // Mock findByIdAndProductId
-      ddbMock.on(QueryCommand).resolves({
-        Items: [currentImage],
+      // Mock findByIdAndProductId - first Get for pointer, then Get for image
+      ddbMock.on(GetCommand).resolvesOnce({
+        Item: { position: 0 }, // Pointer item
+        ConsumedCapacity: { CapacityUnits: 0.5 },
+      }).resolvesOnce({
+        Item: currentImage, // Image item
+        ConsumedCapacity: { CapacityUnits: 0.5 },
       });
 
-      ddbMock.on(DeleteCommand).resolves({});
-      ddbMock.on(PutCommand).resolves({});
+      ddbMock.on(TransactWriteCommand).resolves({});
 
       const updateData: UpdateProductImageData = {
         position: 5,
@@ -258,8 +266,10 @@ describe('ProductImageRepository', () => {
     });
 
     it('should return null when image not found', async () => {
-      ddbMock.on(QueryCommand).resolves({
-        Items: [],
+      // Mock pointer not found
+      ddbMock.on(GetCommand).resolvesOnce({
+        Item: undefined,
+        ConsumedCapacity: { CapacityUnits: 0.5 },
       });
 
       const updated = await repository.update('nonexistent', 1, { alt_text: 'test' });
@@ -279,23 +289,29 @@ describe('ProductImageRepository', () => {
         updated_at: '2024-01-01T00:00:00Z',
       };
 
-      // Mock findByIdAndProductId
-      ddbMock.on(QueryCommand).resolves({
-        Items: [image],
+      // Mock findByIdAndProductId - first Get for pointer, then Get for image
+      ddbMock.on(GetCommand).resolvesOnce({
+        Item: { position: 0 }, // Pointer item
+        ConsumedCapacity: { CapacityUnits: 0.5 },
+      }).resolvesOnce({
+        Item: image, // Image item
+        ConsumedCapacity: { CapacityUnits: 0.5 },
       });
 
-      ddbMock.on(DeleteCommand).resolves({});
+      ddbMock.on(TransactWriteCommand).resolves({});
 
       await repository.delete('img1', 1);
 
-      // Verify delete was called
-      const deleteCalls = ddbMock.commandCalls(DeleteCommand);
-      expect(deleteCalls.length).toBeGreaterThan(0);
+      // Verify TransactWrite was called
+      const transactCalls = ddbMock.commandCalls(TransactWriteCommand);
+      expect(transactCalls.length).toBeGreaterThan(0);
     });
 
     it('should handle deleting non-existent image', async () => {
-      ddbMock.on(QueryCommand).resolves({
-        Items: [],
+      // Mock pointer not found
+      ddbMock.on(GetCommand).resolvesOnce({
+        Item: undefined,
+        ConsumedCapacity: { CapacityUnits: 0.5 },
       });
 
       // Should not throw
@@ -355,14 +371,14 @@ describe('ProductImageRepository', () => {
       expect(created[1].position).toBe(10);
     });
 
-    it('should throw error when batch size exceeds 25', async () => {
-      const images: CreateProductImageData[] = Array(26).fill(null).map((_, i) => ({
+    it('should throw error when batch size exceeds 12', async () => {
+      const images: CreateProductImageData[] = Array(13).fill(null).map((_, i) => ({
         product_id: 1,
         url: `products/image${i}.jpg`,
       }));
 
       await expect(repository.batchCreate(images)).rejects.toThrow(
-        'Batch create supports up to 25 images at a time'
+        'Batch create supports up to 12 images at a time'
       );
     });
 
@@ -492,11 +508,11 @@ describe('ProductImageRepository', () => {
       );
     });
 
-    it('should throw error when reordering more than 12 images', async () => {
-      const imageIds = Array(13).fill(null).map((_, i) => `img${i}`);
+    it('should throw error when reordering more than 8 images', async () => {
+      const imageIds = Array(9).fill(null).map((_, i) => `img${i}`);
 
       await expect(repository.reorder(1, imageIds)).rejects.toThrow(
-        'Reorder supports up to 12 images at a time'
+        'Reorder supports up to 8 images at a time'
       );
     });
 

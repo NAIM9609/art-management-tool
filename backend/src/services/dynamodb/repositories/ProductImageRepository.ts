@@ -134,6 +134,19 @@ export class ProductImageRepository {
   }
 
   /**
+   * Build pointer item for efficient ID lookups
+   * This enables O(1) Get operations instead of Query + Filter
+   */
+  private buildPointerItem(productId: number, imageId: string, position: number): Record<string, any> {
+    return {
+      PK: `PRODUCT#${productId}`,
+      SK: `IMAGE_ID#${imageId}`,
+      entity_type: 'ProductImagePointer',
+      position,
+    };
+  }
+
+  /**
    * Get the next auto-assigned position for a product by querying only the
    * current max-position image using the zero-padded SK.
    */
@@ -182,12 +195,31 @@ export class ProductImageRepository {
         updated_at: now,
       };
 
-      const item = this.buildImageItem(image);
+      const imageItem = this.buildImageItem(image);
+      const pointerItem = this.buildPointerItem(data.product_id, id, data.position);
 
-      await this.dynamoDB.put({
-        item,
-        conditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+      // Use transaction to create both image and pointer atomically
+      const command = new TransactWriteCommand({
+        TransactItems: [
+          {
+            Put: {
+              TableName: this.tableName,
+              Item: imageItem,
+              ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+            },
+          },
+          {
+            Put: {
+              TableName: this.tableName,
+              Item: pointerItem,
+              ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+            },
+          },
+        ],
       });
+
+      const client = (this.dynamoDB as any).client;
+      await client.send(command);
 
       // Return with CDN URL
       return this.mapToImage(image);
@@ -209,19 +241,38 @@ export class ProductImageRepository {
         updated_at: now,
       };
 
-      const item = this.buildImageItem(image);
+      const imageItem = this.buildImageItem(image);
+      const pointerItem = this.buildPointerItem(data.product_id, id, position);
 
       try {
-        await this.dynamoDB.put({
-          item,
-          conditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+        // Use transaction to create both image and pointer atomically
+        const command = new TransactWriteCommand({
+          TransactItems: [
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: imageItem,
+                ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+              },
+            },
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: pointerItem,
+                ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+              },
+            },
+          ],
         });
+
+        const client = (this.dynamoDB as any).client;
+        await client.send(command);
 
         // Success, return with CDN URL
         return this.mapToImage(image);
       } catch (error: any) {
         // Handle concurrent creates picking the same position.
-        if (error && error.name === 'ConditionalCheckFailedException') {
+        if (error && (error.name === 'ConditionalCheckFailedException' || error.name === 'TransactionCanceledException')) {
           if (attempt === maxAttempts) {
             throw error;
           }
@@ -259,24 +310,38 @@ export class ProductImageRepository {
 
   /**
    * Find image by ID and product ID
+   * Uses pointer item for O(1) lookup instead of Query + Filter
    */
   async findByIdAndProductId(id: string, productId: number): Promise<ProductImage | null> {
-    // We need to query by product ID and filter by image ID
-    const result = await this.dynamoDB.queryEventuallyConsistent({
-      keyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-      filterExpression: 'id = :id',
-      expressionAttributeValues: {
-        ':pk': `PRODUCT#${productId}`,
-        ':sk': 'IMAGE#',
-        ':id': id,
+    // First, get the pointer to find the position
+    const pointerResult = await this.dynamoDB.get({
+      key: {
+        PK: `PRODUCT#${productId}`,
+        SK: `IMAGE_ID#${id}`,
       },
+      consistentRead: true,
     });
 
-    if (result.data.length === 0) {
+    if (!pointerResult.data) {
       return null;
     }
 
-    return this.mapToImage(result.data[0]);
+    const position = pointerResult.data.position;
+
+    // Then get the actual image item using the position
+    const imageResult = await this.dynamoDB.get({
+      key: {
+        PK: `PRODUCT#${productId}`,
+        SK: `IMAGE#${String(position).padStart(10, '0')}`,
+      },
+      consistentRead: true,
+    });
+
+    if (!imageResult.data) {
+      return null;
+    }
+
+    return this.mapToImage(imageResult.data);
   }
 
   /**
@@ -312,8 +377,9 @@ export class ProductImageRepository {
       };
 
       const newItem = this.buildImageItem(updatedImage);
+      const newPointer = this.buildPointerItem(productId, id, data.position);
 
-      // Use transaction to atomically delete old and create new
+      // Use transaction to atomically delete old and create new (both image and pointer)
       const command = new TransactWriteCommand({
         TransactItems: [
           {
@@ -331,6 +397,12 @@ export class ProductImageRepository {
               TableName: this.tableName,
               Item: newItem,
               ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+            },
+          },
+          {
+            Put: {
+              TableName: this.tableName,
+              Item: newPointer,
             },
           },
         ],
@@ -383,17 +455,39 @@ export class ProductImageRepository {
       return;
     }
 
-    await this.dynamoDB.delete({
-      key: {
-        PK: `PRODUCT#${productId}`,
-        SK: `IMAGE#${String(image.position).padStart(10, '0')}`,
-      },
+    // Use transaction to delete both image and pointer atomically
+    const command = new TransactWriteCommand({
+      TransactItems: [
+        {
+          Delete: {
+            TableName: this.tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: `IMAGE#${String(image.position).padStart(10, '0')}`,
+            },
+          },
+        },
+        {
+          Delete: {
+            TableName: this.tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: `IMAGE_ID#${id}`,
+            },
+          },
+        },
+      ],
     });
+
+    const client = (this.dynamoDB as any).client;
+    await client.send(command);
   }
 
   /**
-   * Batch create images (up to 25 items)
-   * Note: Uses BatchWrite which cannot enforce conditions. To ensure safety against
+   * Batch create images (up to 12 items)
+   * Note: Creates both image and pointer items (2 items per image).
+   * BatchWrite supports max 25 items, so we limit to 12 images (12 * 2 = 24).
+   * Uses BatchWrite which cannot enforce conditions. To ensure safety against
    * position collisions, this validates positions up front but cannot guarantee
    * atomicity if concurrent writes occur.
    */
@@ -402,8 +496,8 @@ export class ProductImageRepository {
       return [];
     }
 
-    if (images.length > 25) {
-      throw new Error('Batch create supports up to 25 images at a time');
+    if (images.length > 12) {
+      throw new Error('Batch create supports up to 12 images at a time');
     }
 
     // Validate all images are for the same product
@@ -426,8 +520,10 @@ export class ProductImageRepository {
     // Collect positions that will be used in this batch
     const usedPositions = new Set<number>();
 
-    // Build image items
-    const items = images.map(data => {
+    // Build image items and pointer items
+    const allItems: any[] = [];
+    
+    images.forEach(data => {
       const id = uuidv4();
       
       // Assign position: use explicit position if provided, otherwise auto-assign
@@ -464,12 +560,14 @@ export class ProductImageRepository {
         url: this.convertToCdnUrl(image.url),
       });
       
-      return this.buildImageItem(image);
+      // Add both image and pointer items
+      allItems.push(this.buildImageItem(image));
+      allItems.push(this.buildPointerItem(data.product_id, id, position));
     });
 
-    // Use batch write
+    // Use batch write for both images and pointers
     await this.dynamoDB.batchWriteOptimized({
-      items: items.map(item => ({ type: 'put' as const, item })),
+      items: allItems.map(item => ({ type: 'put' as const, item })),
     });
 
     return createdImages;
@@ -478,16 +576,16 @@ export class ProductImageRepository {
   /**
    * Reorder images atomically
    * Updates all positions in a single transaction
-   * Each moved image generates 2 transaction items (Delete + Put).
-   * DynamoDB limits transactions to 25 items, so we cap at 12 images (2 * 12 = 24).
+   * Each moved image generates 3 transaction items (Delete old image + Put new image + Put pointer).
+   * DynamoDB limits transactions to 25 items, so we cap at 8 images (3 * 8 = 24).
    */
   async reorder(productId: number, imageIds: string[]): Promise<ProductImage[]> {
     if (imageIds.length === 0) {
       return [];
     }
 
-    if (imageIds.length > 12) {
-      throw new Error('Reorder supports up to 12 images at a time');
+    if (imageIds.length > 8) {
+      throw new Error('Reorder supports up to 8 images at a time');
     }
 
     // Get current images
@@ -538,6 +636,14 @@ export class ProductImageRepository {
             position: newPosition,
             updated_at: now,
           }),
+        },
+      });
+      
+      // Update pointer with new position
+      transactWrites.push({
+        Put: {
+          TableName: this.tableName,
+          Item: this.buildPointerItem(productId, imageId, newPosition),
         },
       });
     }
