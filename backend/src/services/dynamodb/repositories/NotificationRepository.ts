@@ -45,7 +45,7 @@ export class NotificationRepository {
   /**
    * Map DynamoDB item to Notification interface
    */
-  mapToNotification(item: Record<string, any>): Notification {
+  private mapToNotification(item: Record<string, any>): Notification {
     return {
       id: item.id,
       type: item.type,
@@ -63,7 +63,7 @@ export class NotificationRepository {
   /**
    * Build DynamoDB item from Notification
    */
-  buildNotificationItem(notification: Notification): Record<string, any> {
+  private buildNotificationItem(notification: Notification): Record<string, any> {
     const item: Record<string, any> = {
       PK: `NOTIFICATION#${notification.id}`,
       SK: 'METADATA',
