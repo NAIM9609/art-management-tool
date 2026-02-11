@@ -312,7 +312,7 @@ describe('OrderItemRepository', () => {
         total_price: 10.00,
       }));
 
-      await expect(repository.batchCreate(items)).rejects.toThrow('Batch create supports up to 25 order items');
+      await expect(repository.batchCreate(items)).rejects.toThrow('Batch create supports up to 25 order items at a time');
     });
 
     it('should create all items with same timestamp', async () => {
