@@ -40,12 +40,19 @@ export class CategoryRepository {
   }
 
   /**
+   * Get table name with proper typing
+   */
+  private getTableName(): string {
+    return (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME;
+  }
+
+  /**
    * Get next auto-increment ID using atomic counter
    */
   async getNextId(): Promise<number> {
     const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
     const command = new UpdateCommand({
-      TableName: (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME,
+      TableName: this.getTableName(),
       Key: {
         PK: this.COUNTER_PK,
         SK: this.COUNTER_SK,
@@ -219,29 +226,14 @@ export class CategoryRepository {
   }
 
   /**
-   * Find all categories with pagination (eventually consistent)
+   * Find root categories with pagination (eventually consistent)
+   * Note: This returns only top-level categories (those without a parent).
+   * To get all categories in the system, use a scan operation or aggregate
+   * results across multiple parent queries.
    * Excludes soft-deleted categories
    */
   async findAll(params: PaginationParams = {}): Promise<PaginatedResponse<Category>> {
-    // Query all root categories and their descendants
-    // For simplicity, we'll use a scan-like approach via GSI2 to get all categories
-    // In production, consider implementing cursor-based pagination across multiple GSI2 queries
-    const result = await this.dynamoDB.queryEventuallyConsistent({
-      indexName: 'GSI2',
-      keyConditionExpression: 'GSI2PK = :gsi2pk',
-      expressionAttributeValues: {
-        ':gsi2pk': 'CATEGORY_PARENT#ROOT',
-      },
-      limit: params.limit || 30,
-      exclusiveStartKey: params.lastEvaluatedKey,
-      filterExpression: 'attribute_not_exists(deleted_at)',
-    });
-
-    return {
-      items: result.data.map(item => this.mapToCategory(item)),
-      lastEvaluatedKey: result.lastEvaluatedKey,
-      count: result.count,
-    };
+    return this.findRootCategories(params);
   }
 
   /**
@@ -304,8 +296,8 @@ export class CategoryRepository {
     }
 
     if (data.name !== undefined || data.parent_id !== undefined) {
-      const newName = data.name ?? current.name;
-      const newParentId = data.parent_id !== undefined ? data.parent_id : current.parent_id;
+      const newName = data.name !== undefined ? data.name : (current?.name || '');
+      const newParentId = data.parent_id !== undefined ? data.parent_id : (current?.parent_id || null);
       updates.GSI2PK = `CATEGORY_PARENT#${newParentId || 'ROOT'}`;
       updates.GSI2SK = `${newName}#${id}`;
     }
@@ -468,7 +460,7 @@ export class CategoryRepository {
 
     // Create bidirectional links using BatchWriteCommand
     const { BatchWriteCommand } = await import('@aws-sdk/lib-dynamodb');
-    const tableName = (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME;
+    const tableName = this.getTableName();
 
     const command = new BatchWriteCommand({
       RequestItems: {
@@ -515,7 +507,7 @@ export class CategoryRepository {
   async removeProduct(categoryId: number, productId: number): Promise<void> {
     // Delete both directions of the link using BatchWriteCommand
     const { BatchWriteCommand } = await import('@aws-sdk/lib-dynamodb');
-    const tableName = (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME;
+    const tableName = this.getTableName();
 
     const command = new BatchWriteCommand({
       RequestItems: {
