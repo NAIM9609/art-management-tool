@@ -137,3 +137,37 @@ export interface UpdateProductImageData {
   alt_text?: string;
   position?: number;
 }
+
+/**
+ * Category interfaces
+ */
+export interface Category {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  parent_id?: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface CreateCategoryData {
+  name: string;
+  slug: string;
+  description?: string;
+  parent_id?: number;
+}
+
+export interface UpdateCategoryData {
+  name?: string;
+  slug?: string;
+  description?: string;
+  parent_id?: number;
+}
+
+export interface CategoryProduct {
+  category_id: number;
+  product_id: number;
+  created_at: string;
+}
