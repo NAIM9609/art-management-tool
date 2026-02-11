@@ -78,3 +78,36 @@ export interface UpdateProductData {
   character_value?: string;
   etsy_link?: string;
 }
+
+/**
+ * ProductVariant interfaces
+ */
+export interface ProductVariant {
+  id: string;
+  product_id: number;
+  sku: string;
+  name: string;
+  attributes?: Record<string, any>;
+  price_adjustment: number;
+  stock: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface CreateProductVariantData {
+  product_id: number;
+  sku: string;
+  name: string;
+  attributes?: Record<string, any>;
+  price_adjustment?: number;
+  stock?: number;
+}
+
+export interface UpdateProductVariantData {
+  sku?: string;
+  name?: string;
+  attributes?: Record<string, any>;
+  price_adjustment?: number;
+  stock?: number;
+}
