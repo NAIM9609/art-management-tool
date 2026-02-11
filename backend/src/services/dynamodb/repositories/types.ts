@@ -111,3 +111,29 @@ export interface UpdateProductVariantData {
   price_adjustment?: number;
   stock?: number;
 }
+
+/**
+ * ProductImage interfaces
+ */
+export interface ProductImage {
+  id: string;
+  product_id: number;
+  url: string;
+  alt_text?: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateProductImageData {
+  product_id: number;
+  url: string;
+  alt_text?: string;
+  position?: number;
+}
+
+export interface UpdateProductImageData {
+  url?: string;
+  alt_text?: string;
+  position?: number;
+}

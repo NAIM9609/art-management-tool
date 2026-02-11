@@ -4,4 +4,5 @@
 
 export { ProductRepository } from './ProductRepository';
 export { ProductVariantRepository } from './ProductVariantRepository';
+export { ProductImageRepository } from './ProductImageRepository';
 export * from './types';
