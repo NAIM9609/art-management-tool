@@ -137,3 +137,83 @@ export interface UpdateProductImageData {
   alt_text?: string;
   position?: number;
 }
+
+/**
+ * Order interfaces
+ */
+export enum OrderStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  SHIPPED = 'shipped',
+  DELIVERED = 'delivered',
+  CANCELLED = 'cancelled',
+  REFUNDED = 'refunded',
+}
+
+export interface Order {
+  id: string;
+  order_number: string;
+  user_id?: number;
+  customer_email: string;
+  customer_name: string;
+  subtotal: number;
+  tax: number;
+  discount: number;
+  total: number;
+  currency: string;
+  status: OrderStatus;
+  payment_status?: string;
+  payment_intent_id?: string;
+  payment_method?: string;
+  fulfillment_status?: string;
+  shipping_address?: Record<string, any>;
+  billing_address?: Record<string, any>;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface CreateOrderData {
+  user_id?: number;
+  customer_email: string;
+  customer_name: string;
+  subtotal: number;
+  tax?: number;
+  discount?: number;
+  total: number;
+  currency?: string;
+  status?: OrderStatus;
+  payment_status?: string;
+  payment_intent_id?: string;
+  payment_method?: string;
+  fulfillment_status?: string;
+  shipping_address?: Record<string, any>;
+  billing_address?: Record<string, any>;
+  notes?: string;
+}
+
+export interface UpdateOrderData {
+  customer_email?: string;
+  customer_name?: string;
+  subtotal?: number;
+  tax?: number;
+  discount?: number;
+  total?: number;
+  currency?: string;
+  status?: OrderStatus;
+  payment_status?: string;
+  payment_intent_id?: string;
+  payment_method?: string;
+  fulfillment_status?: string;
+  shipping_address?: Record<string, any>;
+  billing_address?: Record<string, any>;
+  notes?: string;
+}
+
+export interface OrderFilters {
+  status?: OrderStatus;
+  customer_email?: string;
+  startDate?: string;
+  endDate?: string;
+}
