@@ -137,3 +137,38 @@ export interface UpdateProductImageData {
   alt_text?: string;
   position?: number;
 }
+
+/**
+ * Notification types
+ */
+export enum NotificationType {
+  ORDER_CREATED = 'order_created',
+  ORDER_PAID = 'order_paid',
+  ORDER_SHIPPED = 'order_shipped',
+  LOW_STOCK = 'low_stock',
+  SYSTEM = 'system',
+}
+
+export interface Notification {
+  id: string;
+  type: NotificationType | string;
+  title: string;
+  message?: string;
+  metadata?: Record<string, any>;
+  is_read: boolean;
+  read_at?: string;
+  created_at: string;
+  updated_at: string;
+  expires_at: number; // Unix timestamp for TTL
+}
+
+export interface CreateNotificationData {
+  type: NotificationType | string;
+  title: string;
+  message?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface NotificationFilters {
+  is_read?: boolean;
+}
