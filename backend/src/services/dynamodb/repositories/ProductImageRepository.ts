@@ -326,7 +326,15 @@ export class ProductImageRepository {
     // Build image items
     const items = images.map(data => {
       const id = uuidv4();
-      const position = data.position !== undefined ? data.position : nextPosition++;
+      
+      // Assign position: use explicit position if provided, otherwise auto-assign
+      let position: number;
+      if (data.position !== undefined) {
+        position = data.position;
+      } else {
+        position = nextPosition;
+        nextPosition++;
+      }
       
       const image: ProductImage = {
         id,
