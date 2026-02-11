@@ -137,3 +137,27 @@ export interface UpdateProductImageData {
   alt_text?: string;
   position?: number;
 }
+
+/**
+ * AuditLog interfaces
+ */
+export interface AuditLog {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  user_id: string;
+  action: string;
+  changes?: Record<string, any>;
+  metadata?: Record<string, any>;
+  created_at: string;
+  expires_at: number;
+}
+
+export interface CreateAuditLogData {
+  entity_type: string;
+  entity_id: string;
+  user_id: string;
+  action: string;
+  changes?: Record<string, any>;
+  metadata?: Record<string, any>;
+}
