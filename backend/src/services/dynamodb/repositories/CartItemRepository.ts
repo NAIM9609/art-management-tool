@@ -9,7 +9,6 @@
 
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
 import { v4 as uuidv4 } from 'uuid';
-import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import {
   CartItem,
   CreateCartItemData,
@@ -119,36 +118,30 @@ export class CartItemRepository {
   }
 
   /**
-   * Update item quantity atomically using ADD operation
+   * Update item quantity atomically using SET operation
    */
   async updateQuantity(cartId: string, itemId: string, newQuantity: number): Promise<CartItem> {
     const now = new Date().toISOString();
     
-    // Use atomic SET operation for quantity
-    const command = new UpdateCommand({
-      TableName: (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME,
-      Key: {
-        PK: `CART#${cartId}`,
-        SK: `ITEM#${itemId}`,
-      },
-      UpdateExpression: 'SET quantity = :quantity, updated_at = :now',
-      ExpressionAttributeValues: {
-        ':quantity': newQuantity,
-        ':now': now,
-      },
-      ConditionExpression: 'attribute_exists(PK)',
-      ReturnValues: 'ALL_NEW',
-    });
-
     try {
-      const client = (this.dynamoDB as any).client;
-      const result = await client.send(command);
-      
-      if (!result.Attributes) {
+      const result = await this.dynamoDB.update({
+        key: {
+          PK: `CART#${cartId}`,
+          SK: `ITEM#${itemId}`,
+        },
+        updates: {
+          quantity: newQuantity,
+          updated_at: now,
+        },
+        conditionExpression: 'attribute_exists(PK)',
+        returnValues: 'ALL_NEW',
+      });
+
+      if (!result.data) {
         throw new Error('Item not found');
       }
 
-      return this.mapToCartItem(result.Attributes);
+      return this.mapToCartItem(result.data);
     } catch (error: any) {
       if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
         throw new Error('Item not found');

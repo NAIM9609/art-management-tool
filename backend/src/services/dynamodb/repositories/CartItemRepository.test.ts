@@ -257,7 +257,14 @@ describe('CartItemRepository', () => {
       expect(updateCalls).toHaveLength(1);
       
       const input = updateCalls[0].args[0].input;
-      expect(input.UpdateExpression).toContain('SET quantity = :quantity');
+      expect(input.UpdateExpression).toContain('SET');
+      
+      // Verify quantity and updated_at are being set
+      const values = input.ExpressionAttributeValues || {};
+      const hasQuantity = Object.values(values).some((v: any) => v === 10);
+      const hasTimestamp = Object.values(values).some((v: any) => typeof v === 'string' && v.includes('T'));
+      expect(hasQuantity).toBe(true);
+      expect(hasTimestamp).toBe(true);
     });
   });
 
