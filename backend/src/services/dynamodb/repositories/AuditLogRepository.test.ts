@@ -483,34 +483,4 @@ describe('AuditLogRepository', () => {
       expect(ttl).toBe(expectedExpiresAtSec);
     });
   });
-
-  describe('mapToAuditLog', () => {
-    it('should map DynamoDB item to AuditLog', () => {
-      const item = {
-        PK: 'AUDIT#2024-01-01#uuid1',
-        SK: 'METADATA',
-        id: 'uuid1',
-        entity_type: 'Product',
-        entity_id: '123',
-        user_id: 'user-456',
-        action: 'CREATE',
-        changes: { title: 'New Product' },
-        metadata: { ip: '192.168.1.1' },
-        created_at: '2024-01-01T10:00:00.000Z',
-        expires_at: 1735728000,
-      };
-
-      const auditLog = repository.mapToAuditLog(item);
-
-      expect(auditLog.id).toBe('uuid1');
-      expect(auditLog.entity_type).toBe('Product');
-      expect(auditLog.entity_id).toBe('123');
-      expect(auditLog.user_id).toBe('user-456');
-      expect(auditLog.action).toBe('CREATE');
-      expect(auditLog.changes).toEqual({ title: 'New Product' });
-      expect(auditLog.metadata).toEqual({ ip: '192.168.1.1' });
-      expect(auditLog.created_at).toBe('2024-01-01T10:00:00.000Z');
-      expect(auditLog.expires_at).toBe(1735728000);
-    });
-  });
 });

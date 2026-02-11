@@ -36,7 +36,7 @@ export class AuditLogRepository {
   /**
    * Map DynamoDB item to AuditLog interface
    */
-  mapToAuditLog(item: Record<string, any>): AuditLog {
+  private mapToAuditLog(item: Record<string, any>): AuditLog {
     return {
       id: item.id,
       entity_type: item.entity_type,
@@ -53,7 +53,7 @@ export class AuditLogRepository {
   /**
    * Build DynamoDB item from AuditLog
    */
-  buildAuditLogItem(auditLog: AuditLog): Record<string, any> {
+  private buildAuditLogItem(auditLog: AuditLog): Record<string, any> {
     // Extract date from created_at for partitioning (format: YYYY-MM-DD)
     const date = auditLog.created_at.split('T')[0];
     
@@ -215,7 +215,7 @@ export class AuditLogRepository {
   /**
    * Find audit logs within a date range
    * Uses PK prefix query for efficient date-based partitioning
-   * Note: This requires querying multiple partitions (one per date)
+   * Queries multiple date partitions in parallel for better performance
    */
   async findByDateRange(
     startDate: string,
@@ -223,7 +223,6 @@ export class AuditLogRepository {
   ): Promise<AuditLog[]> {
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const allLogs: AuditLog[] = [];
 
     // Generate list of dates to query
     const dates: string[] = [];
@@ -231,17 +230,22 @@ export class AuditLogRepository {
       dates.push(d.toISOString().split('T')[0]);
     }
 
-    // Query each date partition
-    for (const date of dates) {
-      const result = await this.dynamoDB.queryEventuallyConsistent({
+    // Query all date partitions in parallel
+    const queryPromises = dates.map(date =>
+      this.dynamoDB.queryEventuallyConsistent({
         keyConditionExpression: 'begins_with(PK, :pk)',
         expressionAttributeValues: {
           ':pk': `AUDIT#${date}`,
         },
         scanIndexForward: false, // Newest first
-      });
+      })
+    );
 
-      // Filter by exact date range if needed
+    const results = await Promise.all(queryPromises);
+
+    // Flatten and filter results
+    const allLogs: AuditLog[] = [];
+    for (const result of results) {
       const filtered = result.data
         .map(item => this.mapToAuditLog(item))
         .filter(log => {
