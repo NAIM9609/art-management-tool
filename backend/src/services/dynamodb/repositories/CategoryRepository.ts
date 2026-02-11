@@ -390,23 +390,23 @@ export class CategoryRepository {
    */
   async getAncestors(id: number): Promise<Category[]> {
     const ancestors: Category[] = [];
-    let currentId: number | undefined = id;
+    let currentParentId: number | undefined;
 
-    while (currentId) {
-      const category = await this.findById(currentId);
-      if (!category || category.deleted_at) break;
+    // Get the starting category to find its parent
+    const startCategory = await this.findById(id);
+    if (!startCategory || startCategory.deleted_at) {
+      return ancestors;
+    }
+    
+    currentParentId = startCategory.parent_id;
 
-      if (category.parent_id) {
-        const parent = await this.findById(category.parent_id);
-        if (parent && !parent.deleted_at) {
-          ancestors.push(parent);
-          currentId = parent.parent_id;
-        } else {
-          break;
-        }
-      } else {
-        break;
-      }
+    // Walk up the parent chain
+    while (currentParentId) {
+      const parent = await this.findById(currentParentId);
+      if (!parent || parent.deleted_at) break;
+
+      ancestors.push(parent);
+      currentParentId = parent.parent_id;
     }
 
     return ancestors;

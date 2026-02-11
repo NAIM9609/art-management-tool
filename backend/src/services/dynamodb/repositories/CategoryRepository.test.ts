@@ -356,22 +356,24 @@ describe('CategoryRepository', () => {
         parent_id: 2,
       };
 
+      // First call: check for circular reference (parent_id = 2)
+      // Second call: get current category data for GSI update
       ddbMock.on(GetCommand)
-        .resolvesOnce({
-          Item: {
-            id: 1,
-            name: 'Category 1',
-            slug: 'category-1',
-            created_at: '2024-01-01T00:00:00.000Z',
-            updated_at: '2024-01-01T00:00:00.000Z',
-          },
-        })
         .resolvesOnce({
           Item: {
             id: 2,
             name: 'Category 2',
             slug: 'category-2',
             parent_id: 1, // Points back to category 1
+            created_at: '2024-01-01T00:00:00.000Z',
+            updated_at: '2024-01-01T00:00:00.000Z',
+          },
+        })
+        .resolvesOnce({
+          Item: {
+            id: 1,
+            name: 'Category 1',
+            slug: 'category-1',
             created_at: '2024-01-01T00:00:00.000Z',
             updated_at: '2024-01-01T00:00:00.000Z',
           },
@@ -386,6 +388,9 @@ describe('CategoryRepository', () => {
       const updateData: UpdateCategoryData = {
         name: 'Updated Name',
       };
+
+      // Mock GetCommand to return undefined (category doesn't exist)
+      ddbMock.on(GetCommand).resolves({});
 
       ddbMock.on(UpdateCommand).rejects({
         name: 'ConditionalCheckFailedException',
@@ -491,6 +496,7 @@ describe('CategoryRepository', () => {
       // Setup: Category 3 -> Category 2 -> Category 1
       ddbMock.on(GetCommand)
         .resolvesOnce({
+          // First call: get category 3 to get its parent_id
           Item: {
             id: 3,
             name: 'Category 3',
@@ -501,6 +507,7 @@ describe('CategoryRepository', () => {
           },
         })
         .resolvesOnce({
+          // Second call: get category 2 (parent of 3)
           Item: {
             id: 2,
             name: 'Category 2',
@@ -511,6 +518,7 @@ describe('CategoryRepository', () => {
           },
         })
         .resolvesOnce({
+          // Third call: get category 1 (parent of 2)
           Item: {
             id: 1,
             name: 'Category 1',
