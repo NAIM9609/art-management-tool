@@ -137,3 +137,31 @@ export interface UpdateProductImageData {
   alt_text?: string;
   position?: number;
 }
+
+/**
+ * Personaggio (Character) interfaces
+ */
+export interface Personaggio {
+  id: number;
+  name: string;
+  description?: string;
+  images: string[];
+  order: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface CreatePersonaggioData {
+  name: string;
+  description?: string;
+  images?: string[];
+  order?: number;
+}
+
+export interface UpdatePersonaggioData {
+  name?: string;
+  description?: string;
+  images?: string[];
+  order?: number;
+}
