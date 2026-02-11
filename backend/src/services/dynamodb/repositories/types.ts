@@ -137,3 +137,34 @@ export interface UpdateProductImageData {
   alt_text?: string;
   position?: number;
 }
+
+/**
+ * Fumetto interfaces
+ */
+export interface Fumetto {
+  id: number;
+  title: string;
+  description?: string;
+  coverImage?: string;
+  pages?: string[];
+  order: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface CreateFumettoData {
+  title: string;
+  description?: string;
+  coverImage?: string;
+  pages?: string[];
+  order?: number;
+}
+
+export interface UpdateFumettoData {
+  title?: string;
+  description?: string;
+  coverImage?: string;
+  pages?: string[];
+  order?: number;
+}
