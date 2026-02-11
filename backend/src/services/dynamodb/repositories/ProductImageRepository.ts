@@ -17,7 +17,7 @@
  */
 
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
-import { UpdateCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import {
   ProductImage,
   CreateProductImageData,
@@ -54,15 +54,19 @@ export class ProductImageRepository {
 
     // If it's already a full URL (starts with http), extract the key
     if (urlOrKey.startsWith('http://') || urlOrKey.startsWith('https://')) {
-      // Extract key from S3 URL
-      const urlMatch = urlOrKey.match(/\.com\/(.+)$/);
-      if (urlMatch) {
-        const key = urlMatch[1];
+      try {
+        const parsedUrl = new URL(urlOrKey);
+        // Extract pathname and remove leading slash
+        const key = parsedUrl.pathname.startsWith('/') 
+          ? parsedUrl.pathname.substring(1) 
+          : parsedUrl.pathname;
+        
         const baseUrl = this.cdnUrl.endsWith('/') ? this.cdnUrl.slice(0, -1) : this.cdnUrl;
         return `${baseUrl}/${key}`;
+      } catch (error) {
+        // If URL parsing fails, return as-is
+        return urlOrKey;
       }
-      // If we can't extract the key, return as-is
-      return urlOrKey;
     }
 
     // It's a relative key, convert to CDN URL
@@ -77,9 +81,15 @@ export class ProductImageRepository {
   private extractS3Key(url: string): string {
     // If it's a full URL, extract the key
     if (url.startsWith('http://') || url.startsWith('https://')) {
-      const urlMatch = url.match(/\.com\/(.+)$/);
-      if (urlMatch) {
-        return urlMatch[1];
+      try {
+        const parsedUrl = new URL(url);
+        // Extract pathname and remove leading slash
+        return parsedUrl.pathname.startsWith('/') 
+          ? parsedUrl.pathname.substring(1) 
+          : parsedUrl.pathname;
+      } catch (error) {
+        // If URL parsing fails, return as-is
+        return url;
       }
     }
     // Otherwise, assume it's already a key
@@ -124,40 +134,106 @@ export class ProductImageRepository {
   }
 
   /**
+   * Get the next auto-assigned position for a product by querying only the
+   * current max-position image using the zero-padded SK.
+   */
+  private async getNextAutoPosition(productId: number): Promise<number> {
+    const result = await this.dynamoDB.queryEventuallyConsistent({
+      keyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+      expressionAttributeValues: {
+        ':pk': `PRODUCT#${productId}`,
+        ':skPrefix': 'IMAGE#',
+      },
+      // Get highest-position image first (reverse sort)
+      scanIndexForward: false,
+      limit: 1,
+    });
+
+    if (!result.data || result.data.length === 0) {
+      return 0;
+    }
+
+    const maxItem = result.data[0];
+    const currentMax = maxItem.position;
+
+    if (typeof currentMax !== 'number' || currentMax < 0) {
+      return 0;
+    }
+
+    return currentMax + 1;
+  }
+
+  /**
    * Create a new product image
    */
   async create(data: CreateProductImageData): Promise<ProductImage> {
     const now = new Date().toISOString();
     const id = uuidv4();
 
-    // Get current max position if position not provided
-    let position = data.position ?? 0;
-    if (data.position === undefined) {
-      const existingImages = await this.findByProductId(data.product_id);
-      position = existingImages.length > 0 
-        ? Math.max(...existingImages.map(img => img.position)) + 1 
-        : 0;
+    // If position is explicitly provided, use it directly (single attempt).
+    if (data.position !== undefined) {
+      const image: ProductImage = {
+        id,
+        product_id: data.product_id,
+        url: this.extractS3Key(data.url),
+        alt_text: data.alt_text,
+        position: data.position,
+        created_at: now,
+        updated_at: now,
+      };
+
+      const item = this.buildImageItem(image);
+
+      await this.dynamoDB.put({
+        item,
+        conditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+      });
+
+      // Return with CDN URL
+      return this.mapToImage(image);
     }
 
-    const image: ProductImage = {
-      id,
-      product_id: data.product_id,
-      url: this.extractS3Key(data.url),
-      alt_text: data.alt_text,
-      position,
-      created_at: now,
-      updated_at: now,
-    };
+    // Auto-assign position using max-position query and retry on concurrent writes.
+    const maxAttempts = 3;
 
-    const item = this.buildImageItem(image);
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const position = await this.getNextAutoPosition(data.product_id);
 
-    await this.dynamoDB.put({
-      item,
-      conditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
-    });
+      const image: ProductImage = {
+        id,
+        product_id: data.product_id,
+        url: this.extractS3Key(data.url),
+        alt_text: data.alt_text,
+        position,
+        created_at: now,
+        updated_at: now,
+      };
 
-    // Return with CDN URL
-    return this.mapToImage(image);
+      const item = this.buildImageItem(image);
+
+      try {
+        await this.dynamoDB.put({
+          item,
+          conditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+        });
+
+        // Success, return with CDN URL
+        return this.mapToImage(image);
+      } catch (error: any) {
+        // Handle concurrent creates picking the same position.
+        if (error && error.name === 'ConditionalCheckFailedException') {
+          if (attempt === maxAttempts) {
+            throw error;
+          }
+          // Retry by recomputing the next position.
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    // Should be unreachable due to early returns in the loop.
+    throw new Error('Failed to create product image after retries.');
   }
 
   /**
@@ -222,21 +298,11 @@ export class ProductImageRepository {
     if (data.url !== undefined) updates.url = this.extractS3Key(data.url);
     if (data.alt_text !== undefined) updates.alt_text = data.alt_text;
     
-    // Position changes require re-keying (delete + create)
+    // Position changes require re-keying using atomic transaction
     if (data.position !== undefined && data.position !== current.position) {
-      // Need to delete old item and create new one with new position
       const oldSK = `IMAGE#${String(current.position).padStart(10, '0')}`;
-      const newSK = `IMAGE#${String(data.position).padStart(10, '0')}`;
 
-      // Delete old item
-      await this.dynamoDB.delete({
-        key: {
-          PK: `PRODUCT#${productId}`,
-          SK: oldSK,
-        },
-      });
-
-      // Create new item with new position
+      // Build updated image with new position
       const updatedImage: ProductImage = {
         ...current,
         url: data.url !== undefined ? this.extractS3Key(data.url) : this.extractS3Key(current.url),
@@ -245,12 +311,41 @@ export class ProductImageRepository {
         updated_at: now,
       };
 
-      const item = this.buildImageItem(updatedImage);
-      await this.dynamoDB.put({
-        item,
+      const newItem = this.buildImageItem(updatedImage);
+
+      // Use transaction to atomically delete old and create new
+      const command = new TransactWriteCommand({
+        TransactItems: [
+          {
+            Delete: {
+              TableName: this.tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: oldSK,
+              },
+              ConditionExpression: 'attribute_exists(PK)',
+            },
+          },
+          {
+            Put: {
+              TableName: this.tableName,
+              Item: newItem,
+              ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+            },
+          },
+        ],
       });
 
-      return this.mapToImage(updatedImage);
+      try {
+        const client = (this.dynamoDB as any).client;
+        await client.send(command);
+        return this.mapToImage(updatedImage);
+      } catch (error: any) {
+        if (error.name === 'TransactionCanceledException' || error.code === 'TransactionCanceledException') {
+          return null;
+        }
+        throw error;
+      }
     }
 
     // No position change, normal update
@@ -298,6 +393,9 @@ export class ProductImageRepository {
 
   /**
    * Batch create images (up to 25 items)
+   * Note: Uses BatchWrite which cannot enforce conditions. To ensure safety against
+   * position collisions, this validates positions up front but cannot guarantee
+   * atomicity if concurrent writes occur.
    */
   async batchCreate(images: CreateProductImageData[]): Promise<ProductImage[]> {
     if (images.length === 0) {
@@ -317,11 +415,16 @@ export class ProductImageRepository {
     const now = new Date().toISOString();
     const createdImages: ProductImage[] = [];
 
-    // Get current max position
+    // Get existing images to check for position collisions
     const existingImages = await this.findByProductId(productId);
+    const existingPositions = new Set(existingImages.map(img => img.position));
+    
     let nextPosition = existingImages.length > 0 
       ? Math.max(...existingImages.map(img => img.position)) + 1 
       : 0;
+
+    // Collect positions that will be used in this batch
+    const usedPositions = new Set<number>();
 
     // Build image items
     const items = images.map(data => {
@@ -331,10 +434,20 @@ export class ProductImageRepository {
       let position: number;
       if (data.position !== undefined) {
         position = data.position;
+        // Check for collision with existing images
+        if (existingPositions.has(position)) {
+          throw new Error(`Position ${position} already exists for product ${productId}`);
+        }
+        // Check for duplicate within this batch
+        if (usedPositions.has(position)) {
+          throw new Error(`Duplicate position ${position} within batch`);
+        }
       } else {
         position = nextPosition;
         nextPosition++;
       }
+      
+      usedPositions.add(position);
       
       const image: ProductImage = {
         id,
@@ -365,14 +478,16 @@ export class ProductImageRepository {
   /**
    * Reorder images atomically
    * Updates all positions in a single transaction
+   * Each moved image generates 2 transaction items (Delete + Put).
+   * DynamoDB limits transactions to 25 items, so we cap at 12 images (2 * 12 = 24).
    */
   async reorder(productId: number, imageIds: string[]): Promise<ProductImage[]> {
     if (imageIds.length === 0) {
       return [];
     }
 
-    if (imageIds.length > 25) {
-      throw new Error('Reorder supports up to 25 images at a time');
+    if (imageIds.length > 12) {
+      throw new Error('Reorder supports up to 12 images at a time');
     }
 
     // Get current images
@@ -401,7 +516,6 @@ export class ProductImageRepository {
       }
       
       const oldSK = `IMAGE#${String(currentImage.position).padStart(10, '0')}`;
-      const newSK = `IMAGE#${String(newPosition).padStart(10, '0')}`;
       
       // Delete old item
       transactWrites.push({

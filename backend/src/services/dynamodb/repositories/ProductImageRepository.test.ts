@@ -47,11 +47,10 @@ describe('ProductImageRepository', () => {
         alt_text: 'Product image 1',
       };
 
-      // Mock existing images query
+      // Mock existing images query for auto-position (returns max position item)
       ddbMock.on(QueryCommand).resolvesOnce({
         Items: [
-          { position: 0 },
-          { position: 1 },
+          { position: 1 }, // Highest position
         ],
         ConsumedCapacity: { CapacityUnits: 0.5 },
       });
@@ -378,6 +377,48 @@ describe('ProductImageRepository', () => {
       );
     });
 
+    it('should throw error when position collides with existing image', async () => {
+      const images: CreateProductImageData[] = [
+        { product_id: 1, url: 'products/image1.jpg', position: 0 },
+      ];
+
+      // Mock existing images with position 0
+      ddbMock.on(QueryCommand).resolves({
+        Items: [
+          {
+            id: 'existing',
+            product_id: 1,
+            url: 'products/existing.jpg',
+            position: 0,
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+          },
+        ],
+        ConsumedCapacity: { CapacityUnits: 0.5 },
+      });
+
+      await expect(repository.batchCreate(images)).rejects.toThrow(
+        'Position 0 already exists for product 1'
+      );
+    });
+
+    it('should throw error when duplicate positions in batch', async () => {
+      const images: CreateProductImageData[] = [
+        { product_id: 1, url: 'products/image1.jpg', position: 5 },
+        { product_id: 1, url: 'products/image2.jpg', position: 5 },
+      ];
+
+      // Mock no existing images
+      ddbMock.on(QueryCommand).resolves({
+        Items: [],
+        ConsumedCapacity: { CapacityUnits: 0.5 },
+      });
+
+      await expect(repository.batchCreate(images)).rejects.toThrow(
+        'Duplicate position 5 within batch'
+      );
+    });
+
     it('should return empty array for empty input', async () => {
       const created = await repository.batchCreate([]);
       expect(created).toHaveLength(0);
@@ -451,11 +492,11 @@ describe('ProductImageRepository', () => {
       );
     });
 
-    it('should throw error when reordering more than 25 images', async () => {
-      const imageIds = Array(26).fill(null).map((_, i) => `img${i}`);
+    it('should throw error when reordering more than 12 images', async () => {
+      const imageIds = Array(13).fill(null).map((_, i) => `img${i}`);
 
       await expect(repository.reorder(1, imageIds)).rejects.toThrow(
-        'Reorder supports up to 25 images at a time'
+        'Reorder supports up to 12 images at a time'
       );
     });
 
