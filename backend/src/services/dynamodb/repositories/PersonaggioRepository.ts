@@ -303,7 +303,17 @@ export class PersonaggioRepository {
   /**
    * Reorder multiple personaggi atomically
    * Updates the order field and GSI1 attributes for all provided IDs
-   * @param personaggiIds - Array of personaggio IDs in the desired order
+   * 
+   * @param personaggiIds - Array of personaggio IDs in the desired order.
+   *                        Each ID will be assigned an order starting from 1.
+   *                        If duplicate IDs are provided, each occurrence will be updated
+   *                        with the order corresponding to its position in the array.
+   *                        If an ID doesn't exist, the update will fail for that ID.
+   * @throws Error if any update fails (e.g., if an ID doesn't exist)
+   * 
+   * @example
+   * // Reorder three personaggi: set order 1 for ID 5, order 2 for ID 3, order 3 for ID 1
+   * await repository.reorder([5, 3, 1]);
    */
   async reorder(personaggiIds: number[]): Promise<void> {
     // Use batch write to update all items
@@ -321,7 +331,11 @@ export class PersonaggioRepository {
       try {
         await this.update(id, { order });
       } catch (error) {
-        console.error(`Failed to reorder personaggio ${id}:`, error);
+        console.error(
+          `Failed to reorder personaggio ${id} to position ${order}. ` +
+          `Reorder operation: [${personaggiIds.join(', ')}]`,
+          error
+        );
         throw error;
       }
     });
