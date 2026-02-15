@@ -17,6 +17,7 @@ import { DynamoDBOptimized } from '../DynamoDBOptimized';
 import {
   Order,
   OrderStatus,
+  OrderSummary,
   CreateOrderData,
   UpdateOrderData,
   OrderFilters,
@@ -32,6 +33,32 @@ export class OrderRepository {
 
   constructor(dynamoDB: DynamoDBOptimized) {
     this.dynamoDB = dynamoDB;
+  }
+
+  /**
+   * Normalize start date to beginning of day (00:00:00.000Z)
+   * Handles both YYYY-MM-DD and full ISO timestamp formats
+   */
+  private normalizeStartDate(date: string): string {
+    // If already full ISO timestamp, return as is
+    if (date.includes('T')) {
+      return date;
+    }
+    // Convert YYYY-MM-DD to start of day
+    return `${date}T00:00:00.000Z`;
+  }
+
+  /**
+   * Normalize end date to end of day (23:59:59.999Z)
+   * Handles both YYYY-MM-DD and full ISO timestamp formats
+   */
+  private normalizeEndDate(date: string): string {
+    // If already full ISO timestamp, return as is
+    if (date.includes('T')) {
+      return date;
+    }
+    // Convert YYYY-MM-DD to end of day
+    return `${date}T23:59:59.999Z`;
   }
 
   /**
@@ -69,6 +96,26 @@ export class OrderRepository {
     // Format: ORD-YYYYMMDD-XXXX (pad sequential number to 4 digits)
     const paddedNumber = sequentialNumber.toString().padStart(4, '0');
     return `ORD-${dateStr}-${paddedNumber}`;
+  }
+
+  /**
+   * Map DynamoDB item to OrderSummary interface (for list queries)
+   */
+  mapToOrderSummary(item: Record<string, any>): OrderSummary {
+    return {
+      id: item.id,
+      order_number: item.order_number,
+      customer_email: item.customer_email,
+      customer_name: item.customer_name,
+      total: item.total,
+      status: item.status as OrderStatus,
+      created_at: item.created_at,
+      subtotal: item.subtotal,
+      tax: item.tax,
+      discount: item.discount,
+      currency: item.currency,
+      updated_at: item.updated_at,
+    };
   }
 
   /**
@@ -174,6 +221,7 @@ export class OrderRepository {
     const item = this.buildOrderItem(order);
     await this.dynamoDB.put({
       item,
+      conditionExpression: 'attribute_not_exists(PK)',
     });
 
     return order;
@@ -220,34 +268,79 @@ export class OrderRepository {
 
   /**
    * Find all orders with optional filters and pagination
-   * Note: For cost optimization, this queries by status (defaults to PENDING)
-   * Use findByStatus() for specific statuses or findByCustomerEmail() for customer orders
+   * Supports filtering by status, customer_email, and date range
+   * Note: For cost optimization, this queries using GSI2 or GSI3
    */
   async findAll(
     filters?: OrderFilters,
     pagination?: PaginationParams
-  ): Promise<PaginatedResponse<Order>> {
+  ): Promise<PaginatedResponse<OrderSummary>> {
     const limit = pagination?.limit || 30;
-    const status = filters?.status || OrderStatus.PENDING;
+    const { status, customer_email, startDate, endDate } = filters || {};
 
-    // Use GSI3 for efficient querying by status
+    // Build query parameters based on available filters
+    let indexName: string;
+    let keyConditionExpression: string;
+    const expressionAttributeValues: Record<string, unknown> = {};
+    const expressionAttributeNames: Record<string, string> = {
+      '#status': 'status',
+    };
+    const filterExpressions: string[] = ['attribute_not_exists(deleted_at)'];
+
+    if (customer_email) {
+      // Query by customer email using GSI2
+      indexName = 'GSI2';
+      expressionAttributeValues[':pk'] = `ORDER_EMAIL#${customer_email}`;
+
+      // Apply date range on GSI2SK (created_at) when provided
+      if (startDate && endDate) {
+        keyConditionExpression = 'GSI2PK = :pk AND GSI2SK BETWEEN :startDate AND :endDate';
+        expressionAttributeValues[':startDate'] = this.normalizeStartDate(startDate);
+        expressionAttributeValues[':endDate'] = this.normalizeEndDate(endDate);
+      } else if (startDate) {
+        keyConditionExpression = 'GSI2PK = :pk AND GSI2SK >= :startDate';
+        expressionAttributeValues[':startDate'] = this.normalizeStartDate(startDate);
+      } else if (endDate) {
+        keyConditionExpression = 'GSI2PK = :pk AND GSI2SK <= :endDate';
+        expressionAttributeValues[':endDate'] = this.normalizeEndDate(endDate);
+      } else {
+        keyConditionExpression = 'GSI2PK = :pk';
+      }
+    } else {
+      // Default to querying by status using GSI3
+      const effectiveStatus = status || OrderStatus.PENDING;
+      indexName = 'GSI3';
+      expressionAttributeValues[':pk'] = `ORDER_STATUS#${effectiveStatus}`;
+
+      // Apply date range on GSI3SK (created_at) when provided
+      if (startDate && endDate) {
+        keyConditionExpression = 'GSI3PK = :pk AND GSI3SK BETWEEN :startDate AND :endDate';
+        expressionAttributeValues[':startDate'] = this.normalizeStartDate(startDate);
+        expressionAttributeValues[':endDate'] = this.normalizeEndDate(endDate);
+      } else if (startDate) {
+        keyConditionExpression = 'GSI3PK = :pk AND GSI3SK >= :startDate';
+        expressionAttributeValues[':startDate'] = this.normalizeStartDate(startDate);
+      } else if (endDate) {
+        keyConditionExpression = 'GSI3PK = :pk AND GSI3SK <= :endDate';
+        expressionAttributeValues[':endDate'] = this.normalizeEndDate(endDate);
+      } else {
+        keyConditionExpression = 'GSI3PK = :pk';
+      }
+    }
+
     const result = await this.dynamoDB.queryEventuallyConsistent({
-      indexName: 'GSI3',
-      keyConditionExpression: 'GSI3PK = :pk',
-      expressionAttributeValues: {
-        ':pk': `ORDER_STATUS#${status}`,
-      },
+      indexName,
+      keyConditionExpression,
+      expressionAttributeValues,
       limit,
       exclusiveStartKey: pagination?.lastEvaluatedKey,
       scanIndexForward: false, // Most recent first
       projectionExpression: 'id, order_number, customer_email, customer_name, total, #status, created_at',
-      expressionAttributeNames: {
-        '#status': 'status',
-      },
-      filterExpression: 'attribute_not_exists(deleted_at)',
+      expressionAttributeNames,
+      filterExpression: filterExpressions.join(' AND '),
     });
 
-    const orders = (result.data || []).map((item) => this.mapToOrder(item));
+    const orders = (result.data || []).map((item) => this.mapToOrderSummary(item));
 
     return {
       items: orders,
@@ -294,6 +387,7 @@ export class OrderRepository {
         PK: `ORDER#${id}`,
         SK: 'METADATA',
       },
+      deletedAtField: 'deleted_at',
     });
 
     return true;
@@ -305,7 +399,7 @@ export class OrderRepository {
   async findByCustomerEmail(
     email: string,
     pagination?: PaginationParams
-  ): Promise<PaginatedResponse<Order>> {
+  ): Promise<PaginatedResponse<OrderSummary>> {
     const limit = pagination?.limit || 30;
 
     const result = await this.dynamoDB.queryEventuallyConsistent({
@@ -324,7 +418,7 @@ export class OrderRepository {
       filterExpression: 'attribute_not_exists(deleted_at)',
     });
 
-    const orders = (result.data || []).map((item) => this.mapToOrder(item));
+    const orders = (result.data || []).map((item) => this.mapToOrderSummary(item));
 
     return {
       items: orders,
@@ -339,7 +433,7 @@ export class OrderRepository {
   async findByStatus(
     status: OrderStatus,
     pagination?: PaginationParams
-  ): Promise<PaginatedResponse<Order>> {
+  ): Promise<PaginatedResponse<OrderSummary>> {
     const limit = pagination?.limit || 30;
 
     const result = await this.dynamoDB.queryEventuallyConsistent({
@@ -351,11 +445,14 @@ export class OrderRepository {
       limit,
       exclusiveStartKey: pagination?.lastEvaluatedKey,
       scanIndexForward: false, // Most recent first
-      projectionExpression: 'id, order_number, customer_email, customer_name, total, created_at',
+      projectionExpression: 'id, order_number, customer_email, customer_name, total, #status, created_at',
+      expressionAttributeNames: {
+        '#status': 'status',
+      },
       filterExpression: 'attribute_not_exists(deleted_at)',
     });
 
-    const orders = (result.data || []).map((item) => this.mapToOrder(item));
+    const orders = (result.data || []).map((item) => this.mapToOrderSummary(item));
 
     return {
       items: orders,
@@ -366,19 +463,24 @@ export class OrderRepository {
 
   /**
    * Find orders within a date range
-   * Uses GSI3 with status filter or queries all statuses
+   * Uses GSI3 with status filter
    * 
    * Note: When status is not provided, this method queries all statuses sequentially
    * which may result in higher read costs. For production use, consider providing a status
    * or implementing a dedicated GSI with created_at as the partition key.
+   * 
+   * Date parameters: Accept YYYY-MM-DD format (will be normalized to full day range)
+   * or full ISO timestamps for precise control.
    */
   async findByDateRange(
     startDate: string,
     endDate: string,
     status?: OrderStatus,
     pagination?: PaginationParams
-  ): Promise<PaginatedResponse<Order>> {
+  ): Promise<PaginatedResponse<OrderSummary>> {
     const limit = pagination?.limit || 30;
+    const normalizedStart = this.normalizeStartDate(startDate);
+    const normalizedEnd = this.normalizeEndDate(endDate);
 
     if (status) {
       // Use GSI3 with date range on sort key
@@ -387,8 +489,8 @@ export class OrderRepository {
         keyConditionExpression: 'GSI3PK = :pk AND GSI3SK BETWEEN :start AND :end',
         expressionAttributeValues: {
           ':pk': `ORDER_STATUS#${status}`,
-          ':start': startDate,
-          ':end': endDate,
+          ':start': normalizedStart,
+          ':end': normalizedEnd,
         },
         limit,
         exclusiveStartKey: pagination?.lastEvaluatedKey,
@@ -400,7 +502,7 @@ export class OrderRepository {
         filterExpression: 'attribute_not_exists(deleted_at)',
       });
 
-      const orders = (result.data || []).map((item) => this.mapToOrder(item));
+      const orders = (result.data || []).map((item) => this.mapToOrderSummary(item));
 
       return {
         items: orders,
@@ -411,7 +513,8 @@ export class OrderRepository {
       // Without status, query all statuses and filter by date
       // Warning: This queries each status sequentially and may be expensive
       // Performance: 6 queries (one per status) with reduced limit per query
-      const allOrders: Order[] = [];
+      // Note: Pagination is not supported in this mode - returns up to 'limit' total items
+      const allOrders: OrderSummary[] = [];
       const statuses = Object.values(OrderStatus);
       const perStatusLimit = Math.ceil(limit / statuses.length); // Distribute limit across statuses
       
@@ -421,10 +524,11 @@ export class OrderRepository {
           keyConditionExpression: 'GSI3PK = :pk AND GSI3SK BETWEEN :start AND :end',
           expressionAttributeValues: {
             ':pk': `ORDER_STATUS#${orderStatus}`,
-            ':start': startDate,
-            ':end': endDate,
+            ':start': normalizedStart,
+            ':end': normalizedEnd,
           },
           limit: perStatusLimit,
+          scanIndexForward: false, // Most recent first for each status
           projectionExpression: 'id, order_number, customer_email, customer_name, total, #status, created_at',
           expressionAttributeNames: {
             '#status': 'status',
@@ -432,7 +536,7 @@ export class OrderRepository {
           filterExpression: 'attribute_not_exists(deleted_at)',
         });
 
-        allOrders.push(...(result.data || []).map((item) => this.mapToOrder(item)));
+        allOrders.push(...(result.data || []).map((item) => this.mapToOrderSummary(item)));
       }
 
       // Sort by created_at descending and apply pagination
@@ -441,7 +545,7 @@ export class OrderRepository {
 
       return {
         items: paginatedOrders,
-        lastEvaluatedKey: undefined, // Simplified pagination for multi-status queries
+        lastEvaluatedKey: undefined, // Pagination not supported for multi-status queries
         count: paginatedOrders.length,
       };
     }

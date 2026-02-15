@@ -3,7 +3,7 @@
  */
 
 import { mockClient } from 'aws-sdk-client-mock';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, QueryCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
 import { OrderRepository } from './OrderRepository';
 import { OrderStatus, CreateOrderData, UpdateOrderData } from './types';
@@ -372,6 +372,58 @@ describe('OrderRepository', () => {
       expect(calls).toHaveLength(1);
       expect(calls[0].args[0].input.FilterExpression).toContain('deleted_at');
     });
+
+    it('should query by customer_email using GSI2', async () => {
+      const mockOrders = [
+        {
+          id: 'order-1',
+          order_number: 'ORD-20260211-0001',
+          customer_email: 'test@example.com',
+          customer_name: 'Test Customer',
+          total: 100,
+          status: OrderStatus.PENDING,
+          created_at: '2026-02-11T00:00:00.000Z',
+        },
+      ];
+
+      ddbMock.on(QueryCommand).resolves({ Items: mockOrders });
+
+      const result = await repository.findAll({ customer_email: 'test@example.com' });
+
+      expect(result.items).toHaveLength(1);
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls[0].args[0].input.IndexName).toBe('GSI2');
+      expect(calls[0].args[0].input.KeyConditionExpression).toContain('GSI2PK');
+    });
+
+    it('should support date range filtering with status', async () => {
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
+
+      await repository.findAll({ 
+        status: OrderStatus.PENDING,
+        startDate: '2026-02-01',
+        endDate: '2026-02-28'
+      });
+
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.KeyConditionExpression).toContain('BETWEEN');
+    });
+
+    it('should support date range filtering with customer_email', async () => {
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
+
+      await repository.findAll({ 
+        customer_email: 'test@example.com',
+        startDate: '2026-02-01',
+        endDate: '2026-02-28'
+      });
+
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args[0].input.IndexName).toBe('GSI2');
+      expect(calls[0].args[0].input.KeyConditionExpression).toContain('BETWEEN');
+    });
   });
 
   describe('update', () => {
@@ -469,6 +521,16 @@ describe('OrderRepository', () => {
       const result = await repository.softDelete('test-id');
 
       expect(result).toBe(true);
+      
+      // Verify deleted_at field is set correctly
+      const calls = ddbMock.commandCalls(UpdateCommand);
+      expect(calls).toHaveLength(1);
+      const updateCall = calls[0].args[0].input;
+      // Check ExpressionAttributeNames contains deleted_at mapping
+      const attrNames = updateCall.ExpressionAttributeNames;
+      expect(attrNames).toBeDefined();
+      const hasDeletedAt = Object.values(attrNames || {}).includes('deleted_at');
+      expect(hasDeletedAt).toBe(true);
     });
 
     it('should return false when order not found', async () => {
@@ -539,6 +601,7 @@ describe('OrderRepository', () => {
           customer_email: 'test1@example.com',
           customer_name: 'Customer 1',
           total: 100,
+          status: OrderStatus.SHIPPED,
           created_at: '2026-02-11T00:00:00.000Z',
         },
       ];
@@ -548,6 +611,7 @@ describe('OrderRepository', () => {
       const result = await repository.findByStatus(OrderStatus.SHIPPED);
 
       expect(result.items).toHaveLength(1);
+      expect(result.items[0].status).toBe(OrderStatus.SHIPPED);
     });
 
     it('should query GSI3 with correct parameters', async () => {
@@ -559,6 +623,8 @@ describe('OrderRepository', () => {
       expect(calls).toHaveLength(1);
       expect(calls[0].args[0].input.IndexName).toBe('GSI3');
       expect(calls[0].args[0].input.ScanIndexForward).toBe(false); // Most recent first
+      // Verify status is included in projection
+      expect(calls[0].args[0].input.ProjectionExpression).toContain('status');
     });
   });
 
@@ -729,6 +795,40 @@ describe('OrderRepository', () => {
 
       expect(result.lastEvaluatedKey).toBeDefined();
       expect(result.lastEvaluatedKey).toEqual({ PK: 'ORDER#order-1', SK: 'METADATA' });
+    });
+
+    it('should normalize date strings to full ISO timestamps in date range queries', async () => {
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
+
+      await repository.findByDateRange(
+        '2026-02-01',
+        '2026-02-28',
+        OrderStatus.PENDING
+      );
+
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      const values = calls[0].args[0].input.ExpressionAttributeValues;
+      // Check that dates are normalized to full ISO timestamps
+      expect(values).toBeDefined();
+      expect(values?.[':start']).toBe('2026-02-01T00:00:00.000Z');
+      expect(values?.[':end']).toBe('2026-02-28T23:59:59.999Z');
+    });
+
+    it('should preserve full ISO timestamps when provided in date range queries', async () => {
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
+
+      const startISO = '2026-02-01T10:30:00.000Z';
+      const endISO = '2026-02-28T15:45:00.000Z';
+
+      await repository.findByDateRange(startISO, endISO, OrderStatus.PENDING);
+
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls).toHaveLength(1);
+      const values = calls[0].args[0].input.ExpressionAttributeValues;
+      expect(values).toBeDefined();
+      expect(values?.[':start']).toBe(startISO);
+      expect(values?.[':end']).toBe(endISO);
     });
   });
 });

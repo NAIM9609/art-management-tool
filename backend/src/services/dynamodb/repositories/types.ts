@@ -217,3 +217,23 @@ export interface OrderFilters {
   startDate?: string;
   endDate?: string;
 }
+
+/**
+ * OrderSummary - Partial order data for list/query operations
+ * Used when projection expressions fetch only a subset of fields
+ */
+export interface OrderSummary {
+  id: string;
+  order_number: string;
+  customer_email: string;
+  customer_name: string;
+  total: number;
+  status: OrderStatus;
+  created_at: string;
+  // Optional fields that may be included in some projections
+  subtotal?: number;
+  tax?: number;
+  discount?: number;
+  currency?: string;
+  updated_at?: string;
+}
