@@ -151,10 +151,60 @@ describe('CategoryRepository', () => {
 
       ddbMock.on(QueryCommand).resolves({ Items: [] });
       ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 1 } });
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          name: 'Parent Category',
+          slug: 'parent-category',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-01T00:00:00.000Z',
+        },
+      });
       
       // This will detect self-reference during circular check
       await expect(repository.create(createData)).rejects.toThrow(
         'Cannot create category: circular parent reference detected'
+      );
+    });
+
+    it('should reject non-existent parent', async () => {
+      const createData: CreateCategoryData = {
+        name: 'Orphan Category',
+        slug: 'orphan-category',
+        parent_id: 999,
+      };
+
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
+      ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 3 } });
+      ddbMock.on(GetCommand).resolves({ Item: undefined });
+
+      await expect(repository.create(createData)).rejects.toThrow(
+        'Parent category with id 999 does not exist or is deleted'
+      );
+    });
+
+    it('should reject soft-deleted parent', async () => {
+      const createData: CreateCategoryData = {
+        name: 'Orphan Category',
+        slug: 'orphan-category',
+        parent_id: 5,
+      };
+
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
+      ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 4 } });
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 5,
+          name: 'Deleted Category',
+          slug: 'deleted-category',
+          deleted_at: '2024-01-01T00:00:00.000Z',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-01T00:00:00.000Z',
+        },
+      });
+
+      await expect(repository.create(createData)).rejects.toThrow(
+        'Parent category with id 5 does not exist or is deleted'
       );
     });
   });
@@ -211,6 +261,68 @@ describe('CategoryRepository', () => {
       const category = await repository.findBySlug('non-existent');
 
       expect(category).toBeNull();
+    });
+
+    it('should skip soft-deleted categories and return active one', async () => {
+      ddbMock.on(QueryCommand)
+        .resolvesOnce({
+          Items: [
+            {
+              id: 1,
+              name: 'Deleted Category',
+              slug: 'test-slug',
+              deleted_at: '2024-01-01T00:00:00.000Z',
+              created_at: '2024-01-01T00:00:00.000Z',
+              updated_at: '2024-01-01T00:00:00.000Z',
+            },
+            {
+              id: 2,
+              name: 'Active Category',
+              slug: 'test-slug',
+              created_at: '2024-01-02T00:00:00.000Z',
+              updated_at: '2024-01-02T00:00:00.000Z',
+            },
+          ],
+        });
+
+      const category = await repository.findBySlug('test-slug');
+
+      expect(category).not.toBeNull();
+      expect(category?.id).toBe(2);
+      expect(category?.name).toBe('Active Category');
+    });
+
+    it('should paginate to find active category if first page has only deleted items', async () => {
+      ddbMock.on(QueryCommand)
+        .resolvesOnce({
+          Items: [
+            {
+              id: 1,
+              name: 'Deleted Category',
+              slug: 'test-slug',
+              deleted_at: '2024-01-01T00:00:00.000Z',
+              created_at: '2024-01-01T00:00:00.000Z',
+              updated_at: '2024-01-01T00:00:00.000Z',
+            },
+          ],
+          LastEvaluatedKey: { PK: 'CATEGORY_SLUG#test-slug', SK: '2024-01-01T00:00:00.000Z' },
+        })
+        .resolvesOnce({
+          Items: [
+            {
+              id: 2,
+              name: 'Active Category',
+              slug: 'test-slug',
+              created_at: '2024-01-02T00:00:00.000Z',
+              updated_at: '2024-01-02T00:00:00.000Z',
+            },
+          ],
+        });
+
+      const category = await repository.findBySlug('test-slug');
+
+      expect(category).not.toBeNull();
+      expect(category?.id).toBe(2);
     });
   });
 

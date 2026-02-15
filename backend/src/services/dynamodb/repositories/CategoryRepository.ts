@@ -19,7 +19,6 @@
  */
 
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
-import { BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 import {
   Category,
   CreateCategoryData,
@@ -27,7 +26,6 @@ import {
   CategoryProduct,
   PaginationParams,
   PaginatedResponse,
-  Product,
 } from './types';
 
 export class CategoryRepository {
@@ -158,8 +156,14 @@ export class CategoryRepository {
 
     const id = await this.getNextId();
 
-    // Check for circular reference
+    // Validate parent exists and is not deleted if parent_id is provided
     if (data.parent_id) {
+      const parent = await this.findById(data.parent_id);
+      if (!parent || parent.deleted_at) {
+        throw new Error(`Parent category with id ${data.parent_id} does not exist or is deleted`);
+      }
+
+      // Check for circular reference
       const isCircular = await this.wouldCreateCircularReference(id, data.parent_id);
       if (isCircular) {
         throw new Error('Cannot create category: circular parent reference detected');
@@ -207,22 +211,37 @@ export class CategoryRepository {
 
   /**
    * Find category by slug using GSI1 (eventually consistent)
+   * 
+   * Note: Multiple records may exist for the same slug (e.g. soft-deleted items).
+   * This method iterates through all matching items and returns the first
+   * non-deleted category (i.e. without a `deleted_at` attribute).
    */
   async findBySlug(slug: string): Promise<Category | null> {
-    const result = await this.dynamoDB.queryEventuallyConsistent({
-      indexName: 'GSI1',
-      keyConditionExpression: 'GSI1PK = :gsi1pk',
-      expressionAttributeValues: {
-        ':gsi1pk': `CATEGORY_SLUG#${slug}`,
-      },
-      limit: 1,
-    });
+    let exclusiveStartKey: Record<string, any> | undefined;
 
-    if (result.data.length === 0) {
-      return null;
-    }
+    do {
+      const result = await this.dynamoDB.queryEventuallyConsistent({
+        indexName: 'GSI1',
+        keyConditionExpression: 'GSI1PK = :gsi1pk',
+        expressionAttributeValues: {
+          ':gsi1pk': `CATEGORY_SLUG#${slug}`,
+        },
+        exclusiveStartKey,
+      });
 
-    return this.mapToCategory(result.data[0]);
+      if (result.data && result.data.length > 0) {
+        for (const item of result.data) {
+          // Skip soft-deleted (or otherwise stale) items
+          if (!item.deleted_at) {
+            return this.mapToCategory(item);
+          }
+        }
+      }
+
+      exclusiveStartKey = result.lastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    return null;
   }
 
   /**
@@ -418,11 +437,16 @@ export class CategoryRepository {
       if (visited.has(currentId)) continue;
       visited.add(currentId);
 
-      const children = await this.findByParentId(currentId);
-      for (const child of children.items) {
-        descendants.push(child);
-        queue.push(child.id);
-      }
+      // Paginate through all children of the current category
+      let lastEvaluatedKey: Record<string, any> | undefined = undefined;
+      do {
+        const childrenPage = await this.findByParentId(currentId, { lastEvaluatedKey });
+        for (const child of childrenPage.items) {
+          descendants.push(child);
+          queue.push(child.id);
+        }
+        lastEvaluatedKey = childrenPage.lastEvaluatedKey;
+      } while (lastEvaluatedKey);
     }
 
     return descendants;
@@ -458,41 +482,31 @@ export class CategoryRepository {
   async addProduct(categoryId: number, productId: number): Promise<CategoryProduct> {
     const now = new Date().toISOString();
 
-    // Create bidirectional links using BatchWriteCommand
-    const { BatchWriteCommand } = await import('@aws-sdk/lib-dynamodb');
-    const tableName = this.getTableName();
-
-    const command = new BatchWriteCommand({
-      RequestItems: {
-        [tableName]: [
-          {
-            PutRequest: {
-              Item: {
-                PK: `CATEGORY#${categoryId}`,
-                SK: `PRODUCT#${productId}`,
-                category_id: categoryId,
-                product_id: productId,
-                created_at: now,
-              },
-            },
+    // Create bidirectional links using batchWriteOptimized
+    await this.dynamoDB.batchWriteOptimized({
+      items: [
+        {
+          type: 'put',
+          item: {
+            PK: `CATEGORY#${categoryId}`,
+            SK: `PRODUCT#${productId}`,
+            category_id: categoryId,
+            product_id: productId,
+            created_at: now,
           },
-          {
-            PutRequest: {
-              Item: {
-                PK: `PRODUCT#${productId}`,
-                SK: `CATEGORY#${categoryId}`,
-                product_id: productId,
-                category_id: categoryId,
-                created_at: now,
-              },
-            },
+        },
+        {
+          type: 'put',
+          item: {
+            PK: `PRODUCT#${productId}`,
+            SK: `CATEGORY#${categoryId}`,
+            product_id: productId,
+            category_id: categoryId,
+            created_at: now,
           },
-        ],
-      },
+        },
+      ],
     });
-
-    const client = (this.dynamoDB as any).client;
-    await client.send(command);
 
     return {
       category_id: categoryId,
@@ -505,34 +519,24 @@ export class CategoryRepository {
    * Remove bidirectional product-category link
    */
   async removeProduct(categoryId: number, productId: number): Promise<void> {
-    // Delete both directions of the link using BatchWriteCommand
-    const { BatchWriteCommand } = await import('@aws-sdk/lib-dynamodb');
-    const tableName = this.getTableName();
-
-    const command = new BatchWriteCommand({
-      RequestItems: {
-        [tableName]: [
-          {
-            DeleteRequest: {
-              Key: {
-                PK: `CATEGORY#${categoryId}`,
-                SK: `PRODUCT#${productId}`,
-              },
-            },
+    // Delete both directions of the link using batchWriteOptimized
+    await this.dynamoDB.batchWriteOptimized({
+      items: [
+        {
+          type: 'delete',
+          key: {
+            PK: `CATEGORY#${categoryId}`,
+            SK: `PRODUCT#${productId}`,
           },
-          {
-            DeleteRequest: {
-              Key: {
-                PK: `PRODUCT#${productId}`,
-                SK: `CATEGORY#${categoryId}`,
-              },
-            },
+        },
+        {
+          type: 'delete',
+          key: {
+            PK: `PRODUCT#${productId}`,
+            SK: `CATEGORY#${categoryId}`,
           },
-        ],
-      },
+        },
+      ],
     });
-
-    const client = (this.dynamoDB as any).client;
-    await client.send(command);
   }
 }
