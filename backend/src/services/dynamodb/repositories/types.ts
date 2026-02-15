@@ -165,4 +165,138 @@ export interface CreateOrderItemData {
   quantity: number;
   unit_price: number;
   total_price: number;
+  }
+ /* Order interfaces
+ */
+export enum OrderStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  SHIPPED = 'shipped',
+  DELIVERED = 'delivered',
+  CANCELLED = 'cancelled',
+  REFUNDED = 'refunded',
+}
+
+export interface Order {
+  id: string;
+  order_number: string;
+  user_id?: number;
+  customer_email: string;
+  customer_name: string;
+  subtotal: number;
+  tax: number;
+  discount: number;
+  total: number;
+  currency: string;
+  status: OrderStatus;
+  payment_status?: string;
+  payment_intent_id?: string;
+  payment_method?: string;
+  fulfillment_status?: string;
+  shipping_address?: Record<string, any>;
+  billing_address?: Record<string, any>;
+  notes?: string;
+    created_at: string;
+
+  updated_at: string;
+
+  deleted_at?: string;
+
+}
+
+/* Category interfaces
+ */
+export interface Category {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  parent_id?: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface CreateOrderData {
+  user_id?: number;
+  customer_email: string;
+  customer_name: string;
+  subtotal: number;
+  tax?: number;
+  discount?: number;
+  total: number;
+  currency?: string;
+  status?: OrderStatus;
+  payment_status?: string;
+  payment_intent_id?: string;
+  payment_method?: string;
+  fulfillment_status?: string;
+  shipping_address?: Record<string, any>;
+  billing_address?: Record<string, any>;
+  notes?: string;
+}
+
+export interface UpdateOrderData {
+  customer_email?: string;
+  customer_name?: string;
+  subtotal?: number;
+  tax?: number;
+  discount?: number;
+  total?: number;
+  currency?: string;
+  status?: OrderStatus;
+  payment_status?: string;
+  payment_intent_id?: string;
+  payment_method?: string;
+  fulfillment_status?: string;
+  shipping_address?: Record<string, any>;
+  billing_address?: Record<string, any>;
+  notes?: string;
+}
+
+export interface OrderFilters {
+  status?: OrderStatus;
+  customer_email?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+/**
+ * OrderSummary - Partial order data for list/query operations
+ * Used when projection expressions fetch only a subset of fields
+ */
+export interface OrderSummary {
+  id: string;
+  order_number: string;
+  customer_email: string;
+  customer_name: string;
+  total: number;
+  status: OrderStatus;
+  created_at: string;
+  // Optional fields that may be included in some projections
+  subtotal?: number;
+  tax?: number;
+  discount?: number;
+  currency?: string;
+  updated_at?: string;
+  }
+
+export interface CreateCategoryData {
+  name: string;
+  slug: string;
+  description?: string;
+  parent_id?: number;
+}
+
+export interface UpdateCategoryData {
+  name?: string;
+  slug?: string;
+  description?: string;
+  parent_id?: number;
+}
+
+export interface CategoryProduct {
+  category_id: number;
+  product_id: number;
+  created_at: string;
 }
