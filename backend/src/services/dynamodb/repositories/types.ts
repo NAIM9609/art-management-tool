@@ -169,6 +169,22 @@ export interface Order {
   shipping_address?: Record<string, any>;
   billing_address?: Record<string, any>;
   notes?: string;
+    created_at: string;
+
+  updated_at: string;
+
+  deleted_at?: string;
+
+}
+
+/* Category interfaces
+ */
+export interface Category {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  parent_id?: number;
   created_at: string;
   updated_at: string;
   deleted_at?: string;
@@ -236,4 +252,24 @@ export interface OrderSummary {
   discount?: number;
   currency?: string;
   updated_at?: string;
+  }
+
+export interface CreateCategoryData {
+  name: string;
+  slug: string;
+  description?: string;
+  parent_id?: number;
+}
+
+export interface UpdateCategoryData {
+  name?: string;
+  slug?: string;
+  description?: string;
+  parent_id?: number;
+}
+
+export interface CategoryProduct {
+  category_id: number;
+  product_id: number;
+  created_at: string;
 }
