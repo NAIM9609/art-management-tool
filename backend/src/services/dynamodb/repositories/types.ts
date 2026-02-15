@@ -139,7 +139,34 @@ export interface UpdateProductImageData {
 }
 
 /**
- * Order interfaces
+ * OrderItem interfaces
+ */
+export interface OrderItem {
+  id: string;
+  order_id: number;
+  product_id?: number;
+  variant_id?: string;
+  product_name: string;
+  variant_name?: string;
+  sku?: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  created_at: string;
+}
+
+export interface CreateOrderItemData {
+  order_id: number;
+  product_id?: number;
+  variant_id?: string;
+  product_name: string;
+  variant_name?: string;
+  sku?: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  }
+ /* Order interfaces
  */
 export enum OrderStatus {
   PENDING = 'pending',
