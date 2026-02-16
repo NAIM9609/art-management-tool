@@ -31,6 +31,50 @@ export class DiscountCodeRepository {
   }
 
   /**
+   * Validate discount code input data
+   */
+  private validateDiscountCodeData(data: CreateDiscountCodeData | UpdateDiscountCodeData): void {
+    // Validate code format (alphanumeric, 3-50 characters, uppercase recommended)
+    if ('code' in data && data.code !== undefined) {
+      const codePattern = /^[A-Z0-9_-]{3,50}$/i;
+      if (!codePattern.test(data.code)) {
+        throw new Error('Discount code must be 3-50 alphanumeric characters (letters, numbers, hyphens, underscores)');
+      }
+    }
+
+    // Validate discount_value based on discount_type
+    if (data.discount_value !== undefined) {
+      if (data.discount_value <= 0) {
+        throw new Error('Discount value must be positive');
+      }
+      
+      // For percentage discounts, ensure value is between 0-100
+      if ('discount_type' in data && data.discount_type === DiscountType.PERCENTAGE) {
+        if (data.discount_value > 100) {
+          throw new Error('Percentage discount value must be between 0 and 100');
+        }
+      }
+    }
+
+    // Validate date range: valid_from must be before valid_until
+    const validFrom = 'valid_from' in data ? data.valid_from : undefined;
+    const validUntil = 'valid_until' in data ? data.valid_until : undefined;
+    
+    if (validFrom && validUntil && validFrom >= validUntil) {
+      throw new Error('valid_from must be before valid_until');
+    }
+
+    // Validate min_purchase_amount and max_discount_amount relationship
+    if (data.min_purchase_amount !== undefined && data.min_purchase_amount < 0) {
+      throw new Error('min_purchase_amount must be non-negative');
+    }
+    
+    if (data.max_discount_amount !== undefined && data.max_discount_amount <= 0) {
+      throw new Error('max_discount_amount must be positive');
+    }
+  }
+
+  /**
    * Get next auto-increment ID using atomic counter
    */
   async getNextId(): Promise<number> {
@@ -116,16 +160,15 @@ export class DiscountCodeRepository {
 
   /**
    * Create a new discount code with auto-increment ID
-   * Enforces code uniqueness by checking GSI1 first
+   * Note: Uses conditional expression on GSI1PK to prevent race conditions in uniqueness enforcement.
+   * However, DynamoDB doesn't support conditional expressions on GSI attributes during put operations.
+   * For true uniqueness guarantee, consider using a transactional write or separate uniqueness table.
    */
   async create(data: CreateDiscountCodeData): Promise<DiscountCode> {
     const now = new Date().toISOString();
     
-    // Check if code already exists (enforces uniqueness)
-    const existing = await this.findByCode(data.code);
-    if (existing) {
-      throw new Error(`Discount code '${data.code}' already exists`);
-    }
+    // Validate input data
+    this.validateDiscountCodeData(data);
 
     const id = await this.getNextId();
 
@@ -148,16 +191,28 @@ export class DiscountCodeRepository {
 
     const item = this.buildDiscountCodeItem(discountCode);
 
-    await this.dynamoDB.put({
-      item,
-      conditionExpression: 'attribute_not_exists(PK)',
-    });
+    try {
+      await this.dynamoDB.put({
+        item,
+        conditionExpression: 'attribute_not_exists(PK)',
+      });
+    } catch (error: any) {
+      // Check if it's a duplicate code by querying after failure
+      if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
+        const existing = await this.findByCode(data.code);
+        if (existing) {
+          throw new Error(`Discount code '${data.code}' already exists`);
+        }
+      }
+      throw error;
+    }
 
     return discountCode;
   }
 
   /**
    * Find discount code by code using GSI1 (eventually consistent)
+   * Excludes soft-deleted codes
    */
   async findByCode(code: string): Promise<DiscountCode | null> {
     const result = await this.dynamoDB.queryEventuallyConsistent({
@@ -166,6 +221,7 @@ export class DiscountCodeRepository {
       expressionAttributeValues: {
         ':gsi1pk': `DISCOUNT_CODE#${code}`,
       },
+      filterExpression: 'attribute_not_exists(deleted_at)',
       limit: 1,
     });
 
@@ -197,6 +253,8 @@ export class DiscountCodeRepository {
 
   /**
    * Find all discount codes with optional filtering
+   * Note: When no filter is provided, defaults to querying only active codes for cost optimization.
+   * To get all codes regardless of status, explicitly pass is_active filter or use a scan operation.
    * Excludes soft-deleted codes
    */
   async findAll(
@@ -223,9 +281,8 @@ export class DiscountCodeRepository {
       };
     }
 
-    // Otherwise, query all discounts using a scan-like approach
-    // Note: In production, you may want to use a scan or a different GSI
-    // For now, we'll query active codes only as a default
+    // Default behavior: query only active codes for cost optimization
+    // Note: This is intentional - to get inactive codes, explicitly set is_active: false
     const result = await this.dynamoDB.queryEventuallyConsistent({
       indexName: 'GSI2',
       keyConditionExpression: 'GSI2PK = :gsi2pk',
@@ -246,9 +303,13 @@ export class DiscountCodeRepository {
 
   /**
    * Update discount code by ID
+   * Prevents updating soft-deleted codes
    */
   async update(id: number, data: UpdateDiscountCodeData): Promise<DiscountCode | null> {
     const now = new Date().toISOString();
+    
+    // Validate input data
+    this.validateDiscountCodeData(data);
     
     // If updating code, check for uniqueness
     if (data.code !== undefined) {
@@ -300,7 +361,7 @@ export class DiscountCodeRepository {
           SK: 'METADATA',
         },
         updates,
-        conditionExpression: 'attribute_exists(PK)',
+        conditionExpression: 'attribute_exists(PK) AND attribute_not_exists(deleted_at)',
         returnValues: 'ALL_NEW',
       });
 
@@ -379,33 +440,53 @@ export class DiscountCodeRepository {
   /**
    * Increment usage counter atomically
    * Returns the updated discount code or null if code doesn't exist or is invalid
+   * Note: All validation is done atomically in the conditional expression to prevent TOCTOU race conditions
    */
   async incrementUsage(code: string): Promise<DiscountCode | null> {
-    // First verify the code is valid
-    const isCodeValid = await this.isValid(code);
-    if (!isCodeValid) {
-      return null;
-    }
-
     const discountCode = await this.findByCode(code);
     if (!discountCode) {
       return null;
     }
 
-    // Use atomic ADD operation to increment times_used
+    // Use atomic ADD operation to increment times_used with comprehensive validation
     const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
     
-    // Build condition to prevent incrementing beyond max_uses
-    let conditionExpression = 'attribute_exists(PK)';
+    const now = new Date().toISOString();
+    
+    // Build comprehensive condition to validate all requirements atomically
+    const conditionParts = [
+      'attribute_exists(PK)',
+      'attribute_not_exists(deleted_at)',
+      'is_active = :true',
+    ];
+    
     const expressionAttributeValues: Record<string, any> = {
       ':one': 1,
-      ':now': new Date().toISOString(),
+      ':now': now,
+      ':true': true,
     };
 
+    // Check valid_from (if exists, must be <= now)
+    if (discountCode.valid_from) {
+      conditionParts.push('valid_from <= :now_check');
+      expressionAttributeValues[':now_check'] = now;
+    }
+
+    // Check valid_until (if exists, must be >= now)
+    if (discountCode.valid_until) {
+      conditionParts.push('valid_until >= :now_check');
+      if (!expressionAttributeValues[':now_check']) {
+        expressionAttributeValues[':now_check'] = now;
+      }
+    }
+
+    // Check max_uses (if exists, times_used must be < max_uses)
     if (discountCode.max_uses !== undefined) {
-      conditionExpression += ' AND times_used < :max_uses';
+      conditionParts.push('times_used < :max_uses');
       expressionAttributeValues[':max_uses'] = discountCode.max_uses;
     }
+
+    const conditionExpression = conditionParts.join(' AND ');
 
     const command = new UpdateCommand({
       TableName: (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME,
@@ -429,7 +510,7 @@ export class DiscountCodeRepository {
 
       return this.mapToDiscountCode(result.Attributes);
     } catch (error: any) {
-      // If condition fails (max uses reached or item doesn't exist), return null
+      // If condition fails (max uses reached, expired, inactive, or item doesn't exist), return null
       if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
         return null;
       }

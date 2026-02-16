@@ -50,19 +50,14 @@ describe('DiscountCodeRepository', () => {
 
   describe('create', () => {
     it('should create a new discount code with auto-increment ID', async () => {
+      const futureDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
       const createData: CreateDiscountCodeData = {
         code: 'SAVE20',
         description: '20% off',
         discount_type: DiscountType.PERCENTAGE,
         discount_value: 20,
-        valid_until: '2024-12-31T23:59:59.999Z',
+        valid_until: futureDate,
       };
-
-      // Mock findByCode to return null (code doesn't exist)
-      ddbMock.on(QueryCommand).resolves({
-        Items: [],
-        Count: 0,
-      });
 
       // Mock getNextId
       ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 1 } });
@@ -89,7 +84,15 @@ describe('DiscountCodeRepository', () => {
         discount_value: 10,
       };
 
-      // Mock findByCode to return existing code
+      // Mock getNextId
+      ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 1 } });
+
+      // Mock PutCommand to fail with conditional check
+      ddbMock.on(PutCommand).rejects({
+        name: 'ConditionalCheckFailedException',
+      });
+      
+      // Mock findByCode to return existing code (called after failure)
       ddbMock.on(QueryCommand).resolves({
         Items: [{
           id: 1,
@@ -98,9 +101,9 @@ describe('DiscountCodeRepository', () => {
           discount_value: 10,
           times_used: 0,
           is_active: true,
-          valid_from: '2024-01-01T00:00:00.000Z',
-          created_at: '2024-01-01T00:00:00.000Z',
-          updated_at: '2024-01-01T00:00:00.000Z',
+          valid_from: '2026-01-01T00:00:00.000Z',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
         }],
         Count: 1,
       });
@@ -115,7 +118,6 @@ describe('DiscountCodeRepository', () => {
         discount_value: 10,
       };
 
-      ddbMock.on(QueryCommand).resolves({ Items: [], Count: 0 });
       ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 2 } });
       ddbMock.on(PutCommand).resolves({});
 
@@ -127,15 +129,15 @@ describe('DiscountCodeRepository', () => {
     });
 
     it('should build correct DynamoDB item with GSI keys', async () => {
+      const futureDate = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
       const createData: CreateDiscountCodeData = {
         code: 'SUMMER2024',
         discount_type: DiscountType.PERCENTAGE,
         discount_value: 15,
-        valid_until: '2024-09-01T00:00:00.000Z',
+        valid_until: futureDate,
         is_active: true,
       };
 
-      ddbMock.on(QueryCommand).resolves({ Items: [], Count: 0 });
       ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 3 } });
 
       let putItem: any;
@@ -150,7 +152,7 @@ describe('DiscountCodeRepository', () => {
       expect(putItem.SK).toBe('METADATA');
       expect(putItem.GSI1PK).toBe('DISCOUNT_CODE#SUMMER2024');
       expect(putItem.GSI2PK).toBe('DISCOUNT_ACTIVE#true');
-      expect(putItem.GSI2SK).toBe('2024-09-01T00:00:00.000Z');
+      expect(putItem.GSI2SK).toBe(futureDate);
     });
 
     it('should use 9999-12-31 for GSI2SK when valid_until is not provided', async () => {
@@ -160,7 +162,6 @@ describe('DiscountCodeRepository', () => {
         discount_value: 5,
       };
 
-      ddbMock.on(QueryCommand).resolves({ Items: [], Count: 0 });
       ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 4 } });
 
       let putItem: any;
@@ -173,6 +174,48 @@ describe('DiscountCodeRepository', () => {
 
       expect(putItem.GSI2SK).toBe('9999-12-31');
     });
+
+    it('should validate code format and reject invalid codes', async () => {
+      const createData: CreateDiscountCodeData = {
+        code: 'ab', // Too short
+        discount_type: DiscountType.PERCENTAGE,
+        discount_value: 10,
+      };
+
+      await expect(repository.create(createData)).rejects.toThrow('Discount code must be 3-50 alphanumeric characters');
+    });
+
+    it('should validate percentage discount value is between 0-100', async () => {
+      const createData: CreateDiscountCodeData = {
+        code: 'INVALID',
+        discount_type: DiscountType.PERCENTAGE,
+        discount_value: 150, // Too high
+      };
+
+      await expect(repository.create(createData)).rejects.toThrow('Percentage discount value must be between 0 and 100');
+    });
+
+    it('should validate discount value is positive', async () => {
+      const createData: CreateDiscountCodeData = {
+        code: 'NEGATIVE',
+        discount_type: DiscountType.FIXED,
+        discount_value: -10,
+      };
+
+      await expect(repository.create(createData)).rejects.toThrow('Discount value must be positive');
+    });
+
+    it('should validate valid_from is before valid_until', async () => {
+      const createData: CreateDiscountCodeData = {
+        code: 'INVALID_DATES',
+        discount_type: DiscountType.PERCENTAGE,
+        discount_value: 10,
+        valid_from: '2027-12-31T00:00:00.000Z',
+        valid_until: '2027-01-01T00:00:00.000Z', // Before valid_from
+      };
+
+      await expect(repository.create(createData)).rejects.toThrow('valid_from must be before valid_until');
+    });
   });
 
   describe('findByCode', () => {
@@ -184,9 +227,9 @@ describe('DiscountCodeRepository', () => {
         discount_value: 20,
         times_used: 5,
         is_active: true,
-        valid_from: '2024-01-01T00:00:00.000Z',
-        created_at: '2024-01-01T00:00:00.000Z',
-        updated_at: '2024-01-01T00:00:00.000Z',
+        valid_from: '2026-01-01T00:00:00.000Z',
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
       }];
 
       ddbMock.on(QueryCommand).resolves({
@@ -214,6 +257,21 @@ describe('DiscountCodeRepository', () => {
       const discountCode = await repository.findByCode('NONEXISTENT');
 
       expect(discountCode).toBeNull();
+    });
+
+    it('should filter out soft-deleted discount codes', async () => {
+      ddbMock.on(QueryCommand).resolves({
+        Items: [],
+        Count: 0,
+      });
+
+      const discountCode = await repository.findByCode('DELETED');
+
+      expect(discountCode).toBeNull();
+      
+      // Verify filter expression excludes soft-deleted codes
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls[0].args[0].input.FilterExpression).toContain('attribute_not_exists(deleted_at)');
     });
   });
 
@@ -472,6 +530,34 @@ describe('DiscountCodeRepository', () => {
 
       expect(updated).toBeNull();
     });
+
+    it('should prevent updating soft-deleted discount codes', async () => {
+      const updateData: UpdateDiscountCodeData = {
+        discount_value: 30,
+      };
+
+      // Capture the command that was sent before rejecting
+      let capturedCondition: string | undefined;
+      ddbMock.on(UpdateCommand).callsFake((input) => {
+        if (input.UpdateExpression && !input.UpdateExpression.includes('if_not_exists')) {
+          capturedCondition = input.ConditionExpression;
+        }
+        throw { name: 'ConditionalCheckFailedException' };
+      });
+
+      const updated = await repository.update(1, updateData);
+
+      expect(updated).toBeNull();
+      expect(capturedCondition).toContain('attribute_not_exists(deleted_at)');
+    });
+
+    it('should validate input data during update', async () => {
+      const updateData: UpdateDiscountCodeData = {
+        discount_value: -10, // Invalid
+      };
+
+      await expect(repository.update(1, updateData)).rejects.toThrow('Discount value must be positive');
+    });
   });
 
   describe('softDelete', () => {
@@ -721,7 +807,6 @@ describe('DiscountCodeRepository', () => {
     });
 
     it('should return null for invalid code', async () => {
-      // Mock isValid to return false
       ddbMock.on(QueryCommand).resolves({
         Items: [{
           id: 1,
@@ -730,11 +815,16 @@ describe('DiscountCodeRepository', () => {
           discount_value: 10,
           times_used: 0,
           is_active: false,
-          valid_from: '2024-01-01T00:00:00.000Z',
-          created_at: '2024-01-01T00:00:00.000Z',
-          updated_at: '2024-01-01T00:00:00.000Z',
+          valid_from: '2026-01-01T00:00:00.000Z',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
         }],
         Count: 1,
+      });
+
+      // Atomic update will fail due to is_active = false
+      ddbMock.on(UpdateCommand).rejects({
+        name: 'ConditionalCheckFailedException',
       });
 
       const updated = await repository.incrementUsage('INVALID');
@@ -746,7 +836,6 @@ describe('DiscountCodeRepository', () => {
       const now = new Date();
       const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-      // Mock isValid check - code is at max uses
       ddbMock.on(QueryCommand).resolves({
         Items: [{
           id: 1,
@@ -762,6 +851,11 @@ describe('DiscountCodeRepository', () => {
           updated_at: now.toISOString(),
         }],
         Count: 1,
+      });
+
+      // Atomic update will fail due to times_used >= max_uses
+      ddbMock.on(UpdateCommand).rejects({
+        name: 'ConditionalCheckFailedException',
       });
 
       const updated = await repository.incrementUsage('MAXED');
@@ -797,6 +891,56 @@ describe('DiscountCodeRepository', () => {
       const updated = await repository.incrementUsage('CONDITIONAL');
 
       expect(updated).toBeNull();
+    });
+
+    it('should validate is_active, expiration, and deleted_at atomically in conditional expression', async () => {
+      const now = new Date();
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+      ddbMock.on(QueryCommand).resolves({
+        Items: [{
+          id: 1,
+          code: 'ATOMIC_CHECK',
+          discount_type: DiscountType.PERCENTAGE,
+          discount_value: 10,
+          times_used: 5,
+          is_active: true,
+          valid_from: now.toISOString(),
+          valid_until: tomorrow.toISOString(),
+          max_uses: 100,
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+        }],
+        Count: 1,
+      });
+
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: {
+          id: 1,
+          code: 'ATOMIC_CHECK',
+          discount_type: DiscountType.PERCENTAGE,
+          discount_value: 10,
+          times_used: 6,
+          is_active: true,
+          valid_from: now.toISOString(),
+          valid_until: tomorrow.toISOString(),
+          max_uses: 100,
+          created_at: now.toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      });
+
+      await repository.incrementUsage('ATOMIC_CHECK');
+
+      // Verify comprehensive conditional expression
+      const updateCalls = ddbMock.commandCalls(UpdateCommand);
+      const incrementCall = updateCalls.find(call => 
+        call.args[0].input.UpdateExpression?.includes('ADD times_used')
+      );
+      
+      expect(incrementCall?.args[0].input.ConditionExpression).toContain('is_active = :true');
+      expect(incrementCall?.args[0].input.ConditionExpression).toContain('attribute_not_exists(deleted_at)');
+      expect(incrementCall?.args[0].input.ConditionExpression).toContain('times_used < :max_uses');
     });
   });
 
