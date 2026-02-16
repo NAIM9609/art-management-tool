@@ -226,41 +226,68 @@ export class FumettoRepository {
       updates.GSI1SK = `FUMETTO#${id}`;
     }
 
-    await this.dynamoDB.update({
-      key: {
-        PK: `FUMETTO#${id}`,
-        SK: 'METADATA',
-      },
-      updates,
-      conditionExpression: 'attribute_exists(PK)',
-    });
+    try {
+      const result = await this.dynamoDB.update({
+        key: {
+          PK: `FUMETTO#${id}`,
+          SK: 'METADATA',
+        },
+        updates,
+        conditionExpression: 'attribute_exists(PK)',
+        returnValues: 'ALL_NEW',
+      });
 
-    return this.findById(id);
+      if (!result.data) {
+        return null;
+      }
+
+      return this.mapToFumetto(result.data);
+    } catch (error: any) {
+      // If item doesn't exist, return null
+      if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**
    * Soft delete fumetto by ID
    */
-  async softDelete(id: number): Promise<void> {
-    const now = new Date().toISOString();
-    
-    await this.dynamoDB.update({
-      key: {
-        PK: `FUMETTO#${id}`,
-        SK: 'METADATA',
-      },
-      updates: {
-        deleted_at: now,
-        updated_at: now,
-      },
-      conditionExpression: 'attribute_exists(PK)',
-    });
+  async softDelete(id: number): Promise<Fumetto | null> {
+    try {
+      const result = await this.dynamoDB.softDelete({
+        key: {
+          PK: `FUMETTO#${id}`,
+          SK: 'METADATA',
+        },
+        deletedAtField: 'deleted_at',
+      });
+
+      if (!result.data) {
+        return null;
+      }
+
+      return this.mapToFumetto(result.data);
+    } catch (error: any) {
+      // If item doesn't exist, return null
+      if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**
    * Restore soft-deleted fumetto by ID
    */
   async restore(id: number): Promise<Fumetto | null> {
+    // Check if fumetto exists and is deleted
+    const current = await this.findById(id);
+    if (!current || !current.deleted_at) {
+      return null;
+    }
+
     const now = new Date().toISOString();
     
     // Use UpdateCommand directly to REMOVE deleted_at attribute
@@ -275,14 +302,26 @@ export class FumettoRepository {
       ExpressionAttributeValues: {
         ':now': now,
       },
-      ConditionExpression: 'attribute_exists(PK)',
+      ConditionExpression: 'attribute_exists(PK) AND attribute_exists(deleted_at)',
       ReturnValues: 'ALL_NEW',
     });
 
-    const client = (this.dynamoDB as any).client;
-    await client.send(command);
+    try {
+      const client = (this.dynamoDB as any).client;
+      const result = await client.send(command);
+      
+      if (!result.Attributes) {
+        return null;
+      }
 
-    return this.findById(id);
+      return this.mapToFumetto(result.Attributes);
+    } catch (error: any) {
+      // If item doesn't exist or is not deleted, return null
+      if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -308,6 +347,9 @@ export class FumettoRepository {
       fumetti.push(fumetto);
     }
 
+    // Create a map for quick lookup
+    const fumettoMap = new Map(fumetti.map(f => [f.id, f]));
+
     // Build transaction items to update order for each fumetto
     const now = new Date().toISOString();
     const transactWrites: any[] = [];
@@ -315,7 +357,7 @@ export class FumettoRepository {
     for (let i = 0; i < fumettiIds.length; i++) {
       const id = fumettiIds[i];
       const newOrder = i;
-      const fumetto = fumetti[i];
+      const fumetto = fumettoMap.get(id)!;
       
       // If order hasn't changed, skip
       if (fumetto.order === newOrder) {
@@ -355,15 +397,14 @@ export class FumettoRepository {
       await client.send(command);
     }
 
-    // Return updated fumetti
-    const reorderedFumetti: Fumetto[] = [];
-    for (const id of fumettiIds) {
-      const fumetto = await this.findById(id);
-      if (fumetto) {
-        reorderedFumetti.push(fumetto);
-      }
-    }
-
-    return reorderedFumetti;
+    // Return reordered fumetti by mapping from already-fetched data with updated order
+    return fumettiIds.map((id, newOrder) => {
+      const fumetto = fumettoMap.get(id)!;
+      return {
+        ...fumetto,
+        order: newOrder,
+        updated_at: now,
+      };
+    });
   }
 }

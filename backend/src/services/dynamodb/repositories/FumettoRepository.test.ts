@@ -268,9 +268,8 @@ describe('FumettoRepository', () => {
         pages: ['new-page1.jpg', 'new-page2.jpg', 'new-page3.jpg'],
       };
 
-      ddbMock.on(UpdateCommand).resolves({});
-      ddbMock.on(GetCommand).resolves({
-        Item: {
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: {
           id: 1,
           title: 'Updated Comic',
           description: 'Updated description',
@@ -294,9 +293,8 @@ describe('FumettoRepository', () => {
         order: 5,
       };
 
-      ddbMock.on(UpdateCommand).resolves({});
-      ddbMock.on(GetCommand).resolves({
-        Item: {
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: {
           id: 1,
           title: 'Comic',
           order: 5,
@@ -330,9 +328,8 @@ describe('FumettoRepository', () => {
         pages: ['page1.jpg', 'page2.jpg'],
       };
 
-      ddbMock.on(UpdateCommand).resolves({});
-      ddbMock.on(GetCommand).resolves({
-        Item: {
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: {
           id: 1,
           title: 'Comic',
           pages: ['page1.jpg', 'page2.jpg'],
@@ -346,13 +343,36 @@ describe('FumettoRepository', () => {
 
       expect(fumetto?.pages).toEqual(['page1.jpg', 'page2.jpg']);
     });
+
+    it('should return null when fumetto not found', async () => {
+      ddbMock.on(UpdateCommand).rejects({
+        name: 'ConditionalCheckFailedException',
+      });
+
+      const fumetto = await repository.update(999, { title: 'Test' });
+
+      expect(fumetto).toBeNull();
+    });
   });
 
   describe('softDelete', () => {
     it('should soft delete fumetto', async () => {
-      ddbMock.on(UpdateCommand).resolves({});
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: {
+          id: 1,
+          title: 'Comic',
+          order: 0,
+          pages: [],
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-02T00:00:00.000Z',
+          deleted_at: '2024-01-02T00:00:00.000Z',
+        },
+      });
 
-      await repository.softDelete(1);
+      const fumetto = await repository.softDelete(1);
+
+      expect(fumetto).not.toBeNull();
+      expect(fumetto?.deleted_at).toBeDefined();
 
       const calls = ddbMock.commandCalls(UpdateCommand);
       expect(calls.length).toBeGreaterThan(0);
@@ -363,31 +383,36 @@ describe('FumettoRepository', () => {
         PK: 'FUMETTO#1',
         SK: 'METADATA',
       });
-      
-      // Verify updated_at and deleted_at are being set (check values contain timestamps)
-      const values = Object.values(updateInput.ExpressionAttributeValues || {});
-      expect(values.length).toBeGreaterThan(0);
-      // Both should be ISO timestamp strings
-      values.forEach(value => {
-        expect(typeof value).toBe('string');
-        expect(value).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO format
-      });
     });
 
-    it('should throw error when fumetto not found', async () => {
+    it('should return null when fumetto not found', async () => {
       ddbMock.on(UpdateCommand).rejects({
         name: 'ConditionalCheckFailedException',
       });
 
-      await expect(repository.softDelete(999)).rejects.toThrow();
+      const fumetto = await repository.softDelete(999);
+
+      expect(fumetto).toBeNull();
     });
   });
 
   describe('restore', () => {
     it('should restore soft-deleted fumetto', async () => {
-      ddbMock.on(UpdateCommand).resolves({});
-      ddbMock.on(GetCommand).resolves({
+      // Mock findById to return a deleted fumetto
+      ddbMock.on(GetCommand).resolvesOnce({
         Item: {
+          id: 1,
+          title: 'Restored Comic',
+          order: 0,
+          pages: [],
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-02T00:00:00.000Z',
+          deleted_at: '2024-01-02T00:00:00.000Z',
+        },
+      });
+
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: {
           id: 1,
           title: 'Restored Comic',
           order: 0,
@@ -402,24 +427,64 @@ describe('FumettoRepository', () => {
       expect(fumetto).not.toBeNull();
       expect(fumetto?.deleted_at).toBeUndefined();
 
-      // Verify deleted_at is removed
+      // Verify UpdateExpression contains REMOVE deleted_at
       const updateCalls = ddbMock.commandCalls(UpdateCommand);
       const updateInput = updateCalls[0].args[0].input;
-      expect(updateInput.UpdateExpression).toContain('REMOVE');
+      expect(updateInput.UpdateExpression).toContain('REMOVE deleted_at');
+      expect(updateInput.ConditionExpression).toContain('attribute_exists(deleted_at)');
     });
 
-    it('should throw error when fumetto not found', async () => {
+    it('should return null when fumetto not found', async () => {
+      ddbMock.on(GetCommand).resolves({});
+
+      const fumetto = await repository.restore(999);
+
+      expect(fumetto).toBeNull();
+    });
+
+    it('should return null when fumetto is not deleted', async () => {
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          title: 'Comic',
+          order: 0,
+          pages: [],
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-01T00:00:00.000Z',
+        },
+      });
+
+      const fumetto = await repository.restore(1);
+
+      expect(fumetto).toBeNull();
+    });
+
+    it('should return null on ConditionalCheckFailedException', async () => {
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          title: 'Comic',
+          order: 0,
+          pages: [],
+          deleted_at: '2024-01-02T00:00:00.000Z',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-02T00:00:00.000Z',
+        },
+      });
+
       ddbMock.on(UpdateCommand).rejects({
         name: 'ConditionalCheckFailedException',
       });
 
-      await expect(repository.restore(999)).rejects.toThrow();
+      const fumetto = await repository.restore(1);
+
+      expect(fumetto).toBeNull();
     });
   });
 
   describe('reorder', () => {
     it('should reorder fumetti atomically', async () => {
-      // Mock findById for each fumetto
+      // Mock findById for each fumetto (only once per fumetto now)
       ddbMock.on(GetCommand).resolvesOnce({
         Item: {
           id: 3,
@@ -443,35 +508,6 @@ describe('FumettoRepository', () => {
           id: 2,
           title: 'Comic 2',
           order: 1,
-          pages: [],
-          created_at: '2024-01-02T00:00:00.000Z',
-          updated_at: '2024-01-02T00:00:00.000Z',
-        },
-      })
-      // Mock findById after reorder
-      .resolvesOnce({
-        Item: {
-          id: 3,
-          title: 'Comic 3',
-          order: 0,
-          pages: [],
-          created_at: '2024-01-03T00:00:00.000Z',
-          updated_at: '2024-01-03T00:00:00.000Z',
-        },
-      }).resolvesOnce({
-        Item: {
-          id: 1,
-          title: 'Comic 1',
-          order: 1,
-          pages: [],
-          created_at: '2024-01-01T00:00:00.000Z',
-          updated_at: '2024-01-01T00:00:00.000Z',
-        },
-      }).resolvesOnce({
-        Item: {
-          id: 2,
-          title: 'Comic 2',
-          order: 2,
           pages: [],
           created_at: '2024-01-02T00:00:00.000Z',
           updated_at: '2024-01-02T00:00:00.000Z',
@@ -628,9 +664,8 @@ describe('FumettoRepository', () => {
         pages: newPages,
       };
 
-      ddbMock.on(UpdateCommand).resolves({});
-      ddbMock.on(GetCommand).resolves({
-        Item: {
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: {
           id: 1,
           title: 'Comic',
           pages: newPages,
