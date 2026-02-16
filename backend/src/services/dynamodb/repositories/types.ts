@@ -151,7 +151,7 @@ export enum NotificationType {
 
 export interface Notification {
   id: string;
-  type: NotificationType | string;
+  type: NotificationType;
   title: string;
   message?: string;
   metadata?: Record<string, any>;
@@ -163,8 +163,14 @@ export interface Notification {
 }
 
 export interface CreateNotificationData {
-  type: NotificationType | string;
+  type: NotificationType;
   title: string;
+  message?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface UpdateNotificationData {
+  title?: string;
   message?: string;
   metadata?: Record<string, any>;
 }

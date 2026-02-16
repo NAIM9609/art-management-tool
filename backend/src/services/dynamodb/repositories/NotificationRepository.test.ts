@@ -87,6 +87,84 @@ describe('NotificationRepository', () => {
     });
   });
 
+  describe('findById', () => {
+    it('should find notification by ID with strongly consistent read', async () => {
+      const mockItem = {
+        PK: 'NOTIFICATION#test-id-123',
+        SK: 'METADATA',
+        id: 'test-id-123',
+        type: NotificationType.ORDER_CREATED,
+        title: 'Test Notification',
+        message: 'Test message',
+        is_read: false,
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+        expires_at: 1234567890,
+      };
+
+      ddbMock.on(GetCommand).resolves({ Item: mockItem });
+
+      const notification = await repository.findById('test-id-123');
+
+      expect(notification).not.toBeNull();
+      expect(notification?.id).toBe('test-id-123');
+      expect(notification?.title).toBe('Test Notification');
+      expect(notification?.type).toBe(NotificationType.ORDER_CREATED);
+    });
+
+    it('should return null if notification does not exist', async () => {
+      ddbMock.on(GetCommand).resolves({ Item: undefined });
+
+      const notification = await repository.findById('non-existent-id');
+
+      expect(notification).toBeNull();
+    });
+  });
+
+  describe('update', () => {
+    it('should update notification fields', async () => {
+      const mockUpdatedItem = {
+        id: 'test-id-123',
+        type: NotificationType.ORDER_CREATED,
+        title: 'Updated Title',
+        message: 'Updated message',
+        metadata: { updated: true },
+        is_read: false,
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-02T00:00:00.000Z',
+        expires_at: 1234567890,
+      };
+
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: mockUpdatedItem,
+      });
+
+      const result = await repository.update('test-id-123', {
+        title: 'Updated Title',
+        message: 'Updated message',
+        metadata: { updated: true },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.title).toBe('Updated Title');
+      expect(result?.message).toBe('Updated message');
+      expect(result?.metadata).toEqual({ updated: true });
+    });
+
+    it('should return null if notification does not exist', async () => {
+      ddbMock.on(UpdateCommand).rejects({
+        name: 'ConditionalCheckFailedException',
+        message: 'The conditional request failed',
+      });
+
+      const result = await repository.update('non-existent-id', {
+        title: 'Updated Title',
+      });
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('findAll', () => {
     it('should find all unread notifications using GSI1', async () => {
       const mockItems = [
@@ -183,7 +261,7 @@ describe('NotificationRepository', () => {
     });
 
     it('should find all notifications when no filter is provided', async () => {
-      const mockItems = [
+      const mockUnreadItems = [
         {
           id: '1',
           type: NotificationType.ORDER_CREATED,
@@ -193,6 +271,9 @@ describe('NotificationRepository', () => {
           updated_at: '2024-01-01T00:00:00.000Z',
           expires_at: 1234567890,
         },
+      ];
+
+      const mockReadItems = [
         {
           id: '2',
           type: NotificationType.ORDER_PAID,
@@ -204,15 +285,24 @@ describe('NotificationRepository', () => {
         },
       ];
 
-      ddbMock.on(QueryCommand).resolves({
-        Items: mockItems,
-        Count: 2,
-      });
+      // Mock will be called twice - once for unread, once for read
+      ddbMock.on(QueryCommand)
+        .resolvesOnce({
+          Items: mockUnreadItems,
+          Count: 1,
+        })
+        .resolvesOnce({
+          Items: mockReadItems,
+          Count: 1,
+        });
 
       const result = await repository.findAll();
 
       expect(result.items).toHaveLength(2);
       expect(result.count).toBe(2);
+      // Verify sorting by created_at descending (newest first)
+      expect(result.items[0].id).toBe('2'); // 2024-01-02
+      expect(result.items[1].id).toBe('1'); // 2024-01-01
     });
   });
 

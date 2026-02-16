@@ -11,6 +11,53 @@
  * Cost Optimizations:
  * - TTL auto-deletes old notifications (90 days)
  * - GSI1 for efficient unread notifications query
+ * 
+ * Infrastructure Requirements:
+ * 
+ * 1. DynamoDB Table GSI Configuration:
+ *    The table MUST have GSI1 configured with:
+ *    - Partition Key: GSI1PK (String)
+ *    - Sort Key: GSI1SK (String)
+ * 
+ * 2. DynamoDB Time To Live (TTL) Configuration:
+ *    TTL MUST be enabled on the `expires_at` attribute, otherwise expired
+ *    notifications will not be automatically removed.
+ * 
+ *    Example AWS CLI command:
+ *      aws dynamodb update-time-to-live \
+ *        --table-name <TABLE_NAME> \
+ *        --time-to-live-specification "Enabled=true, AttributeName=expires_at"
+ * 
+ *    Example CloudFormation:
+ *      NotificationsTable:
+ *        Type: AWS::DynamoDB::Table
+ *        Properties:
+ *          TimeToLiveSpecification:
+ *            AttributeName: expires_at
+ *            Enabled: true
+ *          GlobalSecondaryIndexes:
+ *            - IndexName: GSI1
+ *              KeySchema:
+ *                - AttributeName: GSI1PK
+ *                  KeyType: HASH
+ *                - AttributeName: GSI1SK
+ *                  KeyType: RANGE
+ *              Projection:
+ *                ProjectionType: ALL
+ * 
+ *    Example Terraform:
+ *      resource "aws_dynamodb_table" "notifications" {
+ *        ttl {
+ *          attribute_name = "expires_at"
+ *          enabled        = true
+ *        }
+ *        global_secondary_index {
+ *          name            = "GSI1"
+ *          hash_key        = "GSI1PK"
+ *          range_key       = "GSI1SK"
+ *          projection_type = "ALL"
+ *        }
+ *      }
  */
 
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
@@ -19,6 +66,7 @@ import {
   Notification,
   NotificationType,
   CreateNotificationData,
+  UpdateNotificationData,
   NotificationFilters,
   PaginationParams,
   PaginatedResponse,
@@ -118,6 +166,25 @@ export class NotificationRepository {
   }
 
   /**
+   * Find notification by ID (strongly consistent read)
+   */
+  async findById(id: string): Promise<Notification | null> {
+    const result = await this.dynamoDB.get({
+      key: {
+        PK: `NOTIFICATION#${id}`,
+        SK: 'METADATA',
+      },
+      consistentRead: true, // Strongly consistent for findById
+    });
+
+    if (!result.data) {
+      return null;
+    }
+
+    return this.mapToNotification(result.data);
+  }
+
+  /**
    * Find all notifications with optional filters and pagination
    * Uses GSI1 if filtering by is_read for cost optimization
    */
@@ -145,24 +212,84 @@ export class NotificationRepository {
       };
     }
 
-    // Otherwise, scan all notifications (less efficient, but required for all notifications)
-    // In production, consider using GSI1 with begins_with for better performance
-    const result = await this.dynamoDB.queryEventuallyConsistent({
-      indexName: 'GSI1',
-      keyConditionExpression: 'begins_with(GSI1PK, :prefix)',
-      expressionAttributeValues: {
-        ':prefix': 'NOTIFICATION_READ#',
-      },
-      limit: params.limit || 30,
-      exclusiveStartKey: params.lastEvaluatedKey,
-      scanIndexForward: false,
-    });
+    // Otherwise, fetch all notifications by querying both read and unread partitions
+    // and merging the results, sorted by created_at descending
+    const limit = params.limit || 30;
+
+    const [unreadResult, readResult] = await Promise.all([
+      this.dynamoDB.queryEventuallyConsistent({
+        indexName: 'GSI1',
+        keyConditionExpression: 'GSI1PK = :gsi1pk',
+        expressionAttributeValues: {
+          ':gsi1pk': 'NOTIFICATION_READ#false',
+        },
+        scanIndexForward: false, // Newest first within unread partition
+      }),
+      this.dynamoDB.queryEventuallyConsistent({
+        indexName: 'GSI1',
+        keyConditionExpression: 'GSI1PK = :gsi1pk',
+        expressionAttributeValues: {
+          ':gsi1pk': 'NOTIFICATION_READ#true',
+        },
+        scanIndexForward: false, // Newest first within read partition
+      }),
+    ]);
+
+    const unreadNotifications = unreadResult.data.map(item => this.mapToNotification(item));
+    const readNotifications = readResult.data.map(item => this.mapToNotification(item));
+
+    // Merge and sort all notifications by created_at descending (newest first)
+    const allNotifications = [...unreadNotifications, ...readNotifications].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
+    const paginatedItems = allNotifications.slice(0, limit);
 
     return {
-      items: result.data.map(item => this.mapToNotification(item)),
-      lastEvaluatedKey: result.lastEvaluatedKey,
-      count: result.count,
+      items: paginatedItems,
+      lastEvaluatedKey: undefined,
+      count: paginatedItems.length,
     };
+  }
+
+  /**
+   * Update notification by ID
+   * Note: Cannot change notification type after creation
+   */
+  async update(id: string, data: UpdateNotificationData): Promise<Notification | null> {
+    const now = new Date().toISOString();
+    const updates: Record<string, any> = {
+      updated_at: now,
+    };
+
+    // Build updates object with only provided fields
+    if (data.title !== undefined) updates.title = data.title;
+    if (data.message !== undefined) updates.message = data.message;
+    if (data.metadata !== undefined) updates.metadata = data.metadata;
+
+    try {
+      const result = await this.dynamoDB.update({
+        key: {
+          PK: `NOTIFICATION#${id}`,
+          SK: 'METADATA',
+        },
+        updates,
+        conditionExpression: 'attribute_exists(PK)',
+        returnValues: 'ALL_NEW',
+      });
+
+      if (!result.data) {
+        return null;
+      }
+
+      return this.mapToNotification(result.data);
+    } catch (error: any) {
+      // If item doesn't exist, return null
+      if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -205,6 +332,7 @@ export class NotificationRepository {
   /**
    * Mark all unread notifications as read
    * Uses GSI1 to efficiently query only unread notifications
+   * Handles partial failures gracefully using Promise.allSettled
    */
   async markAllAsRead(): Promise<void> {
     const now = new Date().toISOString();
@@ -239,7 +367,14 @@ export class NotificationRepository {
         })
       );
 
-      await Promise.all(updatePromises);
+      // Use allSettled to handle partial failures gracefully
+      const results = await Promise.allSettled(updatePromises);
+      
+      // Log any failures but continue processing
+      const failures = results.filter(r => r.status === 'rejected');
+      if (failures.length > 0) {
+        console.warn(`[NotificationRepository] Failed to mark ${failures.length} out of ${results.length} notifications as read`);
+      }
 
       lastEvaluatedKey = result.lastEvaluatedKey;
     } while (lastEvaluatedKey);
