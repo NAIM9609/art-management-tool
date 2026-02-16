@@ -82,11 +82,26 @@ export class PersonaggioRepository {
    * Map DynamoDB item to Personaggio interface
    */
   mapToPersonaggio(item: Record<string, any>): Personaggio {
+    let images: string[] = [];
+
+    if (item.images) {
+      if (Array.isArray(item.images)) {
+        images = item.images;
+      } else if (typeof item.images === 'string') {
+        try {
+          const parsed = JSON.parse(item.images);
+          images = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          images = [];
+        }
+      }
+    }
+
     return {
       id: item.id,
       name: item.name,
       description: item.description,
-      images: item.images ? JSON.parse(item.images) : [],
+      images,
       order: item.order,
       created_at: item.created_at,
       updated_at: item.updated_at,
@@ -108,7 +123,8 @@ export class PersonaggioRepository {
       created_at: personaggio.created_at,
       updated_at: personaggio.updated_at,
       // GSI1 - Personaggio by order for sorted retrieval
-      GSI1PK: `PERSONAGGIO_ORDER#${personaggio.order}`,
+      // Zero-pad order to ensure correct numeric sorting (lexicographic)
+      GSI1PK: `PERSONAGGIO_ORDER#${personaggio.order.toString().padStart(10, '0')}`,
       GSI1SK: `${personaggio.id}`,
     };
 
@@ -183,7 +199,7 @@ export class PersonaggioRepository {
         ':prefix': 'PERSONAGGIO_ORDER#',
       },
       filterExpression: includeDeleted ? undefined : 'attribute_not_exists(deleted_at)',
-      scanIndexForward: true, // Sort ascending by order (GSI1PK contains order)
+      scanIndexForward: true, // Sort ascending by GSI1PK (lexicographic on "PERSONAGGIO_ORDER#<padded-order>")
     });
 
     return result.data.map(item => this.mapToPersonaggio(item));
@@ -206,7 +222,7 @@ export class PersonaggioRepository {
     // Handle order update - need to update GSI1 attributes
     if (data.order !== undefined) {
       updates.order = data.order;
-      updates.GSI1PK = `PERSONAGGIO_ORDER#${data.order}`;
+      updates.GSI1PK = `PERSONAGGIO_ORDER#${data.order.toString().padStart(10, '0')}`;
     }
 
     try {
@@ -301,8 +317,13 @@ export class PersonaggioRepository {
   }
 
   /**
-   * Reorder multiple personaggi atomically
+   * Reorder multiple personaggi
    * Updates the order field and GSI1 attributes for all provided IDs
+   * 
+   * Note: Updates are concurrent but not atomic. If one update fails partway through,
+   * some items will have been reordered while others won't. Additionally, during the
+   * transition period, multiple personaggi may temporarily share the same order value
+   * in GSI1PK, which could lead to incorrect sorting results until all updates complete.
    * 
    * @param personaggiIds - Array of personaggio IDs in the desired order.
    *                        Each ID will be assigned an order starting from 1.
@@ -326,7 +347,7 @@ export class PersonaggioRepository {
     });
 
     // Update each item individually with its new order
-    // This ensures atomicity at the item level
+    // Note: This is concurrent but not atomic at the batch level
     const updatePromises = batchItems.map(async ({ id, order }) => {
       try {
         await this.update(id, { order });

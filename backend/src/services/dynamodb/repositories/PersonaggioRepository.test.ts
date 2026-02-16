@@ -211,7 +211,7 @@ describe('PersonaggioRepository', () => {
           name: 'Superman',
           images: JSON.stringify(['https://example.com/superman.jpg']),
           order: 1,
-          GSI1PK: 'PERSONAGGIO_ORDER#1',
+          GSI1PK: 'PERSONAGGIO_ORDER#0000000001',
           GSI1SK: '1',
           created_at: '2024-01-01T00:00:00.000Z',
           updated_at: '2024-01-01T00:00:00.000Z',
@@ -223,7 +223,7 @@ describe('PersonaggioRepository', () => {
           name: 'Batman',
           images: JSON.stringify(['https://example.com/batman.jpg']),
           order: 2,
-          GSI1PK: 'PERSONAGGIO_ORDER#2',
+          GSI1PK: 'PERSONAGGIO_ORDER#0000000002',
           GSI1SK: '2',
           created_at: '2024-01-02T00:00:00.000Z',
           updated_at: '2024-01-02T00:00:00.000Z',
@@ -235,7 +235,7 @@ describe('PersonaggioRepository', () => {
           name: 'Wonder Woman',
           images: JSON.stringify([]),
           order: 3,
-          GSI1PK: 'PERSONAGGIO_ORDER#3',
+          GSI1PK: 'PERSONAGGIO_ORDER#0000000003',
           GSI1SK: '3',
           created_at: '2024-01-03T00:00:00.000Z',
           updated_at: '2024-01-03T00:00:00.000Z',
@@ -253,6 +253,73 @@ describe('PersonaggioRepository', () => {
       expect(personaggi[0].name).toBe('Superman');
       expect(personaggi[1].name).toBe('Batman');
       expect(personaggi[2].name).toBe('Wonder Woman');
+    });
+
+    it('should sort personaggi with multi-digit order values numerically', async () => {
+      // Mock items returned from DynamoDB sorted by GSI1PK (which is zero-padded)
+      // This demonstrates that zero-padding ensures correct numeric sorting
+      const mockItems = [
+        {
+          PK: 'PERSONAGGIO#1',
+          SK: 'METADATA',
+          id: 1,
+          name: 'Order 1',
+          images: JSON.stringify([]),
+          order: 1,
+          GSI1PK: 'PERSONAGGIO_ORDER#0000000001',
+          GSI1SK: '1',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-01T00:00:00.000Z',
+        },
+        {
+          PK: 'PERSONAGGIO#2',
+          SK: 'METADATA',
+          id: 2,
+          name: 'Order 2',
+          images: JSON.stringify([]),
+          order: 2,
+          GSI1PK: 'PERSONAGGIO_ORDER#0000000002',
+          GSI1SK: '2',
+          created_at: '2024-01-02T00:00:00.000Z',
+          updated_at: '2024-01-02T00:00:00.000Z',
+        },
+        {
+          PK: 'PERSONAGGIO#10',
+          SK: 'METADATA',
+          id: 10,
+          name: 'Order 10',
+          images: JSON.stringify([]),
+          order: 10,
+          GSI1PK: 'PERSONAGGIO_ORDER#0000000010',
+          GSI1SK: '10',
+          created_at: '2024-01-10T00:00:00.000Z',
+          updated_at: '2024-01-10T00:00:00.000Z',
+        },
+        {
+          PK: 'PERSONAGGIO#11',
+          SK: 'METADATA',
+          id: 11,
+          name: 'Order 11',
+          images: JSON.stringify([]),
+          order: 11,
+          GSI1PK: 'PERSONAGGIO_ORDER#0000000011',
+          GSI1SK: '11',
+          created_at: '2024-01-11T00:00:00.000Z',
+          updated_at: '2024-01-11T00:00:00.000Z',
+        },
+      ];
+
+      ddbMock.on(QueryCommand).resolves({
+        Items: mockItems,
+        Count: mockItems.length,
+      });
+
+      const personaggi = await repository.findAll();
+
+      expect(personaggi).toHaveLength(4);
+      // Ensure the final order is numeric: 1, 2, 10, 11
+      const orders = personaggi.map((p) => p.order);
+      expect(orders).toEqual([1, 2, 10, 11]);
     });
 
     it('should exclude soft-deleted personaggi by default', async () => {
@@ -382,7 +449,7 @@ describe('PersonaggioRepository', () => {
         name: 'Superman',
         images: JSON.stringify([]),
         order: 10,
-        GSI1PK: 'PERSONAGGIO_ORDER#10',
+        GSI1PK: 'PERSONAGGIO_ORDER#0000000010',
         GSI1SK: '1',
         created_at: '2024-01-01T00:00:00.000Z',
         updated_at: '2024-01-02T00:00:00.000Z',
@@ -516,7 +583,7 @@ describe('PersonaggioRepository', () => {
             name: 'Wonder Woman',
             images: JSON.stringify([]),
             order: 1,
-            GSI1PK: 'PERSONAGGIO_ORDER#1',
+            GSI1PK: 'PERSONAGGIO_ORDER#0000000001',
             created_at: '2024-01-01T00:00:00.000Z',
             updated_at: '2024-01-03T00:00:00.000Z',
           },
@@ -527,7 +594,7 @@ describe('PersonaggioRepository', () => {
             name: 'Superman',
             images: JSON.stringify([]),
             order: 2,
-            GSI1PK: 'PERSONAGGIO_ORDER#2',
+            GSI1PK: 'PERSONAGGIO_ORDER#0000000002',
             created_at: '2024-01-02T00:00:00.000Z',
             updated_at: '2024-01-03T00:00:00.000Z',
           },
@@ -538,7 +605,7 @@ describe('PersonaggioRepository', () => {
             name: 'Batman',
             images: JSON.stringify([]),
             order: 3,
-            GSI1PK: 'PERSONAGGIO_ORDER#3',
+            GSI1PK: 'PERSONAGGIO_ORDER#0000000003',
             created_at: '2024-01-03T00:00:00.000Z',
             updated_at: '2024-01-03T00:00:00.000Z',
           },
