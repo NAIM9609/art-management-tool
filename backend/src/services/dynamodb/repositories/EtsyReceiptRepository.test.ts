@@ -265,6 +265,36 @@ describe('EtsyReceiptRepository', () => {
       expect(result?.local_order_id).toBe(2);
     });
 
+    it('should remove GSI1 when local_order_id is set to null', async () => {
+      const updateData: UpdateEtsyReceiptData = {
+        local_order_id: null,
+      };
+
+      const updatedItem = {
+        PK: 'ETSY_RECEIPT#987654',
+        SK: 'METADATA',
+        etsy_receipt_id: 987654,
+        shop_id: 'shop123',
+        is_paid: false,
+        is_shipped: false,
+        etsy_created_at: '2026-01-01T00:00:00Z',
+        etsy_updated_at: '2026-01-01T00:00:00Z',
+        sync_status: 'pending',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: new Date().toISOString(),
+        // Note: local_order_id, GSI1PK, and GSI1SK should be removed
+      };
+
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: updatedItem,
+      });
+
+      const result = await repository.update(987654, updateData);
+
+      expect(result).not.toBeNull();
+      expect(result?.local_order_id).toBeUndefined();
+    });
+
     it('should return null when receipt does not exist', async () => {
       ddbMock.on(UpdateCommand).rejects({
         name: 'ConditionalCheckFailedException',

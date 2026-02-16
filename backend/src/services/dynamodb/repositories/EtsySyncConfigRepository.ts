@@ -72,7 +72,7 @@ export class EtsySyncConfigRepository {
     const config: EtsySyncConfig = {
       shop_id: data.shop_id,
       sync_status: data.sync_status || 'idle',
-      rate_limit_remaining: data.rate_limit_remaining || 10000,
+      rate_limit_remaining: data.rate_limit_remaining ?? 10000,
       created_at: now,
       updated_at: now,
     };
@@ -182,13 +182,13 @@ export class EtsySyncConfigRepository {
     
     const config: EtsySyncConfig = {
       shop_id: shopId,
-      last_product_sync: data.last_product_sync,
-      last_inventory_sync: data.last_inventory_sync,
-      last_receipt_sync: data.last_receipt_sync,
+      last_product_sync: data.last_product_sync ?? existing?.last_product_sync,
+      last_inventory_sync: data.last_inventory_sync ?? existing?.last_inventory_sync,
+      last_receipt_sync: data.last_receipt_sync ?? existing?.last_receipt_sync,
       sync_status: data.sync_status || existing?.sync_status || 'idle',
-      sync_error: data.sync_error,
+      sync_error: data.sync_error ?? existing?.sync_error,
       rate_limit_remaining: data.rate_limit_remaining ?? existing?.rate_limit_remaining ?? 10000,
-      rate_limit_reset_at: data.rate_limit_reset_at,
+      rate_limit_reset_at: data.rate_limit_reset_at ?? existing?.rate_limit_reset_at,
       created_at: existing?.created_at || now,
       updated_at: now,
     };

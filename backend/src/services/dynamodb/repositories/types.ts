@@ -256,7 +256,7 @@ export interface CreateEtsyReceiptData {
 }
 
 export interface UpdateEtsyReceiptData {
-  local_order_id?: number;
+  local_order_id?: number | null;
   buyer_email?: string;
   buyer_name?: string;
   status?: string;

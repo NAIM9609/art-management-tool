@@ -228,6 +228,26 @@ describe('EtsyOAuthTokenRepository', () => {
 
       expect(result).toBe(false);
     });
+
+    it('should return true if expires_at is invalid', async () => {
+      const token = {
+        PK: 'ETSY_TOKEN#shop123',
+        SK: 'METADATA',
+        shop_id: 'shop123',
+        access_token: 'access_token',
+        refresh_token: 'refresh_token',
+        token_type: 'Bearer',
+        expires_at: 'invalid-date',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      };
+
+      ddbMock.on(GetCommand).resolves({ Item: token });
+
+      const result = await repository.isExpired('shop123');
+
+      expect(result).toBe(true);
+    });
   });
 
   describe('delete', () => {

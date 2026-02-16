@@ -179,6 +179,88 @@ export class EtsyReceiptRepository {
    */
   async update(etsyReceiptId: number, data: UpdateEtsyReceiptData): Promise<EtsyReceipt | null> {
     const now = new Date().toISOString();
+    
+    // Special case: if local_order_id is being cleared (set to null), we need to REMOVE GSI1 attributes
+    // This requires using UpdateCommand directly since DynamoDBOptimized.update only supports SET
+    if (data.local_order_id === null) {
+      const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
+      
+      // Build update expression with SET and REMOVE clauses
+      const setParts: string[] = ['#updated_at = :updated_at'];
+      const removeParts: string[] = ['#local_order_id', 'GSI1PK', 'GSI1SK'];
+      const expressionAttributeNames: Record<string, string> = {
+        '#updated_at': 'updated_at',
+        '#local_order_id': 'local_order_id',
+      };
+      const expressionAttributeValues: Record<string, any> = {
+        ':updated_at': now,
+      };
+      
+      // Add other fields to SET if provided
+      let attrIndex = 0;
+      const fieldsToUpdate: Array<[string, any]> = [
+        ['buyer_email', data.buyer_email],
+        ['buyer_name', data.buyer_name],
+        ['status', data.status],
+        ['is_paid', data.is_paid],
+        ['is_shipped', data.is_shipped],
+        ['grand_total', data.grand_total],
+        ['subtotal', data.subtotal],
+        ['total_shipping_cost', data.total_shipping_cost],
+        ['total_tax_cost', data.total_tax_cost],
+        ['currency', data.currency],
+        ['payment_method', data.payment_method],
+        ['shipping_address', data.shipping_address],
+        ['message_from_buyer', data.message_from_buyer],
+        ['etsy_updated_at', data.etsy_updated_at],
+        ['last_synced_at', data.last_synced_at],
+        ['sync_status', data.sync_status],
+      ];
+      
+      fieldsToUpdate.forEach(([key, value]) => {
+        if (value !== undefined) {
+          const nameKey = `#field${attrIndex}`;
+          const valueKey = `:field${attrIndex}`;
+          expressionAttributeNames[nameKey] = key;
+          expressionAttributeValues[valueKey] = value;
+          setParts.push(`${nameKey} = ${valueKey}`);
+          attrIndex++;
+        }
+      });
+      
+      const updateExpression = `SET ${setParts.join(', ')} REMOVE ${removeParts.join(', ')}`;
+      
+      const command = new UpdateCommand({
+        TableName: (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME,
+        Key: {
+          PK: `ETSY_RECEIPT#${etsyReceiptId}`,
+          SK: 'METADATA',
+        },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues,
+        ConditionExpression: 'attribute_exists(PK)',
+        ReturnValues: 'ALL_NEW',
+      });
+      
+      try {
+        const client = (this.dynamoDB as any).client;
+        const result = await client.send(command);
+        
+        if (!result.Attributes) {
+          return null;
+        }
+        
+        return this.mapToReceipt(result.Attributes);
+      } catch (error: any) {
+        if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
+          return null;
+        }
+        throw error;
+      }
+    }
+    
+    // Normal update path for other fields
     const updates: Record<string, any> = {
       updated_at: now,
     };

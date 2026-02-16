@@ -89,7 +89,7 @@ export class EtsyOAuthTokenRepository {
       refresh_token: data.refresh_token,
       token_type: data.token_type || 'Bearer',
       expires_at: data.expires_at,
-      scope: data.scope,
+      scope: data.scope !== undefined ? data.scope : existing?.scope,
       created_at: existing?.created_at || now,
       updated_at: now,
     };
@@ -119,6 +119,11 @@ export class EtsyOAuthTokenRepository {
     fiveMinutesFromNow.setMinutes(fiveMinutesFromNow.getMinutes() + 5);
     
     const expiresAt = new Date(token.expires_at);
+    if (Number.isNaN(expiresAt.getTime())) {
+      // Treat missing or invalid expires_at as expired
+      return true;
+    }
+    
     return fiveMinutesFromNow > expiresAt;
   }
 
