@@ -11,7 +11,6 @@ import { DynamoDBOptimized } from '../DynamoDBOptimized';
 import { v4 as uuidv4 } from 'uuid';
 import {
   CartItem,
-  CreateCartItemData,
 } from './types';
 
 export class CartItemRepository {
@@ -74,7 +73,18 @@ export class CartItemRepository {
   }
 
   /**
+   * Generate deterministic item ID based on cart, product, and variant
+   * This ensures idempotency and prevents race conditions
+   */
+  private generateItemId(cartId: string, productId: number, variantId: number | undefined): string {
+    const crypto = require('crypto');
+    const key = `${cartId}:${productId}:${variantId ?? 'null'}`;
+    return crypto.createHash('sha256').update(key).digest('hex').substring(0, 32);
+  }
+
+  /**
    * Add item to cart or update quantity if already exists
+   * Uses deterministic IDs to prevent race conditions
    */
   async addItem(
     cartId: string,
@@ -82,20 +92,8 @@ export class CartItemRepository {
     variantId: number | undefined,
     quantity: number
   ): Promise<CartItem> {
-    // First check if item already exists
-    const existingItems = await this.findByCartId(cartId);
-    const existingItem = existingItems.find(
-      item => item.product_id === productId && item.variant_id === variantId
-    );
-
-    if (existingItem) {
-      // Update existing item quantity
-      return await this.updateQuantity(cartId, existingItem.id, existingItem.quantity + quantity);
-    }
-
-    // Create new item
     const now = new Date().toISOString();
-    const id = uuidv4();
+    const id = this.generateItemId(cartId, productId, variantId);
 
     const cartItem: CartItem = {
       id,
@@ -109,12 +107,23 @@ export class CartItemRepository {
 
     const item = this.buildCartItemItem(cartItem);
 
-    await this.dynamoDB.put({
-      item,
-      conditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
-    });
-
-    return cartItem;
+    try {
+      // Try to create new item
+      await this.dynamoDB.put({
+        item,
+        conditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+      });
+      return cartItem;
+    } catch (error: any) {
+      if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
+        // Item already exists, update quantity instead
+        const existingItem = await this.findById(cartId, id);
+        if (existingItem) {
+          return await this.updateQuantity(cartId, id, existingItem.quantity + quantity);
+        }
+      }
+      throw error;
+    }
   }
 
   /**
@@ -205,37 +214,87 @@ export class CartItemRepository {
   }
 
   /**
-   * Merge items from source cart to destination cart
-   * For items that exist in both carts with same product/variant, sum quantities
+   * Merge items from source cart to destination cart.
+   *
+   * For items that exist in both carts with same product/variant, sum quantities.
+   *
+   * NOTE: This operation is NOT atomic. It performs multiple sequential
+   * DynamoDB writes (updates/additions/deletes). If any write fails partway
+   * through, some items may already have been merged into the destination
+   * cart while others are not, and the source cart will not be cleared.
+   *
+   * Callers should be prepared to handle partial success and may need to
+   * trigger reconciliation or retry logic based on the error thrown from
+   * this method.
+   *
+   * @returns The number of items successfully merged
    */
-  async mergeItems(sourceCartId: string, destCartId: string): Promise<void> {
+  async mergeItems(sourceCartId: string, destCartId: string): Promise<number> {
     const sourceItems = await this.findByCartId(sourceCartId);
     const destItems = await this.findByCartId(destCartId);
 
-    for (const sourceItem of sourceItems) {
-      const matchingDestItem = destItems.find(
-        item => item.product_id === sourceItem.product_id && item.variant_id === sourceItem.variant_id
-      );
+    // Track which source items have been successfully merged
+    const mergedItemIds: string[] = [];
 
-      if (matchingDestItem) {
-        // Item exists in destination - add quantities
-        await this.updateQuantity(
-          destCartId,
-          matchingDestItem.id,
-          matchingDestItem.quantity + sourceItem.quantity
+    try {
+      for (const sourceItem of sourceItems) {
+        const matchingDestItem = destItems.find(
+          item => item.product_id === sourceItem.product_id && item.variant_id === sourceItem.variant_id
         );
-      } else {
-        // Item doesn't exist in destination - create new item
-        await this.addItem(
-          destCartId,
-          sourceItem.product_id,
-          sourceItem.variant_id,
-          sourceItem.quantity
-        );
+
+        if (matchingDestItem) {
+          // Item exists in destination - add quantities
+          await this.updateQuantity(
+            destCartId,
+            matchingDestItem.id,
+            matchingDestItem.quantity + sourceItem.quantity
+          );
+        } else {
+          // Item doesn't exist in destination - create new item directly
+          // to avoid redundant query in addItem
+          const now = new Date().toISOString();
+          const id = this.generateItemId(destCartId, sourceItem.product_id, sourceItem.variant_id);
+
+          const newItem: CartItem = {
+            id,
+            cart_id: destCartId,
+            product_id: sourceItem.product_id,
+            variant_id: sourceItem.variant_id,
+            quantity: sourceItem.quantity,
+            created_at: now,
+            updated_at: now,
+          };
+
+          const item = this.buildCartItemItem(newItem);
+
+          await this.dynamoDB.put({
+            item,
+            conditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+          });
+        }
+
+        mergedItemIds.push(sourceItem.id);
       }
-    }
 
-    // Clear source cart after merge
-    await this.clearCart(sourceCartId);
+      // Clear source cart after merge
+      await this.clearCart(sourceCartId);
+
+      return mergedItemIds.length;
+    } catch (error) {
+      // Log partial success information for diagnosis and potential recovery
+      console.error(
+        'Error while merging cart items',
+        {
+          sourceCartId,
+          destCartId,
+          totalSourceItems: sourceItems.length,
+          mergedItemCount: mergedItemIds.length,
+          mergedItemIds,
+        },
+        error
+      );
+      // Rethrow so callers know the merge did not fully succeed
+      throw error;
+    }
   }
 }

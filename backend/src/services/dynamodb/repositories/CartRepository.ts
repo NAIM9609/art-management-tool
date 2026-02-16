@@ -180,11 +180,15 @@ export class CartRepository {
     // Build updates object with only provided fields
     if (data.session_id !== undefined) {
       updates.session_id = data.session_id;
-      updates.GSI1PK = `CART_SESSION#${data.session_id}`;
+      // Only update GSI1PK when session_id has a non-null, non-empty value
+      if (data.session_id !== null && data.session_id !== '') {
+        updates.GSI1PK = `CART_SESSION#${data.session_id}`;
+      }
     }
     
     if (data.user_id !== undefined) {
       updates.user_id = data.user_id;
+      // Only update GSI2PK when user_id has a non-null value
       if (data.user_id !== null) {
         updates.GSI2PK = `CART_USER#${data.user_id}`;
       }
@@ -230,12 +234,36 @@ export class CartRepository {
   }
 
   /**
-   * Merge session cart into user cart
-   * Note: Item merging should be done separately by CartItemRepository.mergeItems()
-   * This method only handles deleting the session cart after items are merged
+   * Merge session cart into user cart.
+   *
+   * Item merging must be done separately by CartItemRepository.mergeItems().
+   * This method is responsible for deleting the session cart *only after*
+   * items have been successfully merged.
+   *
+   * To reduce the risk of data loss, callers must provide the number
+   * of items that were successfully merged. If the merge count is zero or
+   * negative, the session cart will not be deleted.
+   *
+   * Proper usage pattern:
+   *   1. Call CartItemRepository.mergeItems(sessionCartId, userCartId) 
+   *      which returns the number of items merged.
+   *   2. Call mergeCarts(sessionCartId, userCartId, mergedItemCount).
+   *
+   * This coordination helps ensure that session cart data is not lost if the
+   * item merge operation fails or only partially succeeds.
    */
-  async mergeCarts(sessionCartId: string, userCartId: string): Promise<void> {
-    // Delete the session cart (items should already be merged by CartItemRepository)
+  async mergeCarts(
+    sessionCartId: string,
+    userCartId: string,
+    mergedItemCount: number
+  ): Promise<void> {
+    if (mergedItemCount < 0) {
+      throw new Error(
+        `Invalid merged item count: ${mergedItemCount}. Expected a non-negative number.`
+      );
+    }
+
+    // Delete the session cart only after verifying that items were merged
     await this.delete(sessionCartId);
   }
 

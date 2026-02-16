@@ -86,13 +86,6 @@ describe('CartItemRepository', () => {
 
   describe('addItem', () => {
     it('should create new item if it does not exist', async () => {
-      ddbMock.on(QueryCommand).resolves({
-        Items: [],
-        Count: 0,
-        ScannedCount: 0,
-        ConsumedCapacity: {},
-      });
-
       ddbMock.on(PutCommand).resolves({});
 
       const item = await repository.addItem('cart-123', 100, undefined, 3);
@@ -107,13 +100,6 @@ describe('CartItemRepository', () => {
     });
 
     it('should create item with variant_id', async () => {
-      ddbMock.on(QueryCommand).resolves({
-        Items: [],
-        Count: 0,
-        ScannedCount: 0,
-        ConsumedCapacity: {},
-      });
-
       ddbMock.on(PutCommand).resolves({});
 
       const item = await repository.addItem('cart-123', 200, 10, 2);
@@ -123,11 +109,11 @@ describe('CartItemRepository', () => {
       expect(item.quantity).toBe(2);
     });
 
-    it('should update quantity if item already exists', async () => {
+    it('should update quantity if item already exists (race condition)', async () => {
       const existingItem = {
         PK: 'CART#cart-123',
-        SK: 'ITEM#existing-item',
-        id: 'existing-item',
+        SK: 'ITEM#existing-item-id',
+        id: 'existing-item-id',
         cart_id: 'cart-123',
         product_id: 100,
         quantity: 2,
@@ -135,13 +121,17 @@ describe('CartItemRepository', () => {
         updated_at: '2024-01-01T00:00:00.000Z',
       };
 
-      ddbMock.on(QueryCommand).resolves({
-        Items: [existingItem],
-        Count: 1,
-        ScannedCount: 1,
-        ConsumedCapacity: {},
+      // First put fails due to existing item
+      ddbMock.on(PutCommand).rejects({
+        name: 'ConditionalCheckFailedException',
       });
 
+      // Get returns the existing item
+      ddbMock.on(GetCommand).resolves({
+        Item: existingItem,
+      });
+
+      // Update succeeds
       ddbMock.on(UpdateCommand).resolves({
         Attributes: {
           ...existingItem,
@@ -152,55 +142,17 @@ describe('CartItemRepository', () => {
 
       const item = await repository.addItem('cart-123', 100, undefined, 3);
 
-      expect(item.id).toBe('existing-item');
       expect(item.quantity).toBe(5); // 2 + 3
     });
 
-    it('should match items by both product_id and variant_id', async () => {
-      const existingItems = [
-        {
-          PK: 'CART#cart-123',
-          SK: 'ITEM#item-1',
-          id: 'item-1',
-          cart_id: 'cart-123',
-          product_id: 100,
-          variant_id: 5,
-          quantity: 1,
-          created_at: '2024-01-01T00:00:00.000Z',
-          updated_at: '2024-01-01T00:00:00.000Z',
-        },
-        {
-          PK: 'CART#cart-123',
-          SK: 'ITEM#item-2',
-          id: 'item-2',
-          cart_id: 'cart-123',
-          product_id: 100,
-          variant_id: 6,
-          quantity: 2,
-          created_at: '2024-01-01T00:00:00.000Z',
-          updated_at: '2024-01-01T00:00:00.000Z',
-        },
-      ];
+    it('should generate same ID for same product/variant combination', async () => {
+      ddbMock.on(PutCommand).resolves({});
 
-      ddbMock.on(QueryCommand).resolves({
-        Items: existingItems,
-        Count: 2,
-        ScannedCount: 2,
-        ConsumedCapacity: {},
-      });
+      const item1 = await repository.addItem('cart-123', 100, 5, 1);
+      const item2 = await repository.addItem('cart-123', 100, 5, 2);
 
-      ddbMock.on(UpdateCommand).resolves({
-        Attributes: {
-          ...existingItems[1],
-          quantity: 4,
-        },
-      });
-
-      // Adding to variant 6 should update item-2
-      const item = await repository.addItem('cart-123', 100, 6, 2);
-
-      expect(item.id).toBe('item-2');
-      expect(item.quantity).toBe(4);
+      // Same product and variant should generate same ID
+      expect(item1.id).toBe(item2.id);
     });
   });
 
@@ -414,8 +366,7 @@ describe('CartItemRepository', () => {
       // Mock query calls in order:
       // 1. mergeItems: findByCartId(sourceCartId) - get source items
       // 2. mergeItems: findByCartId(destCartId) - get dest items
-      // 3. addItem: findByCartId(destCartId) - check if item 200 exists (doesn't)
-      // 4. clearCart: findByCartId(sourceCartId) - get source items to delete
+      // 3. clearCart: findByCartId(sourceCartId) - get source items to delete
       ddbMock.on(QueryCommand)
         .resolvesOnce({
           Items: sourceItems,
@@ -425,12 +376,6 @@ describe('CartItemRepository', () => {
         })
         .resolvesOnce({
           Items: destItems,
-          Count: 1,
-          ScannedCount: 1,
-          ConsumedCapacity: {},
-        })
-        .resolvesOnce({
-          Items: destItems, // addItem checks existing items
           Count: 1,
           ScannedCount: 1,
           ConsumedCapacity: {},
@@ -452,7 +397,9 @@ describe('CartItemRepository', () => {
       ddbMock.on(PutCommand).resolves({});
       ddbMock.on(BatchWriteCommand).resolves({});
 
-      await repository.mergeItems('source-cart', 'dest-cart');
+      const mergedCount = await repository.mergeItems('source-cart', 'dest-cart');
+
+      expect(mergedCount).toBe(2);
 
       // Should update existing item (product 100)
       const updateCalls = ddbMock.commandCalls(UpdateCommand);
@@ -501,19 +448,19 @@ describe('CartItemRepository', () => {
           Items: sourceItems,
           Count: 1,
           ScannedCount: 1,
-        ConsumedCapacity: {},
+          ConsumedCapacity: {},
         })
         .resolvesOnce({
           Items: destItems,
           Count: 1,
           ScannedCount: 1,
-        ConsumedCapacity: {},
+          ConsumedCapacity: {},
         })
         .resolvesOnce({
           Items: sourceItems,
           Count: 1,
           ScannedCount: 1,
-        ConsumedCapacity: {},
+          ConsumedCapacity: {},
         });
 
       ddbMock.on(UpdateCommand).resolves({
@@ -525,7 +472,9 @@ describe('CartItemRepository', () => {
 
       ddbMock.on(BatchWriteCommand).resolves({});
 
-      await repository.mergeItems('source-cart', 'dest-cart');
+      const mergedCount = await repository.mergeItems('source-cart', 'dest-cart');
+
+      expect(mergedCount).toBe(1);
 
       const updateCalls = ddbMock.commandCalls(UpdateCommand);
       expect(updateCalls).toHaveLength(1);
@@ -571,31 +520,27 @@ describe('CartItemRepository', () => {
           Items: sourceItems,
           Count: 1,
           ScannedCount: 1,
-        ConsumedCapacity: {},
+          ConsumedCapacity: {},
         })
         .resolvesOnce({
           Items: destItems,
           Count: 1,
           ScannedCount: 1,
-        ConsumedCapacity: {},
-        })
-        .resolvesOnce({
-          Items: [],
-          Count: 0,
-          ScannedCount: 0,
-        ConsumedCapacity: {},
+          ConsumedCapacity: {},
         })
         .resolvesOnce({
           Items: sourceItems,
           Count: 1,
           ScannedCount: 1,
-        ConsumedCapacity: {},
+          ConsumedCapacity: {},
         });
 
       ddbMock.on(PutCommand).resolves({});
       ddbMock.on(BatchWriteCommand).resolves({});
 
-      await repository.mergeItems('source-cart', 'dest-cart');
+      const mergedCount = await repository.mergeItems('source-cart', 'dest-cart');
+
+      expect(mergedCount).toBe(1);
 
       // Should create new item since variants don't match
       const putCalls = ddbMock.commandCalls(PutCommand);

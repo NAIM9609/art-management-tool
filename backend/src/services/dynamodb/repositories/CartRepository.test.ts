@@ -300,10 +300,10 @@ describe('CartRepository', () => {
   });
 
   describe('mergeCarts', () => {
-    it('should delete session cart after merge', async () => {
+    it('should delete session cart after merge with valid merge count', async () => {
       ddbMock.on(DeleteCommand).resolves({});
 
-      await repository.mergeCarts('session-cart-id', 'user-cart-id');
+      await repository.mergeCarts('session-cart-id', 'user-cart-id', 5);
 
       expect(ddbMock.commandCalls(DeleteCommand)).toHaveLength(1);
       const deleteCall = ddbMock.commandCalls(DeleteCommand)[0];
@@ -313,6 +313,20 @@ describe('CartRepository', () => {
           SK: 'METADATA',
         },
       });
+    });
+
+    it('should accept zero merged items', async () => {
+      ddbMock.on(DeleteCommand).resolves({});
+
+      await repository.mergeCarts('session-cart-id', 'user-cart-id', 0);
+
+      expect(ddbMock.commandCalls(DeleteCommand)).toHaveLength(1);
+    });
+
+    it('should throw error for negative merge count', async () => {
+      await expect(
+        repository.mergeCarts('session-cart-id', 'user-cart-id', -1)
+      ).rejects.toThrow('Invalid merged item count');
     });
   });
 
