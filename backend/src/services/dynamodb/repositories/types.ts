@@ -138,7 +138,7 @@ export interface UpdateProductImageData {
   position?: number;
 }
 
-/**
+ /**
  * Personaggio (Character) interfaces
  */
 export interface Personaggio {
@@ -150,6 +150,37 @@ export interface Personaggio {
   created_at: string;
   updated_at: string;
   deleted_at?: string;
+}
+
+/**
+ * Fumetto interfaces
+ */
+export interface Fumetto {
+  id: number;
+  title: string;
+  description?: string;
+  coverImage?: string;
+  pages?: string[];
+  order: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface CreateFumettoData {
+  title: string;
+  description?: string;
+  coverImage?: string;
+  pages?: string[];
+  order?: number;
+}
+
+export interface UpdateFumettoData {
+  title?: string;
+  description?: string;
+  coverImage?: string;
+  pages?: string[];
+  order?: number;
 }
 /**
  * Cart interfaces
