@@ -139,6 +139,19 @@ export interface UpdateProductImageData {
 }
 
 /**
+ * Personaggio (Character) interfaces
+ */
+export interface Personaggio {
+  id: number;
+  name: string;
+  description?: string;
+  images: string[];
+  order: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+/**
  * Cart interfaces
  */
 export interface Cart {
@@ -266,6 +279,19 @@ export interface Category {
   deleted_at?: string;
 }
 
+export interface CreatePersonaggioData {
+  name: string;
+  description?: string;
+  images?: string[];
+  order?: number;
+}
+
+export interface UpdatePersonaggioData {
+  name?: string;
+  description?: string;
+  images?: string[];
+  order?: number;
+}
 export interface CreateOrderData {
   user_id?: number;
   customer_email: string;
