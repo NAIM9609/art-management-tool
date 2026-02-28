@@ -239,11 +239,12 @@ export class OrderService {
   /**
    * Get order by ID with items fetched in parallel
    */
-  async getOrderById(id: string): Promise<(Order & { items: OrderItem[] }) | null> {
+  async getOrderById(id: string | number): Promise<(Order & { items: OrderItem[] }) | null> {
     // Fetch order and items in parallel
+    const orderId = typeof id === 'number' ? id.toString() : id;
     const [order, items] = await Promise.all([
-      this.orderRepo.findById(id),
-      this.orderItemRepo.findByOrderId(parseInt(id)),
+      this.orderRepo.findById(orderId),
+      this.orderItemRepo.findByOrderId(parseInt(orderId)),
     ]);
 
     if (!order) {
@@ -379,5 +380,113 @@ export class OrderService {
     }
 
     return updatedOrder;
+  }
+
+  // ===== Backward Compatibility Methods =====
+  // These methods provide compatibility with the old TypeORM-based API
+
+  /**
+   * List orders with filters and pagination (backward compatibility)
+   * Maps to DynamoDB findAll method
+   */
+  async listOrders(
+    filters: any = {},
+    page: number = 1,
+    perPage: number = 20
+  ): Promise<{ orders: any[]; total: number }> {
+    const result = await this.orderRepo.findAll(
+      {
+        status: filters.paymentStatus as OrderStatus,
+        customer_email: filters.customerEmail,
+      },
+      { limit: perPage }
+    );
+
+    // Note: DynamoDB doesn't provide total count easily, so we return count of current page
+    return {
+      orders: result.items.map(summary => ({
+        ...summary,
+        id: parseInt(summary.id), // Convert string ID to number for backward compatibility
+      })),
+      total: result.count,
+    };
+  }
+
+  /**
+   * Update payment status (backward compatibility)
+   * Maps to processPayment method
+   */
+  async updatePaymentStatus(
+    id: number | string,
+    status: string,
+    paymentIntentId?: string
+  ): Promise<any> {
+    const result = await this.processPayment(
+      id.toString(),
+      {
+        payment_status: status.toLowerCase(),
+        payment_intent_id: paymentIntentId,
+      }
+    );
+
+    if (!result) {
+      throw new Error(`Order with id ${id} not found`);
+    }
+
+    return {
+      ...result,
+      id: parseInt(result.id), // Convert string ID to number for backward compatibility
+    };
+  }
+
+  /**
+   * Update fulfillment status (backward compatibility)
+   */
+  async updateFulfillmentStatus(
+    id: number | string,
+    status: string
+  ): Promise<any> {
+    const currentOrder = await this.orderRepo.findById(id.toString());
+    if (!currentOrder) {
+      throw new Error(`Order with id ${id} not found`);
+    }
+
+    const updatedOrder = await this.orderRepo.update(id.toString(), {
+      fulfillment_status: status,
+    });
+
+    if (!updatedOrder) {
+      throw new Error(`Order with id ${id} not found`);
+    }
+
+    // Create audit log
+    await this.auditLogRepo.create({
+      entity_type: 'Order',
+      entity_id: id.toString(),
+      user_id: 'system',
+      action: 'fulfillment_update',
+      changes: {
+        fulfillment_status: {
+          from: currentOrder.fulfillment_status,
+          to: status,
+        },
+      },
+      metadata: {
+        order_number: updatedOrder.order_number,
+      },
+    });
+
+    return {
+      ...updatedOrder,
+      id: parseInt(updatedOrder.id), // Convert string ID to number for backward compatibility
+    };
+  }
+
+  /**
+   * Create order from cart (backward compatibility)
+   * This is a placeholder that throws an error since cart functionality is not yet migrated
+   */
+  async createOrderFromCart(sessionId: string, checkoutData: any): Promise<any> {
+    throw new Error('createOrderFromCart is not yet implemented for DynamoDB. Please use createOrder instead.');
   }
 }

@@ -13,6 +13,7 @@ import { MockPaymentProvider } from '../services/payment/MockPaymentProvider';
 import { StripePaymentProvider } from '../services/payment/StripePaymentProvider';
 import { EtsyPaymentProvider } from '../services/payment/EtsyPaymentProvider';
 import { PaymentProvider } from '../services/payment/PaymentProvider';
+import { DynamoDBOptimized } from '../services/dynamodb/DynamoDBOptimized';
 import { config } from '../config';
 
 export function setupRoutes(app: Express): void {
@@ -36,7 +37,13 @@ export function setupRoutes(app: Express): void {
     );
   }
 
-  const orderService = new OrderService(paymentProvider, notificationService);
+  // Initialize DynamoDB client
+  const dynamoDB = new DynamoDBOptimized({
+    tableName: process.env.DYNAMODB_TABLE_NAME || 'art-management-tool',
+    region: process.env.AWS_REGION || 'us-east-1',
+  });
+
+  const orderService = new OrderService(dynamoDB);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
