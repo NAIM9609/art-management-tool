@@ -5,6 +5,10 @@
 export { ProductRepository } from './ProductRepository';
 export { ProductVariantRepository } from './ProductVariantRepository';
 export { ProductImageRepository } from './ProductImageRepository';
+export { EtsyOAuthTokenRepository } from './EtsyOAuthTokenRepository';
+export { EtsyProductRepository } from './EtsyProductRepository';
+export { EtsyReceiptRepository } from './EtsyReceiptRepository';
+export { EtsySyncConfigRepository } from './EtsySyncConfigRepository';
 export { NotificationRepository } from './NotificationRepository';
 export { DiscountCodeRepository } from './DiscountCodeRepository';
 export { FumettoRepository } from './FumettoRepository';
