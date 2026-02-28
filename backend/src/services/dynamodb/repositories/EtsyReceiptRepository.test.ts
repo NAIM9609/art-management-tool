@@ -293,6 +293,18 @@ describe('EtsyReceiptRepository', () => {
 
       expect(result).not.toBeNull();
       expect(result?.local_order_id).toBeUndefined();
+
+      // Verify that the UpdateCommand was called with the correct REMOVE expression
+      const calls = ddbMock.commandCalls(UpdateCommand);
+      expect(calls.length).toBe(1);
+      const input = calls[0].args[0].input as any;
+
+      expect(input.UpdateExpression).toContain('REMOVE');
+      expect(input.UpdateExpression).toMatch(/#local_order_id/);
+      expect(input.UpdateExpression).toMatch(/GSI1PK/);
+      expect(input.UpdateExpression).toMatch(/GSI1SK/);
+
+      expect(input.ExpressionAttributeNames['#local_order_id']).toBe('local_order_id');
     });
 
     it('should return null when receipt does not exist', async () => {
