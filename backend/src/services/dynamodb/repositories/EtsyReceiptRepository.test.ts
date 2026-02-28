@@ -3,7 +3,7 @@
  */
 
 import { mockClient } from 'aws-sdk-client-mock';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, UpdateCommandInput } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
 import { EtsyReceiptRepository } from './EtsyReceiptRepository';
 import { CreateEtsyReceiptData, UpdateEtsyReceiptData } from './types';
@@ -297,14 +297,14 @@ describe('EtsyReceiptRepository', () => {
       // Verify that the UpdateCommand was called with the correct REMOVE expression
       const calls = ddbMock.commandCalls(UpdateCommand);
       expect(calls.length).toBe(1);
-      const input = calls[0].args[0].input as any;
+      const input = calls[0].args[0].input as UpdateCommandInput;
 
       expect(input.UpdateExpression).toContain('REMOVE');
       expect(input.UpdateExpression).toMatch(/#local_order_id/);
       expect(input.UpdateExpression).toMatch(/GSI1PK/);
       expect(input.UpdateExpression).toMatch(/GSI1SK/);
 
-      expect(input.ExpressionAttributeNames['#local_order_id']).toBe('local_order_id');
+      expect(input.ExpressionAttributeNames?.['#local_order_id']).toBe('local_order_id');
     });
 
     it('should return null when receipt does not exist', async () => {
