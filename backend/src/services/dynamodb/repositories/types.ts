@@ -181,6 +181,47 @@ export interface EtsyProduct {
 }
 
 /**
+ * Notification types
+ */
+export enum NotificationType {
+  ORDER_CREATED = 'order_created',
+  ORDER_PAID = 'order_paid',
+  ORDER_SHIPPED = 'order_shipped',
+  LOW_STOCK = 'low_stock',
+  SYSTEM = 'system',
+}
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message?: string;
+  metadata?: Record<string, any>;
+  is_read: boolean;
+  read_at?: string;
+  created_at: string;
+  updated_at: string;
+  expires_at: number; // Unix timestamp for TTL
+}
+
+export interface CreateNotificationData {
+  type: NotificationType;
+  title: string;
+  message?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface UpdateNotificationData {
+  title?: string;
+  message?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface NotificationFilters {
+  is_read?: boolean;
+}
+
+/**
  * Personaggio (Character) interfaces
  */
 export interface Personaggio {
@@ -192,6 +233,37 @@ export interface Personaggio {
   created_at: string;
   updated_at: string;
   deleted_at?: string;
+}
+
+/**
+ * Fumetto interfaces
+ */
+export interface Fumetto {
+  id: number;
+  title: string;
+  description?: string;
+  coverImage?: string;
+  pages?: string[];
+  order: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface CreateFumettoData {
+  title: string;
+  description?: string;
+  coverImage?: string;
+  pages?: string[];
+  order?: number;
+}
+
+export interface UpdateFumettoData {
+  title?: string;
+  description?: string;
+  coverImage?: string;
+  pages?: string[];
+  order?: number;
 }
 /**
  * Cart interfaces
@@ -453,7 +525,71 @@ export interface Category {
   updated_at: string;
   deleted_at?: string;
 }
+/**
+ * DiscountCode interfaces
+ */
+export enum DiscountType {
+  PERCENTAGE = 'percentage',
+  FIXED = 'fixed',
+}
 
+export interface DiscountCode {
+  id: number;
+  code: string;
+  description?: string;
+  discount_type: DiscountType;
+  discount_value: number;
+  min_purchase_amount?: number;
+  max_discount_amount?: number;
+  valid_from: string;
+  valid_until?: string;
+  max_uses?: number;
+  times_used: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface CreateDiscountCodeData {
+  code: string;
+  description?: string;
+  discount_type: DiscountType;
+  discount_value: number;
+  min_purchase_amount?: number;
+  max_discount_amount?: number;
+  valid_from?: string;
+  valid_until?: string;
+  max_uses?: number;
+  is_active?: boolean;
+}
+
+export interface UpdateDiscountCodeData {
+  code?: string;
+  description?: string;
+  discount_type?: DiscountType;
+  discount_value?: number;
+  min_purchase_amount?: number;
+  max_discount_amount?: number;
+  valid_from?: string;
+  valid_until?: string;
+  max_uses?: number;
+  is_active?: boolean;
+}
+
+export interface DiscountCodeFilters {
+  is_active?: boolean;
+}
+
+export interface DiscountCodeStats {
+  code: string;
+  times_used: number;
+  max_uses?: number;
+  usage_percentage?: number;
+  is_active: boolean;
+  is_expired: boolean;
+  is_max_uses_reached: boolean;
+}
 export interface CreatePersonaggioData {
   name: string;
   description?: string;

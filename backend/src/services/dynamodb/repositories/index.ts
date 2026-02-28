@@ -1,5 +1,5 @@
 /**
- * ProductRepository - DynamoDB implementation
+ * DynamoDB Repositories - DynamoDB implementation
  */
 
 export { ProductRepository } from './ProductRepository';
@@ -9,6 +9,9 @@ export { EtsyOAuthTokenRepository } from './EtsyOAuthTokenRepository';
 export { EtsyProductRepository } from './EtsyProductRepository';
 export { EtsyReceiptRepository } from './EtsyReceiptRepository';
 export { EtsySyncConfigRepository } from './EtsySyncConfigRepository';
+export { NotificationRepository } from './NotificationRepository';
+export { DiscountCodeRepository } from './DiscountCodeRepository';
+export { FumettoRepository } from './FumettoRepository';
 export { PersonaggioRepository } from './PersonaggioRepository';
 export { CartRepository } from './CartRepository';
 export { CartItemRepository } from './CartItemRepository';
