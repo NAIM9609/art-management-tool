@@ -18,6 +18,9 @@ export class Cart {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   discount_amount!: number;
 
+  @Column({ type: 'timestamp', nullable: true })
+  expires_at?: Date;
+
   @OneToMany(() => CartItem, (item) => item.cart)
   items!: CartItem[];
 
