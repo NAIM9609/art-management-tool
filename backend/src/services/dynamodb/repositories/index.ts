@@ -6,6 +6,8 @@ export { ProductRepository } from './ProductRepository';
 export { ProductVariantRepository } from './ProductVariantRepository';
 export { ProductImageRepository } from './ProductImageRepository';
 export { NotificationRepository } from './NotificationRepository';
+export { DiscountCodeRepository } from './DiscountCodeRepository';
+export { FumettoRepository } from './FumettoRepository';
 export { PersonaggioRepository } from './PersonaggioRepository';
 export { CartRepository } from './CartRepository';
 export { CartItemRepository } from './CartItemRepository';
