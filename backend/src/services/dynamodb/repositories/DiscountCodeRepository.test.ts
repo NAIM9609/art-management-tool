@@ -216,6 +216,28 @@ describe('DiscountCodeRepository', () => {
 
       await expect(repository.create(createData)).rejects.toThrow('valid_from must be before valid_until');
     });
+
+    it('should validate max_uses is a positive integer', async () => {
+      const createData: CreateDiscountCodeData = {
+        code: 'INVALID_MAX',
+        discount_type: DiscountType.PERCENTAGE,
+        discount_value: 10,
+        max_uses: 0, // Invalid
+      };
+
+      await expect(repository.create(createData)).rejects.toThrow('max_uses must be a positive integer');
+    });
+
+    it('should reject non-integer max_uses', async () => {
+      const createData: CreateDiscountCodeData = {
+        code: 'INVALID_MAX2',
+        discount_type: DiscountType.PERCENTAGE,
+        discount_value: 10,
+        max_uses: 10.5, // Invalid
+      };
+
+      await expect(repository.create(createData)).rejects.toThrow('max_uses must be a positive integer');
+    });
   });
 
   describe('findByCode', () => {
@@ -388,6 +410,21 @@ describe('DiscountCodeRepository', () => {
         description: 'Updated description',
       };
 
+      // Mock findById for validation when discount_value is provided without discount_type
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          code: 'SAVE20',
+          discount_type: DiscountType.PERCENTAGE,
+          discount_value: 20,
+          times_used: 0,
+          is_active: true,
+          valid_from: '2026-01-01T00:00:00.000Z',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+      });
+
       ddbMock.on(UpdateCommand).resolves({
         Attributes: {
           id: 1,
@@ -397,8 +434,8 @@ describe('DiscountCodeRepository', () => {
           discount_value: 25,
           times_used: 0,
           is_active: true,
-          valid_from: '2024-01-01T00:00:00.000Z',
-          created_at: '2024-01-01T00:00:00.000Z',
+          valid_from: '2026-01-01T00:00:00.000Z',
+          created_at: '2026-01-01T00:00:00.000Z',
           updated_at: new Date().toISOString(),
         },
       });
@@ -522,6 +559,12 @@ describe('DiscountCodeRepository', () => {
         discount_value: 30,
       };
 
+      // Mock findById for validation - return null (not found)
+      ddbMock.on(GetCommand).resolves({
+        Item: undefined,
+      });
+
+      // Mock UpdateCommand to fail
       ddbMock.on(UpdateCommand).rejects({
         name: 'ConditionalCheckFailedException',
       });
@@ -535,6 +578,21 @@ describe('DiscountCodeRepository', () => {
       const updateData: UpdateDiscountCodeData = {
         discount_value: 30,
       };
+
+      // Mock findById for validation
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          code: 'TEST',
+          discount_type: DiscountType.PERCENTAGE,
+          discount_value: 20,
+          times_used: 0,
+          is_active: true,
+          valid_from: '2026-01-01T00:00:00.000Z',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+      });
 
       // Capture the command that was sent before rejecting
       let capturedCondition: string | undefined;
@@ -555,6 +613,21 @@ describe('DiscountCodeRepository', () => {
       const updateData: UpdateDiscountCodeData = {
         discount_value: -10, // Invalid
       };
+
+      // Mock findById for validation (even though validation should fail)
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          code: 'TEST',
+          discount_type: DiscountType.FIXED,
+          discount_value: 10,
+          times_used: 0,
+          is_active: true,
+          valid_from: '2026-01-01T00:00:00.000Z',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+      });
 
       await expect(repository.update(1, updateData)).rejects.toThrow('Discount value must be positive');
     });
@@ -940,7 +1013,9 @@ describe('DiscountCodeRepository', () => {
       
       expect(incrementCall?.args[0].input.ConditionExpression).toContain('is_active = :true');
       expect(incrementCall?.args[0].input.ConditionExpression).toContain('attribute_not_exists(deleted_at)');
-      expect(incrementCall?.args[0].input.ConditionExpression).toContain('times_used < :max_uses');
+      expect(incrementCall?.args[0].input.ConditionExpression).toContain('times_used < max_uses');
+      expect(incrementCall?.args[0].input.ConditionExpression).toContain('attribute_not_exists(valid_from) OR valid_from <= :now');
+      expect(incrementCall?.args[0].input.ConditionExpression).toContain('attribute_not_exists(valid_until) OR valid_until >= :now');
     });
   });
 
