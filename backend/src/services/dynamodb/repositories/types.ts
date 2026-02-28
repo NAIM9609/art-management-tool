@@ -180,6 +180,60 @@ export interface EtsyProduct {
   updated_at: string;
 }
 
+/**
+ * Personaggio (Character) interfaces
+ */
+export interface Personaggio {
+  id: number;
+  name: string;
+  description?: string;
+  images: string[];
+  order: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+/**
+ * Cart interfaces
+ */
+export interface Cart {
+  id: string;
+  session_id?: string;
+  user_id?: number;
+  discount_code?: string;
+  discount_amount?: number;
+  created_at: string;
+  updated_at: string;
+  expires_at: number; // TTL timestamp in seconds
+}
+
+export interface CreateCartData {
+  session_id?: string;
+  user_id?: number;
+  discount_code?: string;
+  discount_amount?: number;
+}
+
+export interface UpdateCartData {
+  session_id?: string;
+  user_id?: number;
+  discount_code?: string;
+  discount_amount?: number;
+}
+
+/**
+ * CartItem interfaces
+ */
+export interface CartItem {
+  id: string;
+  cart_id: string;
+  product_id: number;
+  variant_id?: number;
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CreateEtsyProductData {
   local_product_id: number;
   etsy_listing_id: number;
@@ -311,4 +365,188 @@ export interface UpdateEtsySyncConfigData {
   sync_error?: string;
   rate_limit_remaining?: number;
   rate_limit_reset_at?: string;
+}
+
+export interface CreateCartItemData {
+  cart_id: string;
+  product_id: number;
+  variant_id?: number;
+  quantity: number;
+}
+
+export interface UpdateCartItemData {
+  quantity?: number;
+}
+
+export interface OrderItem {
+  id: string;
+  order_id: number;
+  product_id?: number;
+  variant_id?: string;
+  product_name: string;
+  variant_name?: string;
+  sku?: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  created_at: string;
+}
+
+export interface CreateOrderItemData {
+  order_id: number;
+  product_id?: number;
+  variant_id?: string;
+  product_name: string;
+  variant_name?: string;
+  sku?: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  }
+ /* Order interfaces
+ */
+export enum OrderStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  SHIPPED = 'shipped',
+  DELIVERED = 'delivered',
+  CANCELLED = 'cancelled',
+  REFUNDED = 'refunded',
+}
+
+export interface Order {
+  id: string;
+  order_number: string;
+  user_id?: number;
+  customer_email: string;
+  customer_name: string;
+  subtotal: number;
+  tax: number;
+  discount: number;
+  total: number;
+  currency: string;
+  status: OrderStatus;
+  payment_status?: string;
+  payment_intent_id?: string;
+  payment_method?: string;
+  fulfillment_status?: string;
+  shipping_address?: Record<string, any>;
+  billing_address?: Record<string, any>;
+  notes?: string;
+    created_at: string;
+
+  updated_at: string;
+
+  deleted_at?: string;
+
+}
+
+/* Category interfaces
+ */
+export interface Category {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  parent_id?: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+export interface CreatePersonaggioData {
+  name: string;
+  description?: string;
+  images?: string[];
+  order?: number;
+}
+
+export interface UpdatePersonaggioData {
+  name?: string;
+  description?: string;
+  images?: string[];
+  order?: number;
+}
+export interface CreateOrderData {
+  user_id?: number;
+  customer_email: string;
+  customer_name: string;
+  subtotal: number;
+  tax?: number;
+  discount?: number;
+  total: number;
+  currency?: string;
+  status?: OrderStatus;
+  payment_status?: string;
+  payment_intent_id?: string;
+  payment_method?: string;
+  fulfillment_status?: string;
+  shipping_address?: Record<string, any>;
+  billing_address?: Record<string, any>;
+  notes?: string;
+}
+
+export interface UpdateOrderData {
+  customer_email?: string;
+  customer_name?: string;
+  subtotal?: number;
+  tax?: number;
+  discount?: number;
+  total?: number;
+  currency?: string;
+  status?: OrderStatus;
+  payment_status?: string;
+  payment_intent_id?: string;
+  payment_method?: string;
+  fulfillment_status?: string;
+  shipping_address?: Record<string, any>;
+  billing_address?: Record<string, any>;
+  notes?: string;
+}
+
+export interface OrderFilters {
+  status?: OrderStatus;
+  customer_email?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+/**
+ * OrderSummary - Partial order data for list/query operations
+ * Used when projection expressions fetch only a subset of fields
+ */
+export interface OrderSummary {
+  id: string;
+  order_number: string;
+  customer_email: string;
+  customer_name: string;
+  total: number;
+  status: OrderStatus;
+  created_at: string;
+  // Optional fields that may be included in some projections
+  subtotal?: number;
+  tax?: number;
+  discount?: number;
+  currency?: string;
+  updated_at?: string;
+  }
+
+export interface CreateCategoryData {
+  name: string;
+  slug: string;
+  description?: string;
+  parent_id?: number;
+}
+
+export interface UpdateCategoryData {
+  name?: string;
+  slug?: string;
+  description?: string;
+  parent_id?: number;
+}
+
+export interface CategoryProduct {
+  category_id: number;
+  product_id: number;
+  created_at: string;
 }
