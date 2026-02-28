@@ -139,8 +139,57 @@ export interface UpdateProductImageData {
 }
 
 /**
- * OrderItem interfaces
+ * Cart interfaces
  */
+export interface Cart {
+  id: string;
+  session_id?: string;
+  user_id?: number;
+  discount_code?: string;
+  discount_amount?: number;
+  created_at: string;
+  updated_at: string;
+  expires_at: number; // TTL timestamp in seconds
+}
+
+export interface CreateCartData {
+  session_id?: string;
+  user_id?: number;
+  discount_code?: string;
+  discount_amount?: number;
+}
+
+export interface UpdateCartData {
+  session_id?: string;
+  user_id?: number;
+  discount_code?: string;
+  discount_amount?: number;
+}
+
+/**
+ * CartItem interfaces
+ */
+export interface CartItem {
+  id: string;
+  cart_id: string;
+  product_id: number;
+  variant_id?: number;
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateCartItemData {
+  cart_id: string;
+  product_id: number;
+  variant_id?: number;
+  quantity: number;
+}
+
+export interface UpdateCartItemData {
+  quantity?: number;
+}
+
 export interface OrderItem {
   id: string;
   order_id: number;
