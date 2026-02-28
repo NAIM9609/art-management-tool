@@ -60,6 +60,14 @@ describe('FumettoRepository', () => {
       expect(fumetto.order).toBe(3); // Next order after existing
       expect(fumetto.created_at).toBeDefined();
       expect(fumetto.updated_at).toBeDefined();
+
+      // Verify QueryCommand was called with correct GSI1 query
+      const queryCalls = ddbMock.commandCalls(QueryCommand);
+      expect(queryCalls.length).toBeGreaterThan(0);
+      const queryInput = queryCalls[0].args[0].input;
+      expect(queryInput.IndexName).toBe('GSI1');
+      expect(queryInput.KeyConditionExpression).toBe('GSI1PK = :pk');
+      expect(queryInput.ExpressionAttributeValues).toHaveProperty(':pk', 'FUMETTO_ORDER');
     });
 
     it('should create fumetto with order 0 when no existing fumetti', async () => {
@@ -218,6 +226,14 @@ describe('FumettoRepository', () => {
       expect(result.items[1].id).toBe(2);
       expect(result.items[1].order).toBe(1);
       expect(result.count).toBe(2);
+
+      // Verify QueryCommand was called with correct GSI1 query
+      const calls = ddbMock.commandCalls(QueryCommand);
+      expect(calls.length).toBeGreaterThan(0);
+      const queryInput = calls[calls.length - 1].args[0].input;
+      expect(queryInput.IndexName).toBe('GSI1');
+      expect(queryInput.KeyConditionExpression).toBe('GSI1PK = :pk');
+      expect(queryInput.ExpressionAttributeValues).toHaveProperty(':pk', 'FUMETTO_ORDER');
     });
 
     it('should exclude soft-deleted fumetti', async () => {
@@ -230,9 +246,12 @@ describe('FumettoRepository', () => {
 
       expect(result.items).toHaveLength(0);
 
-      // Verify filter expression is applied
+      // Verify filter expression is applied and GSI1 query is correct
       const calls = ddbMock.commandCalls(QueryCommand);
-      expect(calls[0].args[0].input.FilterExpression).toContain('attribute_not_exists(deleted_at)');
+      const queryInput = calls[calls.length - 1].args[0].input;
+      expect(queryInput.FilterExpression).toContain('attribute_not_exists(deleted_at)');
+      expect(queryInput.KeyConditionExpression).toBe('GSI1PK = :pk');
+      expect(queryInput.ExpressionAttributeValues).toHaveProperty(':pk', 'FUMETTO_ORDER');
     });
 
     it('should support pagination', async () => {
@@ -316,11 +335,11 @@ describe('FumettoRepository', () => {
         PK: 'FUMETTO#1',
         SK: 'METADATA',
       });
-      // Verify the expression attribute values contain the order value
+      // Verify the expression attribute values contain the correct GSI values
       const values = updateInput.ExpressionAttributeValues || {};
       expect(Object.values(values)).toContain(5);
-      expect(Object.values(values)).toContain('FUMETTO_ORDER#0000000005');
-      expect(Object.values(values)).toContain('FUMETTO#1');
+      expect(Object.values(values)).toContain('FUMETTO_ORDER');
+      expect(Object.values(values)).toContain('0000000005#1');
     });
 
     it('should update pages array correctly', async () => {
@@ -525,6 +544,17 @@ describe('FumettoRepository', () => {
       expect(reordered[1].order).toBe(1);
       expect(reordered[2].id).toBe(2);
       expect(reordered[2].order).toBe(2);
+
+      // Verify transaction includes ConditionExpression
+      const transactCalls = ddbMock.commandCalls(TransactWriteCommand);
+      expect(transactCalls.length).toBeGreaterThan(0);
+      const transactItems = transactCalls[0].args[0].input.TransactItems;
+      expect(transactItems).toBeDefined();
+      transactItems?.forEach((item: any) => {
+        if (item.Update) {
+          expect(item.Update.ConditionExpression).toBe('attribute_exists(PK)');
+        }
+      });
     });
 
     it('should throw error when fumetto not found during reorder', async () => {
@@ -550,6 +580,7 @@ describe('FumettoRepository', () => {
     });
 
     it('should skip fumetti that already have correct order', async () => {
+      const originalUpdatedAt = '2024-01-01T00:00:00.000Z';
       // Mock fumetti that are already in correct order
       ddbMock.on(GetCommand).resolvesOnce({
         Item: {
@@ -558,7 +589,7 @@ describe('FumettoRepository', () => {
           order: 0,
           pages: [],
           created_at: '2024-01-01T00:00:00.000Z',
-          updated_at: '2024-01-01T00:00:00.000Z',
+          updated_at: originalUpdatedAt,
         },
       }).resolvesOnce({
         Item: {
@@ -594,6 +625,10 @@ describe('FumettoRepository', () => {
       const reordered = await repository.reorder([1, 2]);
 
       expect(reordered).toHaveLength(2);
+      
+      // Verify updated_at is preserved for items that were not actually updated
+      expect(reordered[0].updated_at).toBe(originalUpdatedAt);
+      expect(reordered[1].updated_at).toBe('2024-01-02T00:00:00.000Z');
 
       // Verify no transaction was executed since order didn't change
       const transactCalls = ddbMock.commandCalls(TransactWriteCommand);

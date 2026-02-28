@@ -4,8 +4,8 @@
  * DynamoDB Structure:
  * PK: "FUMETTO#${id}"
  * SK: "METADATA"
- * GSI1PK: "FUMETTO_ORDER#${order}"
- * GSI1SK: "FUMETTO#${id}"
+ * GSI1PK: "FUMETTO_ORDER" (constant for all fumetti)
+ * GSI1SK: "${order.padStart(10, '0')}#${id}" (sortable by order, then by id)
  * 
  * Features:
  * - CRUD operations with auto-increment ID
@@ -68,11 +68,11 @@ export class FumettoRepository {
   private async getNextOrder(): Promise<number> {
     const result = await this.dynamoDB.queryEventuallyConsistent({
       indexName: 'GSI1',
-      keyConditionExpression: 'begins_with(GSI1PK, :prefix)',
+      keyConditionExpression: 'GSI1PK = :pk',
       expressionAttributeValues: {
-        ':prefix': 'FUMETTO_ORDER#',
+        ':pk': 'FUMETTO_ORDER',
       },
-      scanIndexForward: false, // Descending order
+      scanIndexForward: false, // Descending order by GSI1SK
       limit: 1,
       projectionExpression: '#order',
       expressionAttributeNames: {
@@ -116,9 +116,9 @@ export class FumettoRepository {
       order: fumetto.order,
       created_at: fumetto.created_at,
       updated_at: fumetto.updated_at,
-      // GSI1 - Fumetto by order
-      GSI1PK: `FUMETTO_ORDER#${String(fumetto.order).padStart(10, '0')}`,
-      GSI1SK: `FUMETTO#${fumetto.id}`,
+      // GSI1 - Fumetto by order (constant PK, sortable SK)
+      GSI1PK: 'FUMETTO_ORDER',
+      GSI1SK: `${String(fumetto.order).padStart(10, '0')}#${fumetto.id}`,
     };
 
     // Add optional fields
@@ -184,13 +184,13 @@ export class FumettoRepository {
   async findAll(params: PaginationParams = {}): Promise<PaginatedResponse<Fumetto>> {
     const result = await this.dynamoDB.queryEventuallyConsistent({
       indexName: 'GSI1',
-      keyConditionExpression: 'begins_with(GSI1PK, :prefix)',
+      keyConditionExpression: 'GSI1PK = :pk',
       expressionAttributeValues: {
-        ':prefix': 'FUMETTO_ORDER#',
+        ':pk': 'FUMETTO_ORDER',
       },
       limit: params.limit || 30,
       exclusiveStartKey: params.lastEvaluatedKey,
-      scanIndexForward: true, // Ascending order by order field
+      scanIndexForward: true, // Ascending order by GSI1SK (order#id)
       // Exclude soft-deleted fumetti
       filterExpression: 'attribute_not_exists(deleted_at)',
     });
@@ -222,8 +222,8 @@ export class FumettoRepository {
     const needsGSI1Update = data.order !== undefined;
     
     if (needsGSI1Update) {
-      updates.GSI1PK = `FUMETTO_ORDER#${String(data.order).padStart(10, '0')}`;
-      updates.GSI1SK = `FUMETTO#${id}`;
+      updates.GSI1PK = 'FUMETTO_ORDER';
+      updates.GSI1SK = `${String(data.order).padStart(10, '0')}#${id}`;
     }
 
     try {
@@ -353,6 +353,7 @@ export class FumettoRepository {
     // Build transaction items to update order for each fumetto
     const now = new Date().toISOString();
     const transactWrites: any[] = [];
+    const updatedIds = new Set<number>(); // Track which items were actually updated
     
     for (let i = 0; i < fumettiIds.length; i++) {
       const id = fumettiIds[i];
@@ -364,6 +365,8 @@ export class FumettoRepository {
         continue;
       }
       
+      updatedIds.add(id);
+      
       // Update item with new order
       transactWrites.push({
         Update: {
@@ -373,6 +376,7 @@ export class FumettoRepository {
             SK: 'METADATA',
           },
           UpdateExpression: 'SET #order = :order, #updated_at = :updated_at, GSI1PK = :gsi1pk, GSI1SK = :gsi1sk',
+          ConditionExpression: 'attribute_exists(PK)',
           ExpressionAttributeNames: {
             '#order': 'order',
             '#updated_at': 'updated_at',
@@ -380,8 +384,8 @@ export class FumettoRepository {
           ExpressionAttributeValues: {
             ':order': newOrder,
             ':updated_at': now,
-            ':gsi1pk': `FUMETTO_ORDER#${String(newOrder).padStart(10, '0')}`,
-            ':gsi1sk': `FUMETTO#${id}`,
+            ':gsi1pk': 'FUMETTO_ORDER',
+            ':gsi1sk': `${String(newOrder).padStart(10, '0')}#${id}`,
           },
         },
       });
@@ -398,12 +402,13 @@ export class FumettoRepository {
     }
 
     // Return reordered fumetti by mapping from already-fetched data with updated order
+    // Only update updated_at for items that were actually written to DynamoDB
     return fumettiIds.map((id, newOrder) => {
       const fumetto = fumettoMap.get(id)!;
       return {
         ...fumetto,
         order: newOrder,
-        updated_at: now,
+        updated_at: updatedIds.has(id) ? now : fumetto.updated_at,
       };
     });
   }
