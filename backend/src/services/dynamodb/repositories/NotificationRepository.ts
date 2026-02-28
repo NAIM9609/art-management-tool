@@ -214,6 +214,7 @@ export class NotificationRepository {
 
     // Otherwise, fetch all notifications by querying both read and unread partitions
     // and merging the results, sorted by created_at descending
+    // Note: Pagination is limited when querying without filter due to merging from two partitions
     const limit = params.limit || 30;
 
     const [unreadResult, readResult] = await Promise.all([
@@ -223,6 +224,7 @@ export class NotificationRepository {
         expressionAttributeValues: {
           ':gsi1pk': 'NOTIFICATION_READ#false',
         },
+        limit: limit, // Apply limit to reduce data fetched
         scanIndexForward: false, // Newest first within unread partition
       }),
       this.dynamoDB.queryEventuallyConsistent({
@@ -231,6 +233,7 @@ export class NotificationRepository {
         expressionAttributeValues: {
           ':gsi1pk': 'NOTIFICATION_READ#true',
         },
+        limit: limit, // Apply limit to reduce data fetched
         scanIndexForward: false, // Newest first within read partition
       }),
     ]);
@@ -245,6 +248,8 @@ export class NotificationRepository {
 
     const paginatedItems = allNotifications.slice(0, limit);
 
+    // Note: lastEvaluatedKey is not supported when querying without is_read filter
+    // For proper pagination, use findAll({ is_read: false }) or findAll({ is_read: true })
     return {
       items: paginatedItems,
       lastEvaluatedKey: undefined,
@@ -364,6 +369,7 @@ export class NotificationRepository {
             updated_at: now,
             GSI1PK: 'NOTIFICATION_READ#true',
           },
+          conditionExpression: 'attribute_exists(PK)', // Prevent creating ghost items
         })
       );
 

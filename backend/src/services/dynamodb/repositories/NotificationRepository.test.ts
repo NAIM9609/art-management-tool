@@ -169,17 +169,6 @@ describe('NotificationRepository', () => {
     it('should find all unread notifications using GSI1', async () => {
       const mockItems = [
         {
-          id: '1',
-          type: NotificationType.ORDER_CREATED,
-          title: 'Order 1',
-          is_read: false,
-          created_at: '2024-01-01T00:00:00.000Z',
-          updated_at: '2024-01-01T00:00:00.000Z',
-          expires_at: 1234567890,
-          GSI1PK: 'NOTIFICATION_READ#false',
-          GSI1SK: '2024-01-01T00:00:00.000Z',
-        },
-        {
           id: '2',
           type: NotificationType.ORDER_PAID,
           title: 'Order 2',
@@ -189,6 +178,17 @@ describe('NotificationRepository', () => {
           expires_at: 1234567890,
           GSI1PK: 'NOTIFICATION_READ#false',
           GSI1SK: '2024-01-02T00:00:00.000Z',
+        },
+        {
+          id: '1',
+          type: NotificationType.ORDER_CREATED,
+          title: 'Order 1',
+          is_read: false,
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-01T00:00:00.000Z',
+          expires_at: 1234567890,
+          GSI1PK: 'NOTIFICATION_READ#false',
+          GSI1SK: '2024-01-01T00:00:00.000Z',
         },
       ];
 
@@ -200,8 +200,9 @@ describe('NotificationRepository', () => {
       const result = await repository.findAll({ is_read: false });
 
       expect(result.items).toHaveLength(2);
-      expect(result.items[0].id).toBe('1');
-      expect(result.items[1].id).toBe('2');
+      // scanIndexForward: false means newest first (by created_at descending)
+      expect(result.items[0].id).toBe('2'); // 2024-01-02 (newer)
+      expect(result.items[1].id).toBe('1'); // 2024-01-01 (older)
       expect(result.count).toBe(2);
     });
 
