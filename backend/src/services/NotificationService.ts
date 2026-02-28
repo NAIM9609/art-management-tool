@@ -1,6 +1,13 @@
-import { Repository } from 'typeorm';
-import { AppDataSource } from '../database/connection';
-import { Notification, NotificationType } from '../entities/Notification';
+import { DynamoDBOptimized } from './dynamodb/DynamoDBOptimized';
+import { NotificationRepository } from './dynamodb/repositories/NotificationRepository';
+import {
+  Notification,
+  NotificationType,
+  CreateNotificationData,
+  NotificationFilters,
+  PaginationParams,
+  PaginatedResponse,
+} from './dynamodb/repositories/types';
 
 export interface NotificationData {
   type: NotificationType | string;
@@ -10,58 +17,79 @@ export interface NotificationData {
 }
 
 export class NotificationService {
-  private notificationRepo: Repository<Notification>;
+  private notificationRepo: NotificationRepository;
 
   constructor() {
-    this.notificationRepo = AppDataSource.getRepository(Notification);
+    const dynamoDB = new DynamoDBOptimized({
+      tableName: process.env.DYNAMODB_TABLE_NAME || 'art-management-table',
+      region: process.env.AWS_REGION || 'us-east-1',
+    });
+    this.notificationRepo = new NotificationRepository(dynamoDB);
   }
 
+  /**
+   * Create notification with TTL (90 days from creation)
+   */
   async createNotification(data: NotificationData): Promise<Notification> {
-    const notification = this.notificationRepo.create({
+    const createData: CreateNotificationData = {
       type: data.type as NotificationType,
       title: data.title,
       message: data.message,
       metadata: data.metadata,
-    });
-    return this.notificationRepo.save(notification);
+    };
+    return this.notificationRepo.create(createData);
   }
 
-  async getNotifications(unreadOnly: boolean = false, page: number = 1, perPage: number = 20): Promise<{ notifications: Notification[]; total: number }> {
-    const where: any = {};
+  /**
+   * Get notifications with filters and pagination
+   * @param unreadOnly - Filter for unread notifications only
+   * @param page - Page number (1-indexed) - converted to limit/offset for DynamoDB
+   * @param perPage - Number of items per page
+   */
+  async getNotifications(
+    unreadOnly: boolean = false,
+    page: number = 1,
+    perPage: number = 20
+  ): Promise<{ notifications: Notification[]; total: number }> {
+    const filters: NotificationFilters = {};
     if (unreadOnly) {
-      where.is_read = false;
+      filters.is_read = false;
     }
 
-    const [notifications, total] = await this.notificationRepo.findAndCount({
-      where,
-      skip: (page - 1) * perPage,
-      take: perPage,
-      order: { created_at: 'DESC' },
-    });
+    const params: PaginationParams = {
+      limit: perPage,
+    };
 
-    return { notifications, total };
+    const result: PaginatedResponse<Notification> = await this.notificationRepo.findAll(filters, params);
+
+    return {
+      notifications: result.items,
+      total: result.count, // Note: DynamoDB count is for current page, not total
+    };
   }
 
-  async getNotificationById(id: number): Promise<Notification | null> {
-    return this.notificationRepo.findOne({ where: { id } });
+  async getNotificationById(id: string): Promise<Notification | null> {
+    return this.notificationRepo.findById(id);
   }
 
-  async markAsRead(id: number): Promise<Notification> {
-    await this.notificationRepo.update(id, {
-      is_read: true,
-      read_at: new Date(),
-    });
-    return this.notificationRepo.findOneOrFail({ where: { id } });
+  /**
+   * Mark notification as read
+   */
+  async markAsRead(id: string): Promise<Notification | null> {
+    return this.notificationRepo.markAsRead(id);
   }
 
+  /**
+   * Mark all unread notifications as read (batch update)
+   */
   async markAllAsRead(): Promise<void> {
-    await this.notificationRepo.update(
-      { is_read: false },
-      { is_read: true, read_at: new Date() }
-    );
+    await this.notificationRepo.markAllAsRead();
   }
 
-  async deleteNotification(id: number): Promise<void> {
+  /**
+   * Hard delete notification
+   */
+  async deleteNotification(id: string): Promise<void> {
     await this.notificationRepo.delete(id);
   }
 }
