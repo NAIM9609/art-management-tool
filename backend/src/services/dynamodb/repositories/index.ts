@@ -5,6 +5,7 @@
 export { ProductRepository } from './ProductRepository';
 export { ProductVariantRepository } from './ProductVariantRepository';
 export { ProductImageRepository } from './ProductImageRepository';
+export { AuditLogRepository } from './AuditLogRepository';
 export { EtsyOAuthTokenRepository } from './EtsyOAuthTokenRepository';
 export { EtsyProductRepository } from './EtsyProductRepository';
 export { EtsyReceiptRepository } from './EtsyReceiptRepository';
