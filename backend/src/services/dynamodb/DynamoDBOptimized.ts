@@ -24,6 +24,7 @@ import {
   DeleteCommand,
   BatchGetCommand,
   BatchWriteCommand,
+  TransactWriteCommand,
   QueryCommandInput,
   GetCommandInput,
   PutCommandInput,
@@ -31,6 +32,7 @@ import {
   DeleteCommandInput,
   BatchGetCommandInput,
   BatchWriteCommandInput,
+  TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 import {
   QueryEventuallyConsistentParams,
@@ -643,5 +645,34 @@ export class DynamoDBOptimized {
         writeCapacityUnits: result.ConsumedCapacity.WriteCapacityUnits,
       } : undefined,
     };
+  }
+
+  /**
+   * Execute transaction with up to 25 items
+   * All operations succeed or fail together (atomic)
+   */
+  async transactWrite(transactItems: any[]): Promise<void> {
+    if (transactItems.length === 0) {
+      return;
+    }
+
+    if (transactItems.length > 25) {
+      throw new Error('Transaction supports up to 25 items at a time');
+    }
+
+    const input: TransactWriteCommandInput = {
+      TransactItems: transactItems,
+      ReturnConsumedCapacity: this.returnConsumedCapacity,
+    };
+
+    const result = await this.executeWithRetry(
+      async () => this.client.send(new TransactWriteCommand(input)),
+      'transactWrite'
+    );
+
+    // Log consumed capacity
+    if (result.ConsumedCapacity) {
+      CapacityLogger.logBatchConsumedCapacity('TransactWrite', result.ConsumedCapacity);
+    }
   }
 }
