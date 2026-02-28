@@ -393,7 +393,7 @@ describe('AuditLogRepository', () => {
       let queryCount = 0;
       ddbMock.on(QueryCommand).callsFake((input) => {
         queryCount++;
-        expect(input.KeyConditionExpression).toBe('begins_with(PK, :pk)');
+        expect(input.KeyConditionExpression).toBe('PK = :pk');
         if (queryCount === 1) {
           expect(input.ExpressionAttributeValues![':pk']).toBe('AUDIT#2024-01-01');
         } else if (queryCount === 2) {
@@ -515,7 +515,7 @@ describe('AuditLogRepository', () => {
         entity_id: '123',
         user_id: 'user-456',
         action: 'CREATE',
-        created_at: `2024-01-01T${String(i % 24).padStart(2, '0')}:00:00.000Z`,
+        created_at: `2024-01-01T${String(23 - (i % 24)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00.000Z`,
         expires_at: 1735728000,
       }));
 
@@ -532,7 +532,83 @@ describe('AuditLogRepository', () => {
 
       expect(result.items.length).toBe(50);
       expect(result.lastEvaluatedKey).toBeDefined();
-      expect(result.lastEvaluatedKey?.startIndex).toBe(50);
+      expect(result.lastEvaluatedKey?.created_at).toBeDefined();
+      
+      // Verify cursor-based pagination works
+      const nextPageResult = await repository.findByDateRange(
+        '2024-01-01T00:00:00.000Z',
+        '2024-01-01T23:59:59.999Z',
+        { limit: 50, lastEvaluatedKey: result.lastEvaluatedKey }
+      );
+      
+      expect(nextPageResult.items.length).toBe(50);
+      // Items in second page should be older than items in first page
+      if (result.items.length > 0 && nextPageResult.items.length > 0) {
+        const firstPageLastTime = new Date(result.items[result.items.length - 1].created_at).getTime();
+        const secondPageFirstTime = new Date(nextPageResult.items[0].created_at).getTime();
+        expect(secondPageFirstTime).toBeLessThan(firstPageLastTime);
+      }
+    });
+
+    it('should reject non-ISO 8601 date formats', async () => {
+      await expect(
+        repository.findByDateRange(
+          '2024/01/01',  // Invalid format (slash separators)
+          '2024-01-31T00:00:00.000Z'
+        )
+      ).rejects.toThrow('Invalid startDate');
+
+      await expect(
+        repository.findByDateRange(
+          '2024-01-01T00:00:00.000Z',
+          'January 1, 2024'  // Invalid format (text)
+        )
+      ).rejects.toThrow('Invalid endDate');
+    });
+
+    it('should paginate within each date partition', async () => {
+      let callCount = 0;
+      ddbMock.on(QueryCommand).callsFake((input) => {
+        callCount++;
+        // Simulate DynamoDB pagination with LastEvaluatedKey
+        if (callCount === 1) {
+          return {
+            Items: Array.from({ length: 10 }, (_, i) => ({
+              id: `uuid${i}`,
+              entity_type: 'Product',
+              entity_id: '123',
+              user_id: 'user-456',
+              action: 'CREATE',
+              created_at: `2024-01-01T10:${String(i).padStart(2, '0')}:00.000Z`,
+              expires_at: 1735728000,
+            })),
+            Count: 10,
+            LastEvaluatedKey: { PK: 'AUDIT#2024-01-01', SK: 'METADATA' }, // Simulate more data
+          };
+        } else {
+          return {
+            Items: Array.from({ length: 5 }, (_, i) => ({
+              id: `uuid${i + 10}`,
+              entity_type: 'Product',
+              entity_id: '123',
+              user_id: 'user-456',
+              action: 'CREATE',
+              created_at: `2024-01-01T10:${String(i + 10).padStart(2, '0')}:00.000Z`,
+              expires_at: 1735728000,
+            })),
+            Count: 5,
+          };
+        }
+      });
+
+      const result = await repository.findByDateRange(
+        '2024-01-01T00:00:00.000Z',
+        '2024-01-01T23:59:59.999Z'
+      );
+
+      // Should have made 2 calls to paginate through the partition
+      expect(callCount).toBe(2);
+      expect(result.items.length).toBe(15); // Total from both pages
     });
   });
 
@@ -551,6 +627,25 @@ describe('AuditLogRepository', () => {
       
       // Should create successfully with valid ISO format
       expect(auditLog.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    });
+
+    it('should use conditionExpression to prevent overwrites', async () => {
+      const createData: CreateAuditLogData = {
+        entity_type: 'Product',
+        entity_id: '123',
+        user_id: 'user-456',
+        action: 'CREATE',
+      };
+
+      let capturedCondition: string | undefined;
+      ddbMock.on(PutCommand).callsFake((input) => {
+        capturedCondition = input.ConditionExpression;
+        return {};
+      });
+
+      await repository.create(createData);
+
+      expect(capturedCondition).toBe('attribute_not_exists(PK) AND attribute_not_exists(SK)');
     });
   });
 
