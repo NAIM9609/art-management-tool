@@ -383,9 +383,10 @@ describe('AuditLogRepository', () => {
         '2024-01-02T23:59:59.999Z'
       );
 
-      expect(result).toHaveLength(2);
-      expect(result[0].created_at).toBe('2024-01-02T10:00:00.000Z'); // Newest first
-      expect(result[1].created_at).toBe('2024-01-01T10:00:00.000Z');
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0].created_at).toBe('2024-01-02T10:00:00.000Z'); // Newest first
+      expect(result.items[1].created_at).toBe('2024-01-01T10:00:00.000Z');
+      expect(result.count).toBe(2);
     });
 
     it('should query each date partition separately', async () => {
@@ -452,11 +453,11 @@ describe('AuditLogRepository', () => {
         '2024-01-01T22:00:00.000Z'
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('uuid2');
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].id).toBe('uuid2');
     });
 
-    it('should return empty array for no matches', async () => {
+    it('should return empty result for no matches', async () => {
       ddbMock.on(QueryCommand).resolves({
         Items: [],
         Count: 0,
@@ -467,20 +468,110 @@ describe('AuditLogRepository', () => {
         '2024-01-01T23:59:59.999Z'
       );
 
-      expect(result).toEqual([]);
+      expect(result.items).toEqual([]);
+      expect(result.count).toBe(0);
+    });
+
+    it('should throw error for date range exceeding maximum', async () => {
+      await expect(
+        repository.findByDateRange(
+          '2024-01-01T00:00:00.000Z',
+          '2024-06-01T00:00:00.000Z' // 152 days, exceeds 90 day limit
+        )
+      ).rejects.toThrow('Date range exceeds maximum allowed');
+    });
+
+    it('should throw error for invalid start date', async () => {
+      await expect(
+        repository.findByDateRange(
+          'invalid-date',
+          '2024-01-31T00:00:00.000Z'
+        )
+      ).rejects.toThrow('Invalid startDate');
+    });
+
+    it('should throw error for invalid end date', async () => {
+      await expect(
+        repository.findByDateRange(
+          '2024-01-01T00:00:00.000Z',
+          'invalid-date'
+        )
+      ).rejects.toThrow('Invalid endDate');
+    });
+
+    it('should throw error when start date is after end date', async () => {
+      await expect(
+        repository.findByDateRange(
+          '2024-01-31T00:00:00.000Z',
+          '2024-01-01T00:00:00.000Z'
+        )
+      ).rejects.toThrow('startDate must be less than or equal to endDate');
+    });
+
+    it('should support pagination', async () => {
+      const mockItems = Array.from({ length: 150 }, (_, i) => ({
+        id: `uuid${i}`,
+        entity_type: 'Product',
+        entity_id: '123',
+        user_id: 'user-456',
+        action: 'CREATE',
+        created_at: `2024-01-01T${String(i % 24).padStart(2, '0')}:00:00.000Z`,
+        expires_at: 1735728000,
+      }));
+
+      ddbMock.on(QueryCommand).resolves({
+        Items: mockItems,
+        Count: 150,
+      });
+
+      const result = await repository.findByDateRange(
+        '2024-01-01T00:00:00.000Z',
+        '2024-01-01T23:59:59.999Z',
+        { limit: 50 }
+      );
+
+      expect(result.items.length).toBe(50);
+      expect(result.lastEvaluatedKey).toBeDefined();
+      expect(result.lastEvaluatedKey?.startIndex).toBe(50);
+    });
+  });
+
+  describe('date validation and formatting', () => {
+    it('should validate date format in buildAuditLogItem', async () => {
+      const createData: CreateAuditLogData = {
+        entity_type: 'Product',
+        entity_id: '123',
+        user_id: 'user-456',
+        action: 'CREATE',
+      };
+
+      ddbMock.on(PutCommand).resolves({});
+
+      const auditLog = await repository.create(createData);
+      
+      // Should create successfully with valid ISO format
+      expect(auditLog.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
   });
 
   describe('calculateTTL', () => {
-    it('should calculate TTL as 365 days from created_at', () => {
+    it('should throw error for invalid date', () => {
+      expect(() => {
+        // Access private method through any type cast for testing
+        (repository as any).calculateTTL('invalid-date');
+      }).toThrow('Invalid createdAt date for TTL calculation');
+    });
+
+    it('should calculate valid TTL for valid date', () => {
       const createdAt = '2024-01-01T00:00:00.000Z';
-      const ttl = repository.calculateTTL(createdAt);
+      const ttl = (repository as any).calculateTTL(createdAt);
 
       const createdAtMs = new Date(createdAt).getTime();
       const expectedExpiresAtMs = createdAtMs + 365 * 24 * 60 * 60 * 1000;
       const expectedExpiresAtSec = Math.floor(expectedExpiresAtMs / 1000);
 
       expect(ttl).toBe(expectedExpiresAtSec);
+      expect(Number.isFinite(ttl)).toBe(true);
     });
   });
 });

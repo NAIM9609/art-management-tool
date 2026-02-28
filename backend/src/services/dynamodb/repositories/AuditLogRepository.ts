@@ -28,6 +28,7 @@ import {
 export class AuditLogRepository {
   private dynamoDB: DynamoDBOptimized;
   private readonly TTL_DAYS = 365;
+  private readonly MAX_DATE_RANGE_DAYS = 90;
   
   constructor(dynamoDB: DynamoDBOptimized) {
     this.dynamoDB = dynamoDB;
@@ -36,7 +37,7 @@ export class AuditLogRepository {
   /**
    * Map DynamoDB item to AuditLog interface
    */
-  private mapToAuditLog(item: Record<string, any>): AuditLog {
+  mapToAuditLog(item: Record<string, any>): AuditLog {
     return {
       id: item.id,
       entity_type: item.entity_type,
@@ -51,11 +52,36 @@ export class AuditLogRepository {
   }
 
   /**
+   * Safely extract the partition date (YYYY-MM-DD) from created_at.
+   * Accepts:
+   *  - full ISO 8601 datetimes: YYYY-MM-DDTHH:mm:ss.sssZ
+   *  - plain dates: YYYY-MM-DD
+   * Throws an error if the format is invalid to avoid corrupting partition keys.
+   */
+  private extractPartitionDate(created_at: string): string {
+    // Match full ISO 8601 datetime and capture the date prefix.
+    const dateTimeMatch = /^(\d{4}-\d{2}-\d{2})T/.exec(created_at);
+    if (dateTimeMatch) {
+      return dateTimeMatch[1];
+    }
+
+    // Allow plain ISO date format.
+    const dateOnlyMatch = /^(\d{4}-\d{2}-\d{2})$/.exec(created_at);
+    if (dateOnlyMatch) {
+      return dateOnlyMatch[1];
+    }
+
+    throw new Error(
+      `Invalid created_at format for audit log. Expected ISO 8601 date or datetime (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss.sssZ), got: ${created_at}`
+    );
+  }
+
+  /**
    * Build DynamoDB item from AuditLog
    */
   private buildAuditLogItem(auditLog: AuditLog): Record<string, any> {
     // Extract date from created_at for partitioning (format: YYYY-MM-DD)
-    const date = auditLog.created_at.split('T')[0];
+    const date = this.extractPartitionDate(auditLog.created_at);
     
     const item: Record<string, any> = {
       PK: `AUDIT#${date}#${auditLog.id}`,
@@ -85,11 +111,26 @@ export class AuditLogRepository {
   /**
    * Calculate TTL timestamp (created_at + 365 days)
    * Returns Unix timestamp in seconds
+   * 
+   * Note: Uses 365-day calculation which may result in 364-366 day retention
+   * depending on leap years. This is acceptable for audit log TTL purposes.
    */
-  calculateTTL(createdAt: string): number {
+  private calculateTTL(createdAt: string): number {
     const createdAtDate = new Date(createdAt);
-    const expiresAt = new Date(createdAtDate.getTime() + this.TTL_DAYS * 24 * 60 * 60 * 1000);
-    return Math.floor(expiresAt.getTime() / 1000); // Unix timestamp in seconds
+    const createdAtTime = createdAtDate.getTime();
+
+    if (Number.isNaN(createdAtTime)) {
+      throw new Error(`Invalid createdAt date for TTL calculation: "${createdAt}"`);
+    }
+
+    const expiresAt = new Date(createdAtTime + this.TTL_DAYS * 24 * 60 * 60 * 1000);
+    const ttl = Math.floor(expiresAt.getTime() / 1000); // Unix timestamp in seconds
+
+    if (!Number.isFinite(ttl)) {
+      throw new Error('Failed to calculate a valid TTL value');
+    }
+
+    return ttl;
   }
 
   /**
@@ -216,17 +257,49 @@ export class AuditLogRepository {
    * Find audit logs within a date range
    * Uses PK prefix query for efficient date-based partitioning
    * Queries multiple date partitions in parallel for better performance
+   * 
+   * Maximum date range is limited to 90 days to prevent excessive queries.
+   * Supports pagination to handle large result sets.
+   * 
+   * Note: All dates are processed in UTC to ensure consistency.
+   * 
+   * @param startDate - ISO 8601 date string (YYYY-MM-DD or full datetime)
+   * @param endDate - ISO 8601 date string (YYYY-MM-DD or full datetime)
+   * @param params - Optional pagination parameters
+   * @returns Paginated list of audit logs within the date range
    */
   async findByDateRange(
     startDate: string,
-    endDate: string
-  ): Promise<AuditLog[]> {
+    endDate: string,
+    params: PaginationParams = {}
+  ): Promise<PaginatedResponse<AuditLog>> {
+    // Parse dates as UTC to ensure consistent timezone handling
     const start = new Date(startDate);
     const end = new Date(endDate);
 
-    // Generate list of dates to query
+    // Validate dates
+    if (Number.isNaN(start.getTime())) {
+      throw new Error(`Invalid startDate: "${startDate}". Expected ISO 8601 format.`);
+    }
+    if (Number.isNaN(end.getTime())) {
+      throw new Error(`Invalid endDate: "${endDate}". Expected ISO 8601 format.`);
+    }
+    if (start > end) {
+      throw new Error('startDate must be less than or equal to endDate');
+    }
+
+    // Calculate date range in days
+    const rangeInDays = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+    if (rangeInDays > this.MAX_DATE_RANGE_DAYS) {
+      throw new Error(
+        `Date range exceeds maximum allowed (${this.MAX_DATE_RANGE_DAYS} days). ` +
+        `Requested range: ${rangeInDays} days. Please use a smaller date range.`
+      );
+    }
+
+    // Generate list of dates to query (using UTC dates)
     const dates: string[] = [];
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    for (let d = new Date(start); d <= end; d = new Date(d.getTime() + 24 * 60 * 60 * 1000)) {
       dates.push(d.toISOString().split('T')[0]);
     }
 
@@ -243,7 +316,7 @@ export class AuditLogRepository {
 
     const results = await Promise.all(queryPromises);
 
-    // Flatten and filter results
+    // Flatten and filter results by exact date range (in UTC)
     const allLogs: AuditLog[] = [];
     for (const result of results) {
       const filtered = result.data
@@ -261,6 +334,21 @@ export class AuditLogRepository {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
-    return allLogs;
+    // Apply pagination
+    const limit = params.limit || 100;
+    const startIndex = params.lastEvaluatedKey?.startIndex || 0;
+    const endIndex = startIndex + limit;
+    const paginatedLogs = allLogs.slice(startIndex, endIndex);
+
+    // Create next page token if there are more results
+    const lastEvaluatedKey = endIndex < allLogs.length 
+      ? { startIndex: endIndex }
+      : undefined;
+
+    return {
+      items: paginatedLogs,
+      lastEvaluatedKey,
+      count: paginatedLogs.length,
+    };
   }
 }
