@@ -4,6 +4,7 @@ import { EnhancedProduct, ProductStatus } from '../entities/EnhancedProduct';
 import { ProductVariant } from '../entities/ProductVariant';
 import { ProductImage } from '../entities/ProductImage';
 import { Category } from '../entities/Category';
+import { AuditService } from './AuditService';
 
 export interface ProductFilters {
   category?: string;
@@ -18,12 +19,14 @@ export class ProductService {
   private variantRepo: Repository<ProductVariant>;
   private imageRepo: Repository<ProductImage>;
   private categoryRepo: Repository<Category>;
+  private auditService: AuditService;
 
-  constructor() {
+  constructor(auditService?: AuditService) {
     this.productRepo = AppDataSource.getRepository(EnhancedProduct);
     this.variantRepo = AppDataSource.getRepository(ProductVariant);
     this.imageRepo = AppDataSource.getRepository(ProductImage);
     this.categoryRepo = AppDataSource.getRepository(Category);
+    this.auditService = auditService || new AuditService();
   }
 
   async listProducts(filters: ProductFilters = {}, page: number = 1, perPage: number = 20): Promise<{ products: EnhancedProduct[]; total: number }> {
@@ -74,22 +77,69 @@ export class ProductService {
     });
   }
 
-  async createProduct(data: Partial<EnhancedProduct>): Promise<EnhancedProduct> {
+  async createProduct(data: Partial<EnhancedProduct>, userId?: string): Promise<EnhancedProduct> {
     const product = this.productRepo.create(data);
-    return this.productRepo.save(product);
+    const savedProduct = await this.productRepo.save(product);
+
+    // Log audit trail
+    if (userId) {
+      await this.auditService.logAction(
+        userId,
+        'CREATE',
+        'Product',
+        savedProduct.id.toString(),
+        { title: savedProduct.title, slug: savedProduct.slug, status: savedProduct.status }
+      ).catch(err => console.error('Failed to log audit action:', err));
+    }
+
+    return savedProduct;
   }
 
-  async updateProduct(id: number, data: Partial<EnhancedProduct>): Promise<EnhancedProduct> {
+  async updateProduct(id: number, data: Partial<EnhancedProduct>, userId?: string): Promise<EnhancedProduct> {
+    const oldProduct = await this.getProductById(id);
+
     await this.productRepo.update(id, data);
     const product = await this.getProductById(id);
     if (!product) {
       throw new Error(`Product with id ${id} not found`);
     }
+
+    // Log audit trail with changes
+    if (userId && oldProduct) {
+      const changes: Record<string, any> = {};
+      if (data.title && data.title !== oldProduct.title) changes.title = { old: oldProduct.title, new: data.title };
+      if (data.status && data.status !== oldProduct.status) changes.status = { old: oldProduct.status, new: data.status };
+      if (data.base_price && data.base_price !== oldProduct.base_price) changes.base_price = { old: oldProduct.base_price, new: data.base_price };
+
+      if (Object.keys(changes).length > 0) {
+        await this.auditService.logAction(
+          userId,
+          'UPDATE',
+          'Product',
+          id.toString(),
+          changes
+        ).catch(err => console.error('Failed to log audit action:', err));
+      }
+    }
+
     return product;
   }
 
-  async deleteProduct(id: number): Promise<void> {
+  async deleteProduct(id: number, userId?: string): Promise<void> {
+    const product = await this.getProductById(id);
+
     await this.productRepo.softDelete(id);
+
+    // Log audit trail
+    if (userId && product) {
+      await this.auditService.logAction(
+        userId,
+        'DELETE',
+        'Product',
+        id.toString(),
+        { title: product.title, slug: product.slug }
+      ).catch(err => console.error('Failed to log audit action:', err));
+    }
   }
 
   async addVariant(productId: number, data: Partial<ProductVariant>): Promise<ProductVariant> {

@@ -8,6 +8,7 @@ import { EnhancedProduct } from '../entities/EnhancedProduct';
 import { ProductVariant } from '../entities/ProductVariant';
 import { NotificationService } from './NotificationService';
 import { PaymentProvider } from './payment/PaymentProvider';
+import { AuditService } from './AuditService';
 import { config } from '../config';
 
 export interface CheckoutData {
@@ -28,8 +29,9 @@ export class OrderService {
   private variantRepo: Repository<ProductVariant>;
   private notificationService: NotificationService;
   private paymentProvider: PaymentProvider;
+  private auditService: AuditService;
 
-  constructor(paymentProvider: PaymentProvider, notificationService: NotificationService) {
+  constructor(paymentProvider: PaymentProvider, notificationService: NotificationService, auditService?: AuditService) {
     this.orderRepo = AppDataSource.getRepository(Order);
     this.orderItemRepo = AppDataSource.getRepository(OrderItem);
     this.cartRepo = AppDataSource.getRepository(Cart);
@@ -38,6 +40,7 @@ export class OrderService {
     this.variantRepo = AppDataSource.getRepository(ProductVariant);
     this.paymentProvider = paymentProvider;
     this.notificationService = notificationService;
+    this.auditService = auditService || new AuditService();
   }
 
   async createOrderFromCart(sessionId: string, checkoutData: CheckoutData): Promise<Order> {
@@ -164,7 +167,9 @@ export class OrderService {
     return { orders, total };
   }
 
-  async updatePaymentStatus(id: number, status: PaymentStatus, paymentIntentId?: string): Promise<Order> {
+  async updatePaymentStatus(id: number, status: PaymentStatus, paymentIntentId?: string, userId?: string): Promise<Order> {
+    const oldOrder = await this.getOrderById(id);
+
     await this.orderRepo.update(id, {
       payment_status: status,
       payment_intent_id: paymentIntentId,
@@ -182,6 +187,20 @@ export class OrderService {
       }
     }
 
+    // Log audit trail
+    if (userId && oldOrder) {
+      await this.auditService.logAction(
+        userId,
+        'UPDATE_PAYMENT_STATUS',
+        'Order',
+        id.toString(),
+        {
+          payment_status: { old: oldOrder.payment_status, new: status },
+          payment_intent_id: paymentIntentId
+        }
+      ).catch(err => console.error('Failed to log audit action:', err));
+    }
+
     const order = await this.getOrderById(id);
     if (!order) {
       throw new Error(`Order with id ${id} not found`);
@@ -189,8 +208,22 @@ export class OrderService {
     return order;
   }
 
-  async updateFulfillmentStatus(id: number, status: FulfillmentStatus): Promise<Order> {
+  async updateFulfillmentStatus(id: number, status: FulfillmentStatus, userId?: string): Promise<Order> {
+    const oldOrder = await this.getOrderById(id);
+
     await this.orderRepo.update(id, { fulfillment_status: status });
+
+    // Log audit trail
+    if (userId && oldOrder) {
+      await this.auditService.logAction(
+        userId,
+        'UPDATE_FULFILLMENT_STATUS',
+        'Order',
+        id.toString(),
+        { fulfillment_status: { old: oldOrder.fulfillment_status, new: status } }
+      ).catch(err => console.error('Failed to log audit action:', err));
+    }
+
     const order = await this.getOrderById(id);
     if (!order) {
       throw new Error(`Order with id ${id} not found`);
