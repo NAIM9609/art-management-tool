@@ -114,8 +114,10 @@ export class DynamoDBOptimized {
       region: config.region || process.env.AWS_REGION || 'us-east-1',
     };
 
-    if (config.endpoint) {
-      dynamoConfig.endpoint = config.endpoint;
+    // Support LocalStack endpoint override for local testing
+    const endpoint = config.endpoint || process.env.AWS_ENDPOINT_URL;
+    if (endpoint) {
+      dynamoConfig.endpoint = endpoint;
     }
 
     const ddbClient = new DynamoDBClient(dynamoConfig);

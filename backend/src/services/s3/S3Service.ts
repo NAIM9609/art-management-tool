@@ -50,7 +50,8 @@ export class S3Service {
   constructor(
     bucketName?: string,
     region?: string,
-    cdnUrl?: string
+    cdnUrl?: string,
+    endpoint?: string
   ) {
     this.bucketName = bucketName ?? config.s3.bucketName;
     this.cdnUrl = cdnUrl ?? config.s3.cdnUrl;
@@ -64,9 +65,18 @@ export class S3Service {
       throw new Error('S3_REGION is required');
     }
 
-    this.s3Client = new S3Client({
+    const s3Config: any = {
       region: this.region,
-    });
+    };
+
+    // Support LocalStack endpoint override for local testing
+    const awsEndpoint = endpoint ?? process.env.AWS_ENDPOINT_URL;
+    if (awsEndpoint) {
+      s3Config.endpoint = awsEndpoint;
+      s3Config.forcePathStyle = true; // Required for LocalStack
+    }
+
+    this.s3Client = new S3Client(s3Config);
   }
 
   /**
