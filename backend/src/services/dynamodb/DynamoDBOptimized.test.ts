@@ -719,6 +719,20 @@ describe('DynamoDBOptimized', () => {
   });
 
   describe('Error handling and retries', () => {
+    let consoleErrorSpy: jest.SpyInstance;
+    let consoleWarnSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      // Mock console.error and console.warn to suppress expected error logs
+      consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleErrorSpy.mockRestore();
+      consoleWarnSpy.mockRestore();
+    });
+
     it('should retry on throttling errors', async () => {
       const throttleError = new Error('Throttling');
       throttleError.name = 'ThrottlingException';

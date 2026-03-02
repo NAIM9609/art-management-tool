@@ -159,8 +159,12 @@ export class DynamoDBOptimized {
         return this.executeWithRetry(commandFn, operation, attempt + 1);
       }
 
-      // Log error and rethrow
-      console.error(`[DynamoDB] ${operation} failed:`, error);
+      // Don't log ConditionalCheckFailedException - it's expected for conditional writes
+      const isConditionalCheckFailed = error.name === 'ConditionalCheckFailedException' || 
+                                        error.code === 'ConditionalCheckFailedException';
+      if (!isConditionalCheckFailed) {
+        console.error(`[DynamoDB] ${operation} failed:`, error);
+      }
       throw this.normalizeError(error);
     }
   }
