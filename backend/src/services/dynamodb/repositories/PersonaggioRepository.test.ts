@@ -646,10 +646,17 @@ describe('PersonaggioRepository', () => {
     it('should handle errors during reorder', async () => {
       const personaggiIds = [1, 2, 3];
 
-      const error = new Error('Update failed');
-      ddbMock.on(UpdateCommand).rejects(error);
+      // Mock console.error to suppress expected error logs
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-      await expect(repository.reorder(personaggiIds)).rejects.toThrow('Update failed');
+      try {
+        const error = new Error('Update failed');
+        ddbMock.on(UpdateCommand).rejects(error);
+
+        await expect(repository.reorder(personaggiIds)).rejects.toThrow('Update failed');
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
   });
 

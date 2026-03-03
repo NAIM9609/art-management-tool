@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { DataSource, DataSourceOptions } from 'typeorm';
-import { config, isDevelopment, isProduction } from '../config';
+import { config, isProduction } from '../config';
 import { Category } from '../entities/Category';
 import { EnhancedProduct } from '../entities/EnhancedProduct';
 import { ProductImage } from '../entities/ProductImage';

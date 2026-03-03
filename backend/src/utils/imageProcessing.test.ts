@@ -120,10 +120,17 @@ describe('Image Processing Utilities', () => {
       // as we're testing the size threshold logic
       const largeBuffer = Buffer.alloc(600 * 1024); // 600KB buffer
       
-      const result = await optimizeImage(largeBuffer, 'image/jpeg');
+      // Mock console.error to suppress expected error log
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       
-      // Since it's not a valid image, optimization will fail and return original
-      expect(result).toBe(largeBuffer);
+      try {
+        const result = await optimizeImage(largeBuffer, 'image/jpeg');
+        
+        // Since it's not a valid image, optimization will fail and return original
+        expect(result).toBe(largeBuffer);
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
 
     it('should handle all supported formats and apply optimization', async () => {
@@ -161,9 +168,14 @@ describe('Image Processing Utilities', () => {
     it('should return original buffer on optimization error', async () => {
       const invalidBuffer = Buffer.from('not an image');
       
+      // Mock console.error to suppress expected error log
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      
       const result = await optimizeImage(invalidBuffer, 'image/jpeg');
       
       expect(result).toBe(invalidBuffer);
+      
+      consoleErrorSpy.mockRestore();
     });
   });
 
