@@ -33,7 +33,7 @@ awslocal dynamodb create-table \
   --key-schema \
     AttributeName=id,KeyType=HASH \
   --global-secondary-indexes \
-    "IndexName=status-createdAt-index,KeySchema=[{AttributeName=status,KeyType=HASH},{AttributeName=createdAt,KeyType=RANGE}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}" \
+    "IndexName=status-createdAt-index,KeySchema=[{AttributeName=status,KeyType=HASH},{AttributeName=createdAt,KeyType=RANGE}],Projection={ProjectionType=ALL}" \
   --billing-mode PAY_PER_REQUEST
 
 # Create DynamoDB table: orders
@@ -47,7 +47,7 @@ awslocal dynamodb create-table \
   --key-schema \
     AttributeName=id,KeyType=HASH \
   --global-secondary-indexes \
-    "IndexName=userId-createdAt-index,KeySchema=[{AttributeName=userId,KeyType=HASH},{AttributeName=createdAt,KeyType=RANGE}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}" \
+    "IndexName=userId-createdAt-index,KeySchema=[{AttributeName=userId,KeyType=HASH},{AttributeName=createdAt,KeyType=RANGE}],Projection={ProjectionType=ALL}" \
   --billing-mode PAY_PER_REQUEST
 
 # Create DynamoDB table: carts
@@ -60,7 +60,7 @@ awslocal dynamodb create-table \
   --key-schema \
     AttributeName=id,KeyType=HASH \
   --global-secondary-indexes \
-    "IndexName=userId-index,KeySchema=[{AttributeName=userId,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}" \
+    "IndexName=userId-index,KeySchema=[{AttributeName=userId,KeyType=HASH}],Projection={ProjectionType=ALL}" \
   --billing-mode PAY_PER_REQUEST
 
 # Create DynamoDB table: discount-codes
@@ -84,7 +84,7 @@ awslocal dynamodb create-table \
   --key-schema \
     AttributeName=id,KeyType=HASH \
   --global-secondary-indexes \
-    "IndexName=entityType-timestamp-index,KeySchema=[{AttributeName=entityType,KeyType=HASH},{AttributeName=timestamp,KeyType=RANGE}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}" \
+    "IndexName=entityType-timestamp-index,KeySchema=[{AttributeName=entityType,KeyType=HASH},{AttributeName=timestamp,KeyType=RANGE}],Projection={ProjectionType=ALL}" \
   --billing-mode PAY_PER_REQUEST
 
 # Create DynamoDB table: notifications
@@ -98,7 +98,7 @@ awslocal dynamodb create-table \
   --key-schema \
     AttributeName=id,KeyType=HASH \
   --global-secondary-indexes \
-    "IndexName=userId-createdAt-index,KeySchema=[{AttributeName=userId,KeyType=HASH},{AttributeName=createdAt,KeyType=RANGE}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}" \
+    "IndexName=userId-createdAt-index,KeySchema=[{AttributeName=userId,KeyType=HASH},{AttributeName=createdAt,KeyType=RANGE}],Projection={ProjectionType=ALL}" \
   --billing-mode PAY_PER_REQUEST
 
 # Create DynamoDB table: etsy-products
@@ -111,7 +111,7 @@ awslocal dynamodb create-table \
   --key-schema \
     AttributeName=listingId,KeyType=HASH \
   --global-secondary-indexes \
-    "IndexName=shopId-index,KeySchema=[{AttributeName=shopId,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}" \
+    "IndexName=shopId-index,KeySchema=[{AttributeName=shopId,KeyType=HASH}],Projection={ProjectionType=ALL}" \
   --billing-mode PAY_PER_REQUEST
 
 # Create DynamoDB table: etsy-sync-configs

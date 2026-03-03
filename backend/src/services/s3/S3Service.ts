@@ -6,6 +6,7 @@
 
 import {
   S3Client,
+  S3ClientConfig,
   PutObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
@@ -65,7 +66,7 @@ export class S3Service {
       throw new Error('S3_REGION is required');
     }
 
-    const s3Config: any = {
+    const s3Config: S3ClientConfig = {
       region: this.region,
     };
 

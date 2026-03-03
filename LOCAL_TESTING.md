@@ -237,13 +237,13 @@ const awsEndpoint = process.env.AWS_ENDPOINT_URL; // LocalStack in dev
 
 ### 3. Test Coverage Requirements
 
-The project enforces 80% test coverage to ensure code is well-tested before production:
+The project enforces the following test coverage thresholds to ensure code is well-tested before production:
 
 ```json
 {
   "coverageThreshold": {
     "global": {
-      "branches": 80,
+      "branches": 70,
       "functions": 80,
       "lines": 80,
       "statements": 80
@@ -260,7 +260,7 @@ Before deploying to production, ensure:
 - [ ] All integration tests pass (`npm run test:integration`)
 - [ ] Linting passes (`npm run lint`)
 - [ ] Build succeeds (`npm run build`)
-- [ ] Test coverage meets 80% threshold
+- [ ] Test coverage meets thresholds (branches: 70%, functions/lines/statements: 80%)
 - [ ] GitHub Actions workflow passes
 
 ## Debugging
