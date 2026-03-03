@@ -268,7 +268,7 @@ export class DynamoDBOptimized {
 
     const allItems: T[] = [];
     const allConsumedCapacities: any[] = [];
-    let unprocessedKeys: Record<string, any>[] = [];
+    const unprocessedKeys: Record<string, any>[] = [];
 
     // Process each batch
     for (const batch of batches) {
@@ -335,7 +335,7 @@ export class DynamoDBOptimized {
     }
 
     const allConsumedCapacities: any[] = [];
-    let unprocessedItems: BatchWriteItem[] = [];
+    const unprocessedItems: BatchWriteItem[] = [];
 
     // Process each batch
     for (const batch of batches) {
@@ -533,7 +533,7 @@ export class DynamoDBOptimized {
     // require that it already exists.
     let conditionExpression = params.conditionExpression;
     let expressionAttributeNames = params.expressionAttributeNames;
-    let expressionAttributeValues = params.expressionAttributeValues;
+    const expressionAttributeValues = params.expressionAttributeValues;
 
     if (!conditionExpression) {
       const keyAttributeNames = Object.keys(params.key || {});

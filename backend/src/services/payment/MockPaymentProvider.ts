@@ -44,7 +44,7 @@ export class MockPaymentProvider extends PaymentProvider {
 
   async refundPayment(
     transactionId: string,
-    amount: number
+    _amount: number
   ): Promise<RefundResult> {
     if (!transactionId.startsWith('mock_')) {
       return {
@@ -65,7 +65,7 @@ export class MockPaymentProvider extends PaymentProvider {
 
   async validateWebhook(
     payload: Buffer,
-    signature: string
+    _signature: string
   ): Promise<WebhookValidation> {
     return {
       valid: true,
