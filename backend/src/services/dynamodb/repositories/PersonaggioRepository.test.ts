@@ -649,12 +649,14 @@ describe('PersonaggioRepository', () => {
       // Mock console.error to suppress expected error logs
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-      const error = new Error('Update failed');
-      ddbMock.on(UpdateCommand).rejects(error);
+      try {
+        const error = new Error('Update failed');
+        ddbMock.on(UpdateCommand).rejects(error);
 
-      await expect(repository.reorder(personaggiIds)).rejects.toThrow('Update failed');
-      
-      consoleErrorSpy.mockRestore();
+        await expect(repository.reorder(personaggiIds)).rejects.toThrow('Update failed');
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
   });
 
