@@ -123,12 +123,14 @@ describe('Image Processing Utilities', () => {
       // Mock console.error to suppress expected error log
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       
-      const result = await optimizeImage(largeBuffer, 'image/jpeg');
-      
-      // Since it's not a valid image, optimization will fail and return original
-      expect(result).toBe(largeBuffer);
-      
-      consoleErrorSpy.mockRestore();
+      try {
+        const result = await optimizeImage(largeBuffer, 'image/jpeg');
+        
+        // Since it's not a valid image, optimization will fail and return original
+        expect(result).toBe(largeBuffer);
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
 
     it('should handle all supported formats and apply optimization', async () => {
