@@ -19,12 +19,6 @@ import {
 
 // Export ProductStatus for backward compatibility
 export { ProductStatus };
-import { Repository, In } from 'typeorm';
-import { AppDataSource } from '../database/connection';
-import { EnhancedProduct, ProductStatus } from '../entities/EnhancedProduct';
-import { ProductVariant } from '../entities/ProductVariant';
-import { ProductImage } from '../entities/ProductImage';
-import { Category } from '../entities/Category';
 
 export interface ProductFilters {
   category?: string;
@@ -65,25 +59,108 @@ export class ProductService {
 
   async listProducts(filters: ProductFilters = {}, page: number = 1, perPage: number = 20): Promise<{ products: EnhancedProduct[]; total: number }> {
     try {
-      // Calculate pagination params for DynamoDB
-      // DynamoDB uses cursor-based pagination, so we need to handle offset differently
-      const limit = perPage;
+      // Category filtering: use category-first approach for correct pagination
+      if (filters.category) {
+        const category = await this.categoryRepo.findBySlug(filters.category);
+        if (!category) {
+          return { products: [], total: 0 };
+        }
 
-      let result;
+        // Get product IDs from category
+        const categoryProductIds = await this.categoryRepo.getProducts(category.id);
 
-      if (filters.search) {
-        // Use search if search term is provided
-        result = await this.productRepo.search(filters.search, { limit });
-      } else if (filters.status) {
-        // Query by status if provided
-        result = await this.productRepo.findByStatus(filters.status, { limit });
-      } else {
-        // Default to published products
-        result = await this.productRepo.findAll({ limit });
+        // Fetch products by ID
+        const products = await Promise.all(
+          categoryProductIds.slice(0, perPage).map(id => this.productRepo.findById(id))
+        );
+
+        // Filter out nulls and apply status filter if needed
+        let filteredProducts = products.filter((p): p is Product => p !== null);
+        if (filters.status) {
+          filteredProducts = filteredProducts.filter(p => p.status === filters.status);
+        }
+
+        // Apply price filters
+        if (filters.minPrice !== undefined) {
+          filteredProducts = filteredProducts.filter(p => p.base_price >= filters.minPrice!);
+        }
+        if (filters.maxPrice !== undefined) {
+          filteredProducts = filteredProducts.filter(p => p.base_price <= filters.maxPrice!);
+        }
+
+        // Enhance products with relations
+        const enhancedProducts = await Promise.all(
+          filteredProducts.map(async (product) => {
+            const [images, variants, categories] = await Promise.all([
+              this.imageRepo.findByProductId(product.id),
+              this.variantRepo.findByProductId(product.id),
+              this.getProductCategories(product.id),
+            ]);
+
+            return {
+              ...product,
+              images,
+              variants,
+              categories,
+            };
+          })
+        );
+
+        return {
+          products: enhancedProducts,
+          total: categoryProductIds.length,
+        };
       }
 
-      // Filter by price range if needed (done in memory since DynamoDB doesn't support range on non-key attributes)
-      let products = result.items;
+      // Calculate limit: fetch enough for pagination
+      // For page-based pagination, we need to skip (page - 1) * perPage items
+      const limit = page * perPage;
+
+      let result;
+      let products: Product[];
+
+      // Handle search with status filter
+      if (filters.search && filters.status && filters.status !== ProductStatus.PUBLISHED) {
+        // Search only queries PUBLISHED items, so use findByStatus + in-memory filter
+        result = await this.productRepo.findByStatus(filters.status, { limit });
+        products = result.items.filter(p =>
+          p.title.toLowerCase().includes(filters.search!.toLowerCase()) ||
+          (p.short_description && p.short_description.toLowerCase().includes(filters.search!.toLowerCase()))
+        );
+      } else if (filters.search) {
+        // Use search for published products
+        result = await this.productRepo.search(filters.search, { limit });
+        products = result.items;
+      } else if (filters.status) {
+        // Query by specific status
+        result = await this.productRepo.findByStatus(filters.status, { limit });
+        products = result.items;
+      } else {
+        // No status filter: return all statuses (admin case)
+        // Fetch all statuses in parallel
+        const [publishedResult, draftResult, archivedResult] = await Promise.all([
+          this.productRepo.findByStatus(ProductStatus.PUBLISHED, { limit }),
+          this.productRepo.findByStatus(ProductStatus.DRAFT, { limit }),
+          this.productRepo.findByStatus(ProductStatus.ARCHIVED, { limit }),
+        ]);
+
+        // Merge results
+        products = [
+          ...publishedResult.items,
+          ...draftResult.items,
+          ...archivedResult.items,
+        ];
+
+        // Apply limit after merging to avoid 3x page size
+        products = products.slice(0, limit);
+
+        result = {
+          items: products,
+          count: publishedResult.count + draftResult.count + archivedResult.count,
+        };
+      }
+
+      // Filter by price range if needed
       if (filters.minPrice !== undefined) {
         products = products.filter(p => p.base_price >= filters.minPrice!);
       }
@@ -91,23 +168,13 @@ export class ProductService {
         products = products.filter(p => p.base_price <= filters.maxPrice!);
       }
 
-      // Filter by category if provided
-      if (filters.category) {
-        // Get category by slug
-        const category = await this.categoryRepo.findBySlug(filters.category);
-        if (category) {
-          // Get products for this category
-          const categoryProductIds = await this.categoryRepo.getProducts(category.id);
-          const productIds = new Set(categoryProductIds);
-          products = products.filter(p => productIds.has(p.id));
-        } else {
-          products = [];
-        }
-      }
+      // Apply pagination offset
+      const startIndex = (page - 1) * perPage;
+      const paginatedProducts = products.slice(startIndex, startIndex + perPage);
 
       // Batch fetch related data for all products in parallel
       const enhancedProducts = await Promise.all(
-        products.map(async (product) => {
+        paginatedProducts.map(async (product) => {
           const [images, variants, categories] = await Promise.all([
             this.imageRepo.findByProductId(product.id),
             this.variantRepo.findByProductId(product.id),
@@ -123,12 +190,9 @@ export class ProductService {
         })
       );
 
-      // Note: DynamoDB pagination is cursor-based, not offset-based
-      // For simplicity, we return the requested page of results
-      // In a production system, you'd want to implement proper cursor-based pagination
       return {
         products: enhancedProducts,
-        total: enhancedProducts.length, // Approximate total
+        total: (result as any).count ?? products.length,
       };
     } catch (error: any) {
       throw this.mapError(error);
@@ -336,11 +400,11 @@ export class ProductService {
     }
   }
 
-  async updateVariant(id: number, data: Partial<ProductVariant>): Promise<ProductVariant> {
+  async updateVariant(id: string, data: Partial<ProductVariant>): Promise<ProductVariant> {
     try {
       // For DynamoDB, we need product_id to update a variant
       // First, find the variant to get its product_id
-      const variant = await this.variantRepo.findById(id.toString());
+      const variant = await this.variantRepo.findById(id);
       if (!variant) {
         throw new Error(`Variant with id ${id} not found`);
       }
@@ -352,7 +416,7 @@ export class ProductService {
       if (data.price_adjustment !== undefined) updateData.price_adjustment = data.price_adjustment;
       if (data.stock !== undefined) updateData.stock = data.stock;
 
-      const updated = await this.variantRepo.update(id.toString(), variant.product_id, updateData);
+      const updated = await this.variantRepo.update(id, variant.product_id, updateData);
       if (!updated) {
         throw new Error(`Variant with id ${id} not found`);
       }
@@ -363,7 +427,7 @@ export class ProductService {
     }
   }
 
-  async updateInventory(adjustments: Array<{ variantId: number; quantity: number }>): Promise<void> {
+  async updateInventory(adjustments: Array<{ variantId: string; quantity: number }>): Promise<void> {
     try {
       if (adjustments.length === 0) {
         return;
@@ -373,25 +437,30 @@ export class ProductService {
       const adjustmentMap = new Map<string, { productId: number; totalQuantity: number }>();
 
       // First, fetch all variants to get their product_ids
-      const variantIds = Array.from(new Set(adjustments.map(adj => adj.variantId.toString())));
+      const variantIds = Array.from(new Set(adjustments.map(adj => adj.variantId)));
       const variants = await Promise.all(
         variantIds.map(id => this.variantRepo.findById(id))
       );
 
+      // Build a Map for O(1) lookups instead of O(n*m) with repeated array.find
+      const variantMap = new Map<string, ProductVariant>();
+      variants.forEach(v => {
+        if (v) variantMap.set(v.id, v);
+      });
+
       // Build map of variant updates
       for (const adjustment of adjustments) {
-        const variantId = adjustment.variantId.toString();
-        const variant = variants.find(v => v && v.id === variantId);
+        const variant = variantMap.get(adjustment.variantId);
 
         if (!variant) {
           throw new Error(`Variant with id ${adjustment.variantId} not found`);
         }
 
-        const existing = adjustmentMap.get(variantId);
+        const existing = adjustmentMap.get(adjustment.variantId);
         if (existing) {
           existing.totalQuantity += adjustment.quantity;
         } else {
-          adjustmentMap.set(variantId, {
+          adjustmentMap.set(adjustment.variantId, {
             productId: variant.product_id,
             totalQuantity: adjustment.quantity,
           });
@@ -444,13 +513,13 @@ export class ProductService {
     }
   }
 
-  async updateImage(productId: number, imageId: number, data: { position?: number; alt_text?: string }): Promise<ProductImage> {
+  async updateImage(productId: number, imageId: string, data: { position?: number; alt_text?: string }): Promise<ProductImage> {
     try {
       const updateData: UpdateProductImageData = {};
       if (data.position !== undefined) updateData.position = data.position;
       if (data.alt_text !== undefined) updateData.alt_text = data.alt_text;
 
-      const updated = await this.imageRepo.update(imageId.toString(), productId, updateData);
+      const updated = await this.imageRepo.update(imageId, productId, updateData);
       if (!updated) {
         throw new Error(`Image with id ${imageId} not found for product ${productId}`);
       }
@@ -461,9 +530,15 @@ export class ProductService {
     }
   }
 
-  async deleteImage(productId: number, imageId: number): Promise<void> {
+  async deleteImage(productId: number, imageId: string): Promise<void> {
     try {
-      await this.imageRepo.delete(imageId.toString(), productId);
+      // Check if image exists before deletion
+      const image = await this.imageRepo.findByIdAndProductId(imageId, productId);
+      if (!image) {
+        throw new Error(`Image with id ${imageId} not found for product ${productId}`);
+      }
+
+      await this.imageRepo.delete(imageId, productId);
     } catch (error: any) {
       throw this.mapError(error);
     }
