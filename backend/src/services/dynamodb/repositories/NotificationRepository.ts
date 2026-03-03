@@ -64,7 +64,6 @@ import { DynamoDBOptimized } from '../DynamoDBOptimized';
 import { v4 as uuidv4 } from 'uuid';
 import {
   Notification,
-  NotificationType,
   CreateNotificationData,
   UpdateNotificationData,
   NotificationFilters,

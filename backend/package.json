@@ -11,7 +11,10 @@
     "seed": "ts-node src/database/seed.ts",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:integration": "jest --testMatch='**/*.integration.test.ts'",
+    "lint": "eslint 'src/**/*.ts'",
+    "lint:fix": "eslint 'src/**/*.ts' --fix"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.986.0",
@@ -45,7 +48,10 @@
     "@types/node": "^20.19.30",
     "@types/sharp": "^0.31.1",
     "@types/uuid": "^9.0.8",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
     "aws-sdk-client-mock": "^4.1.0",
+    "eslint": "^8.56.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",

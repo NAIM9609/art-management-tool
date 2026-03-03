@@ -568,7 +568,7 @@ describe('AuditLogRepository', () => {
 
     it('should paginate within each date partition', async () => {
       let callCount = 0;
-      ddbMock.on(QueryCommand).callsFake((input) => {
+      ddbMock.on(QueryCommand).callsFake((_input) => {
         callCount++;
         // Simulate DynamoDB pagination with LastEvaluatedKey
         if (callCount === 1) {
