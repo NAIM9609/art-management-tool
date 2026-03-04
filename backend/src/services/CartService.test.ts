@@ -8,7 +8,6 @@ import { CartItemRepository } from './dynamodb/repositories/CartItemRepository';
 import { DiscountCodeRepository } from './dynamodb/repositories/DiscountCodeRepository';
 import { ProductRepository } from './dynamodb/repositories/ProductRepository';
 import { ProductVariantRepository } from './dynamodb/repositories/ProductVariantRepository';
-import { DynamoDBOptimized } from './dynamodb/DynamoDBOptimized';
 import { Cart, CartItem, DiscountCode, DiscountType, Product, ProductVariant } from './dynamodb/repositories/types';
 
 // Mock all dependencies
@@ -306,7 +305,6 @@ describe('CartService', () => {
 
     it('should not throw on stock validation when variant is not found in DynamoDB', async () => {
       const product = makeProduct();
-      const item = makeCartItem({ variant_id: 999 });
       mockProductRepo.findById.mockResolvedValue(product);
       // findById called twice: once for "variant found?" check, once for stock validation
       mockVariantRepo.findById.mockResolvedValue(null);
