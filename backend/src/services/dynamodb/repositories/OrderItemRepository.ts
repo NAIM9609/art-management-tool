@@ -103,7 +103,7 @@ export class OrderItemRepository {
    * Find all items for a specific order
    * Cost-optimized: Single query retrieves all items
    */
-  async findByOrderId(orderId: number): Promise<OrderItem[]> {
+  async findByOrderId(orderId: string): Promise<OrderItem[]> {
     const result = await this.dynamoDB.queryEventuallyConsistent({
       keyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
       expressionAttributeValues: {

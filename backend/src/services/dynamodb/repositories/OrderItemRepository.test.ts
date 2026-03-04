@@ -31,7 +31,7 @@ describe('OrderItemRepository', () => {
   describe('create', () => {
     it('should create a new order item', async () => {
       const createData: CreateOrderItemData = {
-        order_id: 1,
+        order_id: 'order-1',
         product_id: 101,
         variant_id: 'variant-abc',
         product_name: 'Art Print',
@@ -47,7 +47,7 @@ describe('OrderItemRepository', () => {
       const orderItem = await repository.create(createData);
 
       expect(orderItem.id).toBeDefined();
-      expect(orderItem.order_id).toBe(1);
+      expect(orderItem.order_id).toBe('order-1');
       expect(orderItem.product_id).toBe(101);
       expect(orderItem.variant_id).toBe('variant-abc');
       expect(orderItem.product_name).toBe('Art Print');
@@ -61,7 +61,7 @@ describe('OrderItemRepository', () => {
 
     it('should create order item without optional fields', async () => {
       const createData: CreateOrderItemData = {
-        order_id: 2,
+        order_id: 'order-2',
         product_name: 'Digital Download',
         quantity: 1,
         unit_price: 10.00,
@@ -73,7 +73,7 @@ describe('OrderItemRepository', () => {
       const orderItem = await repository.create(createData);
 
       expect(orderItem.id).toBeDefined();
-      expect(orderItem.order_id).toBe(2);
+      expect(orderItem.order_id).toBe('order-2');
       expect(orderItem.product_name).toBe('Digital Download');
       expect(orderItem.quantity).toBe(1);
       expect(orderItem.unit_price).toBe(10.00);
@@ -86,7 +86,7 @@ describe('OrderItemRepository', () => {
 
     it('should create order item with correct DynamoDB structure', async () => {
       const createData: CreateOrderItemData = {
-        order_id: 3,
+        order_id: 'order-3',
         product_id: 102,
         product_name: 'Poster',
         quantity: 3,
@@ -102,11 +102,11 @@ describe('OrderItemRepository', () => {
 
       await repository.create(createData);
 
-      expect(putItem.PK).toBe('ORDER#3');
+      expect(putItem.PK).toBe('ORDER#order-3');
       expect(putItem.SK).toMatch(/^ITEM#/);
       expect(putItem.entity_type).toBe('OrderItem');
       expect(putItem.id).toBeDefined();
-      expect(putItem.order_id).toBe(3);
+      expect(putItem.order_id).toBe('order-3');
       expect(putItem.product_id).toBe(102);
       expect(putItem.product_name).toBe('Poster');
       expect(putItem.quantity).toBe(3);
@@ -116,7 +116,7 @@ describe('OrderItemRepository', () => {
 
     it('should include proper product/variant references', async () => {
       const createData: CreateOrderItemData = {
-        order_id: 4,
+        order_id: 'order-4',
         product_id: 103,
         variant_id: 'variant-xyz',
         product_name: 'Canvas Print',
@@ -149,11 +149,11 @@ describe('OrderItemRepository', () => {
     it('should retrieve all items for an order in single query', async () => {
       const mockItems = [
         {
-          PK: 'ORDER#1',
+          PK: 'ORDER#order-1',
           SK: 'ITEM#item-1',
           entity_type: 'OrderItem',
           id: 'item-1',
-          order_id: 1,
+          order_id: 'order-1',
           product_id: 101,
           product_name: 'Art Print',
           quantity: 2,
@@ -162,11 +162,11 @@ describe('OrderItemRepository', () => {
           created_at: '2024-01-01T00:00:00.000Z',
         },
         {
-          PK: 'ORDER#1',
+          PK: 'ORDER#order-1',
           SK: 'ITEM#item-2',
           entity_type: 'OrderItem',
           id: 'item-2',
-          order_id: 1,
+          order_id: 'order-1',
           product_id: 102,
           variant_id: 'variant-abc',
           product_name: 'Poster',
@@ -184,17 +184,17 @@ describe('OrderItemRepository', () => {
         Count: 2,
       });
 
-      const items = await repository.findByOrderId(1);
+      const items = await repository.findByOrderId('order-1');
 
       expect(items).toHaveLength(2);
       expect(items[0].id).toBe('item-1');
-      expect(items[0].order_id).toBe(1);
+      expect(items[0].order_id).toBe('order-1');
       expect(items[0].product_id).toBe(101);
       expect(items[0].product_name).toBe('Art Print');
       expect(items[0].quantity).toBe(2);
       
       expect(items[1].id).toBe('item-2');
-      expect(items[1].order_id).toBe(1);
+      expect(items[1].order_id).toBe('order-1');
       expect(items[1].product_id).toBe(102);
       expect(items[1].variant_id).toBe('variant-abc');
       expect(items[1].product_name).toBe('Poster');
@@ -209,7 +209,7 @@ describe('OrderItemRepository', () => {
         Count: 0,
       });
 
-      const items = await repository.findByOrderId(999);
+      const items = await repository.findByOrderId('order-999');
 
       expect(items).toHaveLength(0);
     });
@@ -220,7 +220,7 @@ describe('OrderItemRepository', () => {
         Count: 0,
       });
 
-      await repository.findByOrderId(1);
+      await repository.findByOrderId('order-1');
 
       const call = ddbMock.commandCalls(QueryCommand)[0];
       expect(call.args[0].input.ConsistentRead).toBe(false);
@@ -232,12 +232,12 @@ describe('OrderItemRepository', () => {
         Count: 0,
       });
 
-      await repository.findByOrderId(42);
+      await repository.findByOrderId('order-42');
 
       const call = ddbMock.commandCalls(QueryCommand)[0];
       expect(call.args[0].input.KeyConditionExpression).toBe('PK = :pk AND begins_with(SK, :sk)');
       expect(call.args[0].input.ExpressionAttributeValues).toEqual({
-        ':pk': 'ORDER#42',
+        ':pk': 'ORDER#order-42',
         ':sk': 'ITEM#',
       });
     });
@@ -247,7 +247,7 @@ describe('OrderItemRepository', () => {
     it('should batch create multiple order items', async () => {
       const items: CreateOrderItemData[] = [
         {
-          order_id: 1,
+          order_id: 'order-1',
           product_id: 101,
           product_name: 'Art Print',
           quantity: 2,
@@ -255,7 +255,7 @@ describe('OrderItemRepository', () => {
           total_price: 50.00,
         },
         {
-          order_id: 1,
+          order_id: 'order-1',
           product_id: 102,
           variant_id: 'variant-abc',
           product_name: 'Poster',
@@ -266,7 +266,7 @@ describe('OrderItemRepository', () => {
           total_price: 15.00,
         },
         {
-          order_id: 1,
+          order_id: 'order-1',
           product_id: 103,
           product_name: 'Canvas',
           quantity: 1,
@@ -280,19 +280,19 @@ describe('OrderItemRepository', () => {
       const created = await repository.batchCreate(items);
 
       expect(created).toHaveLength(3);
-      expect(created[0].order_id).toBe(1);
+      expect(created[0].order_id).toBe('order-1');
       expect(created[0].product_id).toBe(101);
       expect(created[0].product_name).toBe('Art Print');
       expect(created[0].id).toBeDefined();
       
-      expect(created[1].order_id).toBe(1);
+      expect(created[1].order_id).toBe('order-1');
       expect(created[1].product_id).toBe(102);
       expect(created[1].variant_id).toBe('variant-abc');
       expect(created[1].product_name).toBe('Poster');
       expect(created[1].variant_name).toBe('Large');
       expect(created[1].id).toBeDefined();
       
-      expect(created[2].order_id).toBe(1);
+      expect(created[2].order_id).toBe('order-1');
       expect(created[2].product_id).toBe(103);
       expect(created[2].product_name).toBe('Canvas');
       expect(created[2].id).toBeDefined();
@@ -305,7 +305,7 @@ describe('OrderItemRepository', () => {
 
     it('should throw error when batch size exceeds 25', async () => {
       const items: CreateOrderItemData[] = Array.from({ length: 26 }, (_, i) => ({
-        order_id: 1,
+        order_id: 'order-1',
         product_name: `Product ${i}`,
         quantity: 1,
         unit_price: 10.00,
@@ -318,14 +318,14 @@ describe('OrderItemRepository', () => {
     it('should create all items with same timestamp', async () => {
       const items: CreateOrderItemData[] = [
         {
-          order_id: 1,
+          order_id: 'order-1',
           product_name: 'Item 1',
           quantity: 1,
           unit_price: 10.00,
           total_price: 10.00,
         },
         {
-          order_id: 1,
+          order_id: 'order-1',
           product_name: 'Item 2',
           quantity: 1,
           unit_price: 20.00,
@@ -343,7 +343,7 @@ describe('OrderItemRepository', () => {
     it('should properly handle product and variant references in batch', async () => {
       const items: CreateOrderItemData[] = [
         {
-          order_id: 1,
+          order_id: 'order-1',
           product_id: 101,
           variant_id: 'var-1',
           product_name: 'Item with variant',
@@ -354,7 +354,7 @@ describe('OrderItemRepository', () => {
           total_price: 10.00,
         },
         {
-          order_id: 1,
+          order_id: 'order-1',
           product_id: 102,
           product_name: 'Item without variant',
           quantity: 1,
