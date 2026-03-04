@@ -3,7 +3,7 @@
  */
 
 import { mockClient } from 'aws-sdk-client-mock';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { ProductService, ProductStatus } from './ProductService';
 
 // Mock DynamoDB Document Client
@@ -76,9 +76,21 @@ describe('ProductService', () => {
         base_price: 10 + i,
       }));
 
-      ddbMock.on(QueryCommand).resolves({
-        Items: mockProducts,
-        Count: 30,
+      ddbMock.on(QueryCommand).callsFake((input) => {
+        const values = input.ExpressionAttributeValues as Record<string, unknown> | undefined;
+        const statusKey = values?.[':gsi2pk'];
+
+        if (statusKey === `PRODUCT_STATUS#${ProductStatus.PUBLISHED}`) {
+          return {
+            Items: mockProducts,
+            Count: 30,
+          };
+        }
+
+        return {
+          Items: [],
+          Count: 0,
+        };
       });
 
       // Page 1
@@ -136,7 +148,7 @@ describe('ProductService', () => {
         price_adjustment: 0,
       };
 
-      ddbMock.on(GetCommand).resolves({ Item: mockVariant });
+      ddbMock.on(QueryCommand).resolvesOnce({ Items: [mockVariant], Count: 1 });
       ddbMock.on(UpdateCommand).resolves({ Attributes: { ...mockVariant, stock: 20 } });
 
       const result = await service.updateVariant(variantId, { stock: 20 });
@@ -146,7 +158,7 @@ describe('ProductService', () => {
     });
 
     it('should throw error for non-existent variant', async () => {
-      ddbMock.on(GetCommand).resolves({ Item: undefined });
+      ddbMock.on(QueryCommand).resolvesOnce({ Items: [], Count: 0 });
 
       await expect(service.updateVariant('non-existent-id', { stock: 20 }))
         .rejects.toThrow('Variant with id non-existent-id not found');
@@ -158,9 +170,9 @@ describe('ProductService', () => {
       const variantId1 = 'uuid-variant-1';
       const variantId2 = 'uuid-variant-2';
 
-      ddbMock.on(GetCommand)
-        .resolvesOnce({ Item: { id: variantId1, product_id: 1, stock: 10 } })
-        .resolvesOnce({ Item: { id: variantId2, product_id: 1, stock: 20 } });
+      ddbMock.on(QueryCommand)
+        .resolvesOnce({ Items: [{ id: variantId1, product_id: 1, stock: 10 }], Count: 1 })
+        .resolvesOnce({ Items: [{ id: variantId2, product_id: 1, stock: 20 }], Count: 1 });
 
       ddbMock.on(UpdateCommand).resolves({});
 
@@ -176,8 +188,25 @@ describe('ProductService', () => {
       const variantIds = Array.from({ length: 100 }, (_, i) => `uuid-variant-${i}`);
       const adjustments = variantIds.map(id => ({ variantId: id, quantity: 1 }));
 
-      variantIds.forEach(id => {
-        ddbMock.on(GetCommand).resolvesOnce({ Item: { id, product_id: 1, stock: 10 } });
+      ddbMock.on(QueryCommand).callsFake((input) => {
+        const values = input.ExpressionAttributeValues as Record<string, unknown> | undefined;
+        const skValue = values?.[':sk'];
+
+        if (typeof skValue === 'string' && skValue.startsWith('VARIANT#')) {
+          const variantId = skValue.replace('VARIANT#', '');
+
+          if (variantIds.includes(variantId)) {
+            return {
+              Items: [{ id: variantId, product_id: 1, stock: 10 }],
+              Count: 1,
+            };
+          }
+        }
+
+        return {
+          Items: [],
+          Count: 0,
+        };
       });
 
       ddbMock.on(UpdateCommand).resolves({});
@@ -192,7 +221,7 @@ describe('ProductService', () => {
     });
 
     it('should throw error for non-existent variant in adjustment', async () => {
-      ddbMock.on(GetCommand).resolves({ Item: undefined });
+      ddbMock.on(QueryCommand).resolvesOnce({ Items: [], Count: 0 });
 
       await expect(service.updateInventory([{ variantId: 'non-existent', quantity: 5 }]))
         .rejects.toThrow('Variant with id non-existent not found');
@@ -209,6 +238,7 @@ describe('ProductService', () => {
         position: 0,
       };
 
+      ddbMock.on(GetCommand).resolves({ Item: mockImage });
       ddbMock.on(UpdateCommand).resolves({ Attributes: { ...mockImage, position: 5 } });
 
       const result = await service.updateImage(1, imageId, { position: 5 });
@@ -264,6 +294,7 @@ describe('ProductService', () => {
 
     it('should return null for non-existent product', async () => {
       ddbMock.on(GetCommand).resolves({ Item: undefined });
+      ddbMock.on(QueryCommand).resolves({ Items: [], Count: 0 });
 
       const result = await service.getProductById(999);
 

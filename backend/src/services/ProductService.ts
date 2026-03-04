@@ -325,7 +325,7 @@ export class ProductService {
   async updateProduct(id: number, data: Partial<EnhancedProduct>): Promise<EnhancedProduct> {
     try {
       // Extract images and variants from data (handle them separately)
-      const { images: imageData, variants: variantData, categories: categoryData, ...productData } = data as any;
+      const productData = data as any;
 
       // Update product
       const updateData: UpdateProductData = {};
