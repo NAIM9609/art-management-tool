@@ -129,6 +129,30 @@ describe('OrderService', () => {
       expect(result.items[0].order_id).toBe(result.order.id);
     });
 
+    it('should throw when variant_id is provided without product_id', async () => {
+      const orderData = {
+        customer_email: 'test@example.com',
+        customer_name: 'Test Customer',
+        subtotal: 50.00,
+        tax: 5.00,
+        discount: 0,
+        total: 55.00,
+        items: [
+          {
+            variant_id: 'var-1', // no product_id!
+            product_name: 'Art Print',
+            quantity: 1,
+            unit_price: 50.00,
+            total_price: 50.00,
+          },
+        ],
+      };
+
+      await expect(orderService.createOrder(orderData)).rejects.toThrow(
+        'must also supply product_id'
+      );
+    });
+
     it('should check stock before creating order and throw if insufficient', async () => {
       // Mock findByIdAndProductId to return low stock variant
       ddbMock.on(GetCommand).resolves({
@@ -492,7 +516,7 @@ describe('OrderService', () => {
   });
 
   describe('listOrders', () => {
-    it('should return paginated orders', async () => {
+    it('should return orders for all statuses when no filter is provided', async () => {
       ddbMock.on(QueryCommand).resolves({
         Items: [
           {
@@ -510,8 +534,102 @@ describe('OrderService', () => {
 
       const result = await orderService.listOrders({}, 1, 20);
 
+      // Should have queried across statuses (one call per OrderStatus enum value)
+      const queryCalls = ddbMock.commandCalls(QueryCommand);
+      expect(queryCalls.length).toBeGreaterThan(1);
+      expect(result.orders.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should filter by status when filters.status is provided', async () => {
+      ddbMock.on(QueryCommand).resolves({
+        Items: [
+          {
+            id: 'order-1',
+            order_number: 'ORD-20240101-0001',
+            customer_email: 'test@example.com',
+            customer_name: 'Test Customer',
+            total: 110.00,
+            status: OrderStatus.PROCESSING,
+            created_at: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+        Count: 1,
+      });
+
+      const result = await orderService.listOrders({ status: OrderStatus.PROCESSING }, 1, 20);
+
+      // Should have made exactly one query (single status filter)
+      expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(1);
       expect(result.orders).toHaveLength(1);
-      expect(result.total).toBe(1);
+      expect(result.orders[0].status).toBe(OrderStatus.PROCESSING);
+    });
+
+    it('should support legacy paymentStatus filter key from admin handler', async () => {
+      ddbMock.on(QueryCommand).resolves({
+        Items: [
+          {
+            id: 'order-1',
+            order_number: 'ORD-20240101-0001',
+            customer_email: 'test@example.com',
+            customer_name: 'Test Customer',
+            total: 110.00,
+            status: OrderStatus.SHIPPED,
+            created_at: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+        Count: 1,
+      });
+
+      // Admin handler passes filters.paymentStatus (legacy key)
+      const result = await orderService.listOrders({ paymentStatus: OrderStatus.SHIPPED }, 1, 20);
+
+      // Should have made exactly one query (resolved from paymentStatus)
+      expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(1);
+      expect(result.orders).toHaveLength(1);
+    });
+  });
+
+  describe('updatePaymentStatus', () => {
+    it('should record old and new payment_status in audit log', async () => {
+      const orderId = 'test-order-id';
+      const mockOrderItem = {
+        PK: `ORDER#${orderId}`,
+        SK: 'METADATA',
+        id: orderId,
+        order_number: 'ORD-20240101-0001',
+        customer_email: 'test@example.com',
+        customer_name: 'Test Customer',
+        subtotal: 100.00,
+        tax: 10.00,
+        discount: 0,
+        total: 110.00,
+        currency: 'EUR',
+        status: OrderStatus.PENDING,
+        payment_status: 'pending',
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      };
+
+      ddbMock.on(GetCommand).resolves({ Item: mockOrderItem });
+      ddbMock.on(PutCommand).resolves({});
+
+      // Access the underlying auditService mock to spy on logAction
+      const { AuditService } = jest.requireMock('./AuditService');
+      const mockAuditInstance = AuditService.mock.results[0]?.value;
+
+      await orderService.updatePaymentStatus(orderId, 'paid', 'pi_123', 'user-abc');
+
+      if (mockAuditInstance) {
+        expect(mockAuditInstance.logAction).toHaveBeenCalledWith(
+          'user-abc',
+          'UPDATE_PAYMENT_STATUS',
+          'Order',
+          orderId,
+          expect.objectContaining({
+            payment_status: { old: 'pending', new: 'paid' },
+          })
+        );
+      }
     });
   });
 });

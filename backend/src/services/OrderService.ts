@@ -77,7 +77,8 @@ export class OrderService {
   private dynamoDB: DynamoDBOptimized;
 
   constructor(paymentProvider: PaymentProvider, notificationService: NotificationService, auditService?: AuditService) {
-    this.tableName = process.env.DYNAMODB_TABLE_NAME || 'products';
+    // Let DynamoDBOptimized throw if DYNAMODB_TABLE_NAME is not set; avoid silent misconfiguration.
+    this.tableName = process.env.DYNAMODB_TABLE_NAME as string;
 
     this.dynamoDB = new DynamoDBOptimized({
       tableName: this.tableName,
@@ -112,8 +113,13 @@ export class OrderService {
    * Rolls back atomically via DynamoDB transaction on failure.
    */
   async createOrder(data: CreateOrderServiceData): Promise<OrderWithItems> {
-    // 1. Check stock availability for all variant items
+    // 1. Validate and check stock availability for all variant items
     for (const item of data.items) {
+      if (item.variant_id && !item.product_id) {
+        throw new Error(
+          `Item with variant_id "${item.variant_id}" must also supply product_id so stock can be checked and decremented.`
+        );
+      }
       if (item.variant_id && item.product_id) {
         const variant = await this.variantRepo.findByIdAndProductId(item.variant_id, item.product_id);
         if (!variant) {
@@ -337,19 +343,49 @@ export class OrderService {
   }
 
   /**
-   * List orders with optional filters and pagination (wraps OrderRepository.findAll)
+   * List orders with optional filters and pagination.
+   *
+   * The admin handler passes `filters.paymentStatus` (legacy name) and `filters.status`.
+   * When no status is provided, all statuses are queried in parallel (same pattern as ProductService).
+   * DynamoDB uses cursor-based pagination; the `page` argument is not used for offset pagination
+   * but `lastEvaluatedKey` can be used for subsequent pages via the `filters.lastEvaluatedKey` option.
    */
   async listOrders(
     filters: any = {},
     _page: number = 1,
     perPage: number = 20
   ): Promise<{ orders: OrderSummary[]; total: number }> {
-    const result = await this.orderRepo.findAll(
-      filters.status ? { status: filters.status } : undefined,
-      { limit: perPage }
+    // Resolve status from either `status` or legacy `paymentStatus` filter key
+    const statusFilter: OrderStatus | undefined = filters.status || filters.paymentStatus || undefined;
+
+    if (statusFilter) {
+      // Single-status query
+      const result = await this.orderRepo.findAll(
+        { status: statusFilter as OrderStatus },
+        { limit: perPage, lastEvaluatedKey: filters.lastEvaluatedKey }
+      );
+      return { orders: result.items, total: result.count };
+    }
+
+    // No status filter — query all statuses in parallel and merge results
+    const allStatuses = Object.values(OrderStatus);
+    const perStatusLimit = Math.ceil(perPage / allStatuses.length);
+
+    const results = await Promise.all(
+      allStatuses.map(s =>
+        this.orderRepo.findAll(
+          { status: s },
+          { limit: perStatusLimit }
+        )
+      )
     );
 
-    return { orders: result.items, total: result.count };
+    const allOrders = results.flatMap(r => r.items);
+    // Sort by created_at descending (most recent first) and cap at perPage
+    allOrders.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const paged = allOrders.slice(0, perPage);
+
+    return { orders: paged, total: paged.length };
   }
 
   /**
@@ -437,8 +473,9 @@ export class OrderService {
 
     const result = await this.createOrder(orderData);
 
-    // Clear cart items after order (non-blocking on delete errors)
-    await this.cartRepo.delete(cart.id).catch(err => console.error('Failed to clear cart:', err));
+    // Clear cart items and cart metadata after order (non-blocking on delete errors)
+    this.cartItemRepo.clearCart(cart.id).catch(err => console.error('Failed to clear cart items:', err));
+    this.cartRepo.delete(cart.id).catch(err => console.error('Failed to clear cart:', err));
 
     return result;
   }
@@ -447,19 +484,25 @@ export class OrderService {
    * Update payment status (backward-compatible wrapper around processPayment)
    */
   async updatePaymentStatus(id: string, status: string, paymentIntentId?: string, userId?: string): Promise<Order> {
+    // Fetch existing order first so the audit entry can record the old value
+    const existing = await this.orderRepo.findById(id);
+
     const updated = await this.processPayment(id, {
       payment_status: status,
       payment_intent_id: paymentIntentId,
     });
 
-    // Log audit trail (non-blocking)
-    if (userId) {
+    // Log audit trail (non-blocking) with old/new delta when caller is identified
+    if (userId && existing) {
       this.auditService.logAction(
         userId,
         'UPDATE_PAYMENT_STATUS',
         'Order',
         id,
-        { payment_status: status, payment_intent_id: paymentIntentId }
+        {
+          payment_status: { old: existing.payment_status, new: status },
+          payment_intent_id: paymentIntentId,
+        }
       ).catch(err => console.error('Failed to log audit action:', err));
     }
 
