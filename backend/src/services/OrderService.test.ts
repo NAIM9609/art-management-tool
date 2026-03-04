@@ -10,7 +10,6 @@ import {
   UpdateCommand,
   QueryCommand,
   TransactWriteCommand,
-  BatchWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { OrderService, OrderStatus } from './OrderService';
 import { MockPaymentProvider } from './payment/MockPaymentProvider';
