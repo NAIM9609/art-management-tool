@@ -8,7 +8,7 @@
  */
 
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import {
   CartItem,
 } from './types';
@@ -77,7 +77,6 @@ export class CartItemRepository {
    * This ensures idempotency and prevents race conditions
    */
   private generateItemId(cartId: string, productId: number, variantId: number | undefined): string {
-    const crypto = require('crypto');
     const key = `${cartId}:${productId}:${variantId ?? 'null'}`;
     return crypto.createHash('sha256').update(key).digest('hex').substring(0, 32);
   }

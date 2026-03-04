@@ -3,7 +3,7 @@
  */
 
 import { mockClient } from 'aws-sdk-client-mock';
-import { DynamoDBDocumentClient, PutCommand, QueryCommand, DeleteCommand, UpdateCommand, TransactWriteCommand, BatchWriteCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand, TransactWriteCommand, BatchWriteCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
 import { ProductImageRepository } from './ProductImageRepository';
 import { CreateProductImageData, UpdateProductImageData } from './types';
