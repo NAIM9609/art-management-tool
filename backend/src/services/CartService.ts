@@ -245,6 +245,24 @@ export class CartService {
   }
 
   /**
+   * Remove any applied discount code from the cart.
+   * Resets discount_code and discount_amount to undefined.
+   * Throws if the cart is not found.
+   */
+  async removeDiscount(cartId: string): Promise<Cart> {
+    const updated = await this.cartRepo.update(cartId, {
+      discount_code: undefined,
+      discount_amount: undefined,
+    });
+
+    if (!updated) {
+      throw new Error('Cart not found');
+    }
+
+    return updated;
+  }
+
+  /**
    * Calculate cart totals: subtotal, tax, discount amount, and final total.
    * Fetches product and variant prices from DynamoDB to avoid stale data.
    */
