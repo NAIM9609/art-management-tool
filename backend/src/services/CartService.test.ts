@@ -129,6 +129,7 @@ describe('CartService', () => {
       findById: jest.fn(),
       isValid: jest.fn(),
       incrementUsage: jest.fn(),
+      decrementUsage: jest.fn(),
       create: jest.fn(),
       findAll: jest.fn(),
       update: jest.fn(),
@@ -528,6 +529,35 @@ describe('CartService', () => {
       await expect(service.applyDiscount('cart-uuid-1', 'SAVE10')).rejects.toThrow(
         'Cart not found'
       );
+    });
+  });
+
+  // ==================== removeDiscount ====================
+
+  describe('removeDiscount', () => {
+    it('should remove applied discount and decrement usage counter', async () => {
+      const existingCart = makeCart({ discount_code: 'SAVE10', discount_amount: 10 });
+      const updatedCart = makeCart({ discount_code: undefined, discount_amount: undefined });
+
+      mockCartRepo.findById.mockResolvedValue(existingCart);
+      mockCartRepo.update.mockResolvedValue(updatedCart);
+      mockDiscountRepo.decrementUsage.mockResolvedValue(makeDiscountCode({ code: 'SAVE10', times_used: 0 }));
+
+      const result = await service.removeDiscount('cart-uuid-1');
+
+      expect(mockCartRepo.findById).toHaveBeenCalledWith('cart-uuid-1');
+      expect(mockCartRepo.update).toHaveBeenCalledWith('cart-uuid-1', {
+        discount_code: undefined,
+        discount_amount: undefined,
+      });
+      expect(mockDiscountRepo.decrementUsage).toHaveBeenCalledWith('SAVE10');
+      expect(result).toEqual(updatedCart);
+    });
+
+    it('should throw when cart is not found', async () => {
+      mockCartRepo.findById.mockResolvedValue(null);
+
+      await expect(service.removeDiscount('missing-cart')).rejects.toThrow('Cart not found');
     });
   });
 

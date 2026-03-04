@@ -528,6 +528,52 @@ export class DiscountCodeRepository {
   }
 
   /**
+   * Decrement usage counter atomically (floor at zero)
+   * Returns the updated discount code or null if code doesn't exist or is invalid.
+   */
+  async decrementUsage(code: string): Promise<DiscountCode | null> {
+    const discountCode = await this.findByCode(code);
+    if (!discountCode) {
+      return null;
+    }
+
+    const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
+    const now = new Date().toISOString();
+
+    const command = new UpdateCommand({
+      TableName: (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME,
+      Key: {
+        PK: `DISCOUNT#${discountCode.id}`,
+        SK: 'METADATA',
+      },
+      UpdateExpression: 'SET updated_at = :now ADD times_used :minusOne',
+      ExpressionAttributeValues: {
+        ':now': now,
+        ':minusOne': -1,
+        ':zero': 0,
+      },
+      ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(deleted_at) AND times_used > :zero',
+      ReturnValues: 'ALL_NEW',
+    });
+
+    try {
+      const client = (this.dynamoDB as any).client;
+      const result = await client.send(command);
+
+      if (!result.Attributes) {
+        return null;
+      }
+
+      return this.mapToDiscountCode(result.Attributes);
+    } catch (error: any) {
+      if (error.name === 'ConditionalCheckFailedException' || error.code === 'ConditionalCheckFailedException') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Get usage statistics for a discount code
    */
   async getStats(code: string): Promise<DiscountCodeStats | null> {

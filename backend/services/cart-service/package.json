@@ -1,0 +1,11 @@
+{
+  "name": "cart-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AWS Lambda handlers for Cart Service API",
+  "scripts": {
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch"
+  }
+}

@@ -48,8 +48,12 @@ export class CartService {
    * If a userId is provided and no session cart exists, an existing user cart is
    * reused (associating the current session with it). TTL is refreshed on every call.
    */
-  async getOrCreateCart(sessionId: string, userId?: number): Promise<Cart> {
-    let cart = await this.cartRepo.findBySessionId(sessionId);
+  async getOrCreateCart(sessionId?: string, userId?: number): Promise<Cart> {
+    let cart: Cart | null = null;
+
+    if (sessionId) {
+      cart = await this.cartRepo.findBySessionId(sessionId);
+    }
 
     if (!cart) {
       if (userId) {
@@ -58,9 +62,11 @@ export class CartService {
 
       if (cart) {
         // Associate the current session with the existing user cart
-        const updated = await this.cartRepo.update(cart.id, { session_id: sessionId });
-        if (updated) {
-          cart = updated;
+        if (sessionId) {
+          const updated = await this.cartRepo.update(cart.id, { session_id: sessionId });
+          if (updated) {
+            cart = updated;
+          }
         }
       } else {
         cart = await this.cartRepo.create({
@@ -68,10 +74,10 @@ export class CartService {
           user_id: userId,
         });
       }
-    } else {
-      // Refresh TTL on activity
-      await this.cartRepo.refreshTTL(cart.id);
     }
+
+    // Refresh TTL on activity
+    await this.cartRepo.refreshTTL(cart.id);
 
     return cart;
   }
@@ -239,6 +245,33 @@ export class CartService {
 
     if (!updated) {
       throw new Error('Cart not found');
+    }
+
+    return updated;
+  }
+
+  /**
+   * Remove any applied discount code from the cart.
+   * Resets discount_code and discount_amount to undefined.
+   * Throws if the cart is not found.
+   */
+  async removeDiscount(cartId: string): Promise<Cart> {
+    const existingCart = await this.cartRepo.findById(cartId);
+    if (!existingCart) {
+      throw new Error('Cart not found');
+    }
+
+    const updated = await this.cartRepo.update(cartId, {
+      discount_code: undefined,
+      discount_amount: undefined,
+    });
+
+    if (!updated) {
+      throw new Error('Cart not found');
+    }
+
+    if (existingCart.discount_code) {
+      await this.discountRepo.decrementUsage(existingCart.discount_code);
     }
 
     return updated;
