@@ -81,9 +81,9 @@ export class ProductService {
     const product = this.productRepo.create(data);
     const savedProduct = await this.productRepo.save(product);
 
-    // Log audit trail
+    // Log audit trail (non-blocking)
     if (userId) {
-      await this.auditService.logAction(
+      this.auditService.logAction(
         userId,
         'CREATE',
         'Product',
@@ -104,15 +104,15 @@ export class ProductService {
       throw new Error(`Product with id ${id} not found`);
     }
 
-    // Log audit trail with changes
+    // Log audit trail with changes (non-blocking)
     if (userId && oldProduct) {
       const changes: Record<string, any> = {};
-      if (data.title && data.title !== oldProduct.title) changes.title = { old: oldProduct.title, new: data.title };
-      if (data.status && data.status !== oldProduct.status) changes.status = { old: oldProduct.status, new: data.status };
-      if (data.base_price && data.base_price !== oldProduct.base_price) changes.base_price = { old: oldProduct.base_price, new: data.base_price };
+      if (data.title !== undefined && data.title !== oldProduct.title) changes.title = { old: oldProduct.title, new: data.title };
+      if (data.status !== undefined && data.status !== oldProduct.status) changes.status = { old: oldProduct.status, new: data.status };
+      if (data.base_price !== undefined && data.base_price !== oldProduct.base_price) changes.base_price = { old: oldProduct.base_price, new: data.base_price };
 
       if (Object.keys(changes).length > 0) {
-        await this.auditService.logAction(
+        this.auditService.logAction(
           userId,
           'UPDATE',
           'Product',
@@ -130,9 +130,9 @@ export class ProductService {
 
     await this.productRepo.softDelete(id);
 
-    // Log audit trail
+    // Log audit trail (non-blocking)
     if (userId && product) {
-      await this.auditService.logAction(
+      this.auditService.logAction(
         userId,
         'DELETE',
         'Product',

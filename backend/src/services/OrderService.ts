@@ -187,9 +187,9 @@ export class OrderService {
       }
     }
 
-    // Log audit trail
+    // Log audit trail (non-blocking)
     if (userId && oldOrder) {
-      await this.auditService.logAction(
+      this.auditService.logAction(
         userId,
         'UPDATE_PAYMENT_STATUS',
         'Order',
@@ -213,9 +213,9 @@ export class OrderService {
 
     await this.orderRepo.update(id, { fulfillment_status: status });
 
-    // Log audit trail
+    // Log audit trail (non-blocking)
     if (userId && oldOrder) {
-      await this.auditService.logAction(
+      this.auditService.logAction(
         userId,
         'UPDATE_FULFILLMENT_STATUS',
         'Order',

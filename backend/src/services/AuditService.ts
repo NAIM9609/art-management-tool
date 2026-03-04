@@ -19,8 +19,15 @@ export class AuditService {
 
   constructor() {
     // Initialize DynamoDB client and repository
+    const tableName = process.env.DYNAMODB_TABLE_NAME;
+    if (!tableName) {
+      throw new Error(
+        'DYNAMODB_TABLE_NAME environment variable is required for AuditService'
+      );
+    }
+
     const dynamoDB = new DynamoDBOptimized({
-      tableName: process.env.DYNAMODB_TABLE_NAME || 'art-management-table',
+      tableName,
       region: config.s3.region,
     });
     this.auditLogRepository = new AuditLogRepository(dynamoDB);

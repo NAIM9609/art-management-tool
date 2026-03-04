@@ -16,19 +16,19 @@ export function createAuthRoutes(auditService?: AuditService): Router {
       // Also support admin / admin for backward compatibility
       if ((username === 'artadmin' && password === 'ArtM@nag3r2025!') ||
           (username === 'admin' && password === 'admin')) {
-        const userId = username === 'artadmin' ? '1' : '2';
+        const userId = username === 'artadmin' ? 1 : 2;
         const token = jwt.sign(
           { id: userId, username },
           config.jwtSecret,
           { expiresIn: '24h' }
         );
 
-        // Log successful login
-        await audit.logAction(
-          userId,
+        // Log successful login (non-blocking)
+        audit.logAction(
+          userId.toString(),
           'LOGIN',
           'User',
-          userId,
+          userId.toString(),
           undefined,
           ipAddress
         ).catch(err => console.error('Failed to log audit action:', err));
@@ -39,8 +39,8 @@ export function createAuthRoutes(auditService?: AuditService): Router {
           user: username,
         });
       } else {
-        // Log failed login attempt
-        await audit.logAction(
+        // Log failed login attempt (non-blocking)
+        audit.logAction(
           'unknown',
           'LOGIN_FAILED',
           'User',
@@ -62,11 +62,11 @@ export function createAuthRoutes(auditService?: AuditService): Router {
       const token = req.headers.authorization?.replace('Bearer ', '');
       if (token) {
         try {
-          const decoded = jwt.verify(token, config.jwtSecret) as { id: string; username: string };
+          const decoded = jwt.verify(token, config.jwtSecret) as { id: number; username: string };
           const ipAddress = req.ip || req.socket.remoteAddress;
 
-          // Log logout
-          await audit.logAction(
+          // Log logout (non-blocking)
+          audit.logAction(
             decoded.id.toString(),
             'LOGOUT',
             'User',

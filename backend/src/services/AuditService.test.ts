@@ -18,6 +18,9 @@ jest.mock('../config', () => ({
   },
 }));
 
+// Set required environment variable
+process.env.DYNAMODB_TABLE_NAME = 'test-audit-table';
+
 describe('AuditService', () => {
   let auditService: AuditService;
   let mockRepository: jest.Mocked<AuditLogRepository>;
@@ -359,11 +362,22 @@ describe('AuditService', () => {
   describe('initialization', () => {
     it('should initialize with DynamoDB configuration', () => {
       expect(DynamoDBOptimized).toHaveBeenCalledWith({
-        tableName: 'art-management-table',
+        tableName: 'test-audit-table',
         region: 'us-east-1',
       });
 
       expect(AuditLogRepository).toHaveBeenCalledWith(expect.any(DynamoDBOptimized));
+    });
+
+    it('should throw error if DYNAMODB_TABLE_NAME is not set', () => {
+      delete process.env.DYNAMODB_TABLE_NAME;
+
+      expect(() => {
+        new AuditService();
+      }).toThrow('DYNAMODB_TABLE_NAME environment variable is required for AuditService');
+
+      // Restore for other tests
+      process.env.DYNAMODB_TABLE_NAME = 'test-audit-table';
     });
   });
 });
