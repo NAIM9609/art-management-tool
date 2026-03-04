@@ -3,7 +3,7 @@ import { CartService } from '../../services/CartService';
 import { ProductService } from '../../services/ProductService';
 import { OrderService } from '../../services/OrderService';
 import { PaymentProvider } from '../../services/payment/PaymentProvider';
-import { PaymentStatus, Order } from '../../entities/Order';
+import { Order } from '../../services/dynamodb/repositories/types';
 import { getSessionToken, setSessionCookie } from '../../utils/sessionHelper';
 
 interface CheckoutResponse extends Order {
@@ -148,7 +148,7 @@ export function createShopRoutes(
         notes: req.body.notes,
       };
       
-      const order = await orderService.createOrderFromCart(sessionId, checkoutData);
+      const { order } = await orderService.createOrderFromCart(sessionId, checkoutData);
       
       let paymentMetadata: Record<string, any> | undefined;
       
@@ -159,13 +159,16 @@ export function createShopRoutes(
           : paymentProvider;
           
         const paymentResult = await selectedProvider.processPayment(
-          parseFloat(order.total.toString()),
+          order.total,
           order.currency,
           req.body.payment_details || {}
         );
         
         if (paymentResult.success) {
-          await orderService.updatePaymentStatus(order.id, PaymentStatus.PAID, paymentResult.transactionId);
+          await orderService.processPayment(order.id, {
+            payment_status: 'paid',
+            payment_intent_id: paymentResult.transactionId,
+          });
         }
         
         // Include payment metadata (e.g., Etsy checkout URL) in response

@@ -136,7 +136,7 @@ export function createAdminRoutes(
 
   router.get('/shop/orders/:id', async (req: Request, res: Response) => {
     try {
-      const order = await orderService.getOrderById(parseInt(req.params.id));
+      const order = await orderService.getOrderById(req.params.id);
       if (!order) {
         return res.status(404).json({ error: 'Order not found' });
       }
@@ -149,7 +149,7 @@ export function createAdminRoutes(
   router.patch('/shop/orders/:id/fulfillment', async (req: Request, res: Response) => {
     try {
       const { status } = req.body;
-      const order = await orderService.updateFulfillmentStatus(parseInt(req.params.id), status);
+      const order = await orderService.updateFulfillmentStatus(req.params.id, status);
       res.json(order);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

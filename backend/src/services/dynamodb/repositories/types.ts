@@ -475,7 +475,7 @@ export interface UpdateCartItemData {
 
 export interface OrderItem {
   id: string;
-  order_id: number;
+  order_id: string;
   product_id?: number;
   variant_id?: string;
   product_name: string;
@@ -488,7 +488,7 @@ export interface OrderItem {
 }
 
 export interface CreateOrderItemData {
-  order_id: number;
+  order_id: string;
   product_id?: number;
   variant_id?: string;
   product_name: string;
@@ -497,7 +497,7 @@ export interface CreateOrderItemData {
   quantity: number;
   unit_price: number;
   total_price: number;
-  }
+}
  /* Order interfaces
  */
 export enum OrderStatus {
