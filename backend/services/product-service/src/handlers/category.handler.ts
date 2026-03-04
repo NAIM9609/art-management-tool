@@ -20,6 +20,9 @@ import {
   errorResponse,
 } from '../types';
 
+const DEFAULT_CATEGORY_LIMIT = 50;
+const MAX_CATEGORY_LIMIT = 100;
+
 function getCategoryRepository(): CategoryRepository {
   const dynamoDB = new DynamoDBOptimized({
     tableName: process.env.DYNAMODB_TABLE_NAME || 'products',
@@ -74,7 +77,7 @@ export async function listCategories(
 ): Promise<APIGatewayProxyResult> {
   try {
     const qs = event.queryStringParameters || {};
-    const limit = Math.min(100, Math.max(1, parseInt(qs.limit || '50', 10) || 50));
+    const limit = Math.min(MAX_CATEGORY_LIMIT, Math.max(1, parseInt(qs.limit || String(DEFAULT_CATEGORY_LIMIT), 10) || DEFAULT_CATEGORY_LIMIT));
 
     const repo = getCategoryRepository();
     const result = await repo.findAll({ limit });

@@ -51,6 +51,10 @@ function validateCreateVariant(body: Record<string, unknown>): string | null {
   if (body.stock !== undefined && (typeof body.stock !== 'number' || body.stock < 0)) {
     return 'stock must be a non-negative number';
   }
+  // Negative price adjustments are allowed (discounts)
+  if (body.price_adjustment !== undefined && typeof body.price_adjustment !== 'number') {
+    return 'price_adjustment must be a number';
+  }
   return null;
 }
 

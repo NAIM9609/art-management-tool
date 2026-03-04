@@ -5,7 +5,17 @@
 import jwt from 'jsonwebtoken';
 import { APIGatewayProxyEvent, JWTPayload } from './types';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_SECRET = (() => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    const env = process.env.ENVIRONMENT || 'development';
+    if (env === 'production' || env === 'staging') {
+      throw new Error('JWT_SECRET must be set in production/staging environments');
+    }
+    console.warn('WARNING: JWT_SECRET is not set. Using default secret (development only).');
+  }
+  return secret || 'your-secret-key-change-in-production';
+})();
 const DEMO_TOKEN = 'demo-token-12345';
 const DEMO_USER: JWTPayload = { id: 1, username: 'artadmin' };
 

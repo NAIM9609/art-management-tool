@@ -19,6 +19,9 @@ import {
   errorResponse,
 } from '../types';
 
+const DEFAULT_PER_PAGE = 20;
+const MAX_PER_PAGE = 100;
+
 function getProductService(): ProductService {
   return new ProductService();
 }
@@ -85,7 +88,7 @@ export async function listProducts(
     }
 
     const page = Math.max(1, parseInt(qs.page || '1', 10) || 1);
-    const perPage = Math.min(100, Math.max(1, parseInt(qs.per_page || '20', 10) || 20));
+    const perPage = Math.min(MAX_PER_PAGE, Math.max(1, parseInt(qs.per_page || String(DEFAULT_PER_PAGE), 10) || DEFAULT_PER_PAGE));
 
     const service = getProductService();
     const result = await service.listProducts(filters, page, perPage);
