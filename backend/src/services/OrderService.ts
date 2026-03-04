@@ -341,7 +341,7 @@ export class OrderService {
    */
   async listOrders(
     filters: any = {},
-    page: number = 1,
+    _page: number = 1,
     perPage: number = 20
   ): Promise<{ orders: OrderSummary[]; total: number }> {
     const result = await this.orderRepo.findAll(
