@@ -8,6 +8,7 @@ import { NotificationService } from '../../services/NotificationService';
 import { AppDataSource } from '../../database/connection';
 import { Category } from '../../entities/Category';
 import { config } from '../../config';
+import { AuthRequest } from '../../middleware/auth';
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -52,7 +53,8 @@ export function createAdminRoutes(
 
   router.post('/shop/products', async (req: Request, res: Response) => {
     try {
-      const product = await productService.createProduct(req.body);
+      const userId = (req as AuthRequest).user?.id.toString();
+      const product = await productService.createProduct(req.body, userId);
       res.status(201).json(product);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -73,7 +75,8 @@ export function createAdminRoutes(
 
   router.patch('/shop/products/:id', async (req: Request, res: Response) => {
     try {
-      const product = await productService.updateProduct(parseInt(req.params.id), req.body);
+      const userId = (req as AuthRequest).user?.id.toString();
+      const product = await productService.updateProduct(parseInt(req.params.id), req.body, userId);
       res.json(product);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -82,7 +85,8 @@ export function createAdminRoutes(
 
   router.delete('/shop/products/:id', async (req: Request, res: Response) => {
     try {
-      await productService.deleteProduct(parseInt(req.params.id));
+      const userId = (req as AuthRequest).user?.id.toString();
+      await productService.deleteProduct(parseInt(req.params.id), userId);
       res.json({ message: 'Product deleted' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });

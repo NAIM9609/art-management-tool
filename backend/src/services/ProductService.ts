@@ -16,6 +16,7 @@ import {
   CreateProductImageData,
   UpdateProductImageData,
 } from './dynamodb/repositories/types';
+import { AuditService } from './AuditService';
 
 // Export ProductStatus for backward compatibility
 export { ProductStatus };
@@ -40,8 +41,9 @@ export class ProductService {
   private variantRepo: ProductVariantRepository;
   private imageRepo: ProductImageRepository;
   private categoryRepo: CategoryRepository;
+  private auditService: AuditService;
 
-  constructor() {
+  constructor(auditService?: AuditService) {
     // Initialize DynamoDB client
     const dynamoDB = new DynamoDBOptimized({
       tableName: process.env.DYNAMODB_TABLE_NAME || 'products',
@@ -55,6 +57,7 @@ export class ProductService {
     this.variantRepo = new ProductVariantRepository(dynamoDB);
     this.imageRepo = new ProductImageRepository(dynamoDB);
     this.categoryRepo = new CategoryRepository(dynamoDB);
+    this.auditService = auditService || new AuditService();
   }
 
   async listProducts(filters: ProductFilters = {}, page: number = 1, perPage: number = 20): Promise<{ products: EnhancedProduct[]; total: number }> {
@@ -251,7 +254,7 @@ export class ProductService {
     }
   }
 
-  async createProduct(data: Partial<EnhancedProduct>): Promise<EnhancedProduct> {
+  async createProduct(data: Partial<EnhancedProduct>, userId?: string): Promise<EnhancedProduct> {
     try {
       // Extract images and variants from data
       const { images: imageData, variants: variantData, categories: categoryData, ...productData } = data as any;
@@ -273,6 +276,17 @@ export class ProductService {
       };
 
       const product = await this.productRepo.create(createData);
+
+      // Log audit trail (non-blocking)
+      if (userId) {
+        this.auditService.logAction(
+          userId,
+          'CREATE',
+          'Product',
+          product.id.toString(),
+          { title: product.title, slug: product.slug, status: product.status }
+        ).catch(err => console.error('Failed to log audit action:', err));
+      }
 
       // Batch create images if provided
       let images: ProductImage[] = [];
@@ -322,8 +336,14 @@ export class ProductService {
     }
   }
 
-  async updateProduct(id: number, data: Partial<EnhancedProduct>): Promise<EnhancedProduct> {
+  async updateProduct(id: number, data: Partial<EnhancedProduct>, userId?: string): Promise<EnhancedProduct> {
     try {
+      // Get old product for change detection
+      const oldProduct = await this.productRepo.findById(id);
+      if (!oldProduct) {
+        throw new Error(`Product with id ${id} not found`);
+      }
+
       // Extract images and variants from data (handle them separately)
       const productData = data as any;
 
@@ -347,6 +367,24 @@ export class ProductService {
         throw new Error(`Product with id ${id} not found`);
       }
 
+      // Log audit trail (non-blocking)
+      if (userId) {
+        const changes: Record<string, any> = {};
+        if (data.title !== undefined && data.title !== oldProduct.title) changes.title = { old: oldProduct.title, new: data.title };
+        if (data.status !== undefined && data.status !== oldProduct.status) changes.status = { old: oldProduct.status, new: data.status };
+        if (data.base_price !== undefined && data.base_price !== oldProduct.base_price) changes.base_price = { old: oldProduct.base_price, new: data.base_price };
+
+        if (Object.keys(changes).length > 0) {
+          this.auditService.logAction(
+            userId,
+            'UPDATE',
+            'Product',
+            id.toString(),
+            changes
+          ).catch(err => console.error('Failed to log audit action:', err));
+        }
+      }
+
       // Note: Images and variants are updated separately via their own endpoints
       // This matches the TypeORM behavior where these are managed independently
 
@@ -368,8 +406,11 @@ export class ProductService {
     }
   }
 
-  async deleteProduct(id: number): Promise<void> {
+  async deleteProduct(id: number, userId?: string): Promise<void> {
     try {
+      // Get product for audit logging before deletion
+      const product = await this.productRepo.findById(id);
+
       // Soft delete product
       await this.productRepo.softDelete(id);
 
@@ -378,6 +419,17 @@ export class ProductService {
       await Promise.all(
         variants.map(variant => this.variantRepo.softDelete(variant.id, id))
       );
+
+      // Log audit trail (non-blocking)
+      if (userId && product) {
+        this.auditService.logAction(
+          userId,
+          'DELETE',
+          'Product',
+          id.toString(),
+          { title: product.title, slug: product.slug }
+        ).catch(err => console.error('Failed to log audit action:', err));
+      }
     } catch (error: any) {
       throw this.mapError(error);
     }
