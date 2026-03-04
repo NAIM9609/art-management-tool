@@ -21,17 +21,18 @@ Added `transactWrite()` method to the DynamoDBOptimized wrapper class:
 
 Features:
 - ✅ Creates order with auto-generated order number (ORD-YYYYMMDD-XXXX format)
-- ✅ Batch creates order items (up to 24 items in transaction)
+- ✅ Batch creates order items (up to 12 items atomically in transaction)
 - ✅ Atomically decrements stock for all variants
 - ✅ Stock availability validation before order creation
 - ✅ Transaction rollback on failure (insufficient stock or conflicts)
 - ✅ Creates notification after successful order creation
-- ✅ Handles orders with >24 items using batch operations
+- ✅ Handles orders with >12 items using batch operations for remaining items
+- ✅ Idempotency token support for safe transaction retries
 
-Transaction Items:
+Transaction Items (max 25 items: 1 order PUT + N item PUTs + N stock UPDATEs, therefore max N=12):
 1. PUT Order (with condition: PK must not exist)
-2. PUT Order Items (up to 24, with conditions)
-3. UPDATE Stock (atomic decrement with condition: stock >= quantity)
+2. PUT Order Items (up to 12, with conditions)
+3. UPDATE Stock for each variant (atomic decrement with condition: stock >= quantity)
 
 #### getOrderById(id)
 **Location:** `backend/src/services/OrderService.ts:242-255`
@@ -205,6 +206,8 @@ All repositories were already implemented and tested.
 - Order creation + item creation + stock decrement in single transaction
 - Atomic operations ensure data consistency
 - Automatic rollback on failure
+- Idempotency token support prevents duplicate orders on retries
+- Handles up to 12 items atomically (1 PUT + 12 PUTs + 12 UPDATEs = 25 max)
 
 ### ✅ Stock Management
 - Pre-creation validation
@@ -252,16 +255,19 @@ To fully complete the migration:
 4. ✅ **Complete** - Audit logging
 5. ⏳ **Pending** - Migrate CartService to DynamoDB (for createOrderFromCart)
 6. ⏳ **Pending** - Integration tests with real DynamoDB Local
-7. ⏳ **Pending** - Performance testing with large orders (>24 items)
+7. ⏳ **Pending** - Performance testing with large orders (>12 items)
 8. ⏳ **Pending** - Add CloudWatch metrics for transaction failures
 
 ## Performance Considerations
 
 1. **Transaction Limits**: DynamoDB supports max 25 items per transaction
-   - Solution: First 24 items in transaction, remaining in batch operation
+   - Each order item requires both PUT (item) and UPDATE (stock), consuming 2 transaction slots
+   - Formula: 1 (order PUT) + 2N (N items × 2 operations) ≤ 25, therefore max N = 12
+   - Solution: First 12 items in transaction, remaining in batch operation with non-atomic stock decrements
 
-2. **Stock Queries**: Need to fetch variants to get product_id
-   - Optimization: Could add GSI with variant_id as PK
+2. **Stock Queries**: Use findByIdAndProductId for efficient variant lookups
+   - Direct GetItem operation using composite key (PK + SK)
+   - Strongly consistent reads ensure accurate stock levels
 
 3. **Parallel Operations**: Order and items fetched in parallel for getOrderById
    - Reduces latency by ~50%

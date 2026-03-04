@@ -13,7 +13,7 @@ import {
   PaginatedResponse,
   OrderSummary
 } from './dynamodb/repositories/types';
-import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config';
 
 export interface CreateOrderData {
@@ -81,11 +81,11 @@ export class OrderService {
    * Throws error if any item has insufficient stock
    */
   private async checkStockAvailability(items: OrderItemInput[]): Promise<void> {
-    const stockChecks = await Promise.all(
+    await Promise.all(
       items
         .filter(item => item.variant_id) // Only check variants with IDs
         .map(async (item) => {
-          const variant = await this.variantRepo.findById(item.variant_id!);
+          const variant = await this.variantRepo.findByIdAndProductId(item.variant_id!, item.product_id);
           if (!variant) {
             throw new Error(`Variant ${item.variant_id} not found`);
           }
@@ -94,7 +94,6 @@ export class OrderService {
               `Insufficient stock for ${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ''}. Available: ${variant.stock}, Requested: ${item.quantity}`
             );
           }
-          return { variant, quantity: item.quantity };
         })
     );
   }
@@ -105,6 +104,9 @@ export class OrderService {
    * - Create order items (batch)
    * - Decrement stock atomically
    * - Create notification
+   *
+   * Transaction limit: 25 items max (1 order PUT + N item PUTs + N stock UPDATEs <= 25)
+   * For N items with variants: 1 + 2N <= 25, so max 12 items atomically
    */
   async createOrder(data: CreateOrderData): Promise<Order> {
     // Calculate totals
@@ -116,7 +118,7 @@ export class OrderService {
     // Generate order number first (atomic counter operation)
     const orderNumber = await this.orderRepo.generateOrderNumber();
     const now = new Date().toISOString();
-    const orderId = require('uuid').v4();
+    const orderId = uuidv4();
 
     // Build order
     const order: Order = {
@@ -141,7 +143,7 @@ export class OrderService {
 
     // Build order items
     const orderItems: CreateOrderItemData[] = data.items.map(item => ({
-      order_id: parseInt(orderId), // Convert to number for compatibility
+      order_id: orderId,
       product_id: item.product_id,
       variant_id: item.variant_id,
       product_name: item.product_name,
@@ -151,6 +153,12 @@ export class OrderService {
       unit_price: item.unit_price,
       total_price: item.unit_price * item.quantity,
     }));
+
+    // Calculate transaction sizing: 1 order PUT + N item PUTs + N stock UPDATEs <= 25
+    // For items with variants: 1 + 2N <= 25, so max N = 12
+    const variantItems = data.items.filter(item => item.variant_id);
+    const maxItemsInTransaction = Math.min(12, Math.floor((25 - 1) / 2));
+    const itemsToIncludeInTransaction = Math.min(variantItems.length, maxItemsInTransaction);
 
     // Build transaction items
     const transactItems: any[] = [];
@@ -165,12 +173,12 @@ export class OrderService {
       },
     });
 
-    // 2. Put Order Items (up to 24 items to stay within 25 transaction limit)
-    const itemsToPut = orderItems.slice(0, 24); // Leave room for order item
-    itemsToPut.forEach(itemData => {
+    // 2. Put Order Items (only those that fit in transaction with stock updates)
+    const transactionItems = orderItems.slice(0, itemsToIncludeInTransaction);
+    transactionItems.forEach(itemData => {
       const item = this.orderItemRepo.buildOrderItemItem({
         ...itemData,
-        id: require('uuid').v4(),
+        id: uuidv4(),
         created_at: now,
       });
       transactItems.push({
@@ -182,36 +190,30 @@ export class OrderService {
       });
     });
 
-    // 3. Decrement stock for variants (only those with variant_id)
-    const variantUpdates = data.items
-      .filter(item => item.variant_id)
-      .slice(0, Math.min(24 - itemsToPut.length, data.items.length)); // Stay within limit
-
-    for (const item of variantUpdates) {
-      // We need to find the variant to get product_id
-      const variant = await this.variantRepo.findById(item.variant_id!);
-      if (variant) {
-        transactItems.push({
-          Update: {
-            TableName: this.tableName,
-            Key: {
-              PK: `PRODUCT#${variant.product_id}`,
-              SK: `VARIANT#${item.variant_id}`,
-            },
-            UpdateExpression: 'SET stock = stock - :quantity, updated_at = :now',
-            ExpressionAttributeValues: {
-              ':quantity': item.quantity,
-              ':now': now,
-            },
-            ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(deleted_at) AND stock >= :quantity',
+    // 3. Decrement stock for variants in transaction
+    for (let i = 0; i < itemsToIncludeInTransaction; i++) {
+      const item = data.items.filter(it => it.variant_id)[i];
+      transactItems.push({
+        Update: {
+          TableName: this.tableName,
+          Key: {
+            PK: `PRODUCT#${item.product_id}`,
+            SK: `VARIANT#${item.variant_id}`,
           },
-        });
-      }
+          UpdateExpression: 'SET stock = stock - :quantity, updated_at = :now',
+          ExpressionAttributeValues: {
+            ':quantity': item.quantity,
+            ':now': now,
+          },
+          ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(deleted_at) AND stock >= :quantity',
+        },
+      });
     }
 
-    // Execute transaction
+    // Execute transaction with idempotency token
+    const clientRequestToken = uuidv4();
     try {
-      await this.dynamoDB.transactWrite(transactItems);
+      await this.dynamoDB.transactWrite(transactItems, clientRequestToken);
     } catch (error: any) {
       if (error.name === 'TransactionCanceledException') {
         throw new Error('Order creation failed: Insufficient stock or concurrent modification');
@@ -219,10 +221,26 @@ export class OrderService {
       throw error;
     }
 
-    // If we had more than 24 items, create remaining items in batch
-    if (orderItems.length > 24) {
-      const remainingItems = orderItems.slice(24);
+    // Handle remaining items beyond transaction limit
+    if (orderItems.length > itemsToIncludeInTransaction) {
+      const remainingItems = orderItems.slice(itemsToIncludeInTransaction);
+
+      // Create remaining order items
       await this.orderItemRepo.batchCreate(remainingItems);
+
+      // Decrement stock for remaining variant items (non-atomic)
+      const remainingVariantItems = data.items
+        .filter(item => item.variant_id)
+        .slice(itemsToIncludeInTransaction);
+
+      for (const item of remainingVariantItems) {
+        try {
+          await this.variantRepo.decrementStock(item.variant_id!, item.product_id, item.quantity);
+        } catch (error) {
+          // Log error but don't fail the order creation
+          console.error(`Failed to decrement stock for variant ${item.variant_id}:`, error);
+        }
+      }
     }
 
     // Create notification (outside transaction)
@@ -244,7 +262,7 @@ export class OrderService {
     const orderId = typeof id === 'number' ? id.toString() : id;
     const [order, items] = await Promise.all([
       this.orderRepo.findById(orderId),
-      this.orderItemRepo.findByOrderId(parseInt(orderId)),
+      this.orderItemRepo.findByOrderId(orderId),
     ]);
 
     if (!order) {
@@ -263,7 +281,7 @@ export class OrderService {
       return null;
     }
 
-    const items = await this.orderItemRepo.findByOrderId(parseInt(order.id));
+    const items = await this.orderItemRepo.findByOrderId(order.id);
     return { ...order, items };
   }
 
@@ -384,30 +402,54 @@ export class OrderService {
 
   // ===== Backward Compatibility Methods =====
   // These methods provide compatibility with the old TypeORM-based API
+  // Note: Order IDs are now UUID strings instead of numbers
 
   /**
    * List orders with filters and pagination (backward compatibility)
-   * Maps to DynamoDB findAll method
+   * Maps to DynamoDB findAll method with cursor-based pagination
    */
   async listOrders(
     filters: any = {},
     page: number = 1,
     perPage: number = 20
   ): Promise<{ orders: any[]; total: number }> {
-    const result = await this.orderRepo.findAll(
-      {
-        status: filters.paymentStatus as OrderStatus,
-        customer_email: filters.customerEmail,
-      },
-      { limit: perPage }
-    );
+    // For page-based pagination, we need to iterate through pages
+    let lastEvaluatedKey: any | undefined = undefined;
+    let currentPage = 1;
+    let result: any;
+
+    // Iterate to the requested page
+    while (currentPage <= page) {
+      result = await this.orderRepo.findAll(
+        {
+          status: filters.paymentStatus as OrderStatus,
+          customer_email: filters.customerEmail,
+        },
+        {
+          limit: perPage,
+          lastEvaluatedKey,
+        }
+      );
+
+      if (currentPage === page) {
+        break;
+      }
+
+      // If no more pages, return empty
+      if (!result.lastEvaluatedKey) {
+        return {
+          orders: [],
+          total: 0,
+        };
+      }
+
+      lastEvaluatedKey = result.lastEvaluatedKey;
+      currentPage++;
+    }
 
     // Note: DynamoDB doesn't provide total count easily, so we return count of current page
     return {
-      orders: result.items.map(summary => ({
-        ...summary,
-        id: parseInt(summary.id), // Convert string ID to number for backward compatibility
-      })),
+      orders: result.items,
       total: result.count,
     };
   }
@@ -433,10 +475,7 @@ export class OrderService {
       throw new Error(`Order with id ${id} not found`);
     }
 
-    return {
-      ...result,
-      id: parseInt(result.id), // Convert string ID to number for backward compatibility
-    };
+    return result;
   }
 
   /**
@@ -476,10 +515,7 @@ export class OrderService {
       },
     });
 
-    return {
-      ...updatedOrder,
-      id: parseInt(updatedOrder.id), // Convert string ID to number for backward compatibility
-    };
+    return updatedOrder;
   }
 
   /**

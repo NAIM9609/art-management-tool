@@ -94,7 +94,7 @@ class CapacityLogger {
  */
 export class DynamoDBOptimized {
   private client: DynamoDBDocumentClient;
-  private tableName: string;
+  private _tableName: string;
   private maxRetries: number;
   private retryDelay: number;
   private returnConsumedCapacity: ReturnConsumedCapacity;
@@ -107,7 +107,7 @@ export class DynamoDBOptimized {
         'tableName must be provided in DynamoDBConfig or set DYNAMODB_TABLE_NAME environment variable'
       );
     }
-    this.tableName = tableName;
+    this._tableName = tableName;
     this.maxRetries = config.maxRetries ?? 3;
     this.retryDelay = config.retryDelay ?? 100; // Base delay in ms
     this.returnConsumedCapacity = config.returnConsumedCapacity ?? 'TOTAL';
@@ -133,6 +133,13 @@ export class DynamoDBOptimized {
         wrapNumbers: false,
       },
     });
+  }
+
+  /**
+   * Get the table name
+   */
+  get tableName(): string {
+    return this._tableName;
   }
 
   /**
@@ -212,7 +219,7 @@ export class DynamoDBOptimized {
     params: QueryEventuallyConsistentParams
   ): Promise<QueryResponse<T>> {
     const input: QueryCommandInput = {
-      TableName: this.tableName,
+      TableName: this._tableName,
       ConsistentRead: false, // Eventually consistent for cost savings
       KeyConditionExpression: params.keyConditionExpression,
       ExpressionAttributeNames: params.expressionAttributeNames,
@@ -270,7 +277,7 @@ export class DynamoDBOptimized {
     for (const batch of batches) {
       const input: BatchGetCommandInput = {
         RequestItems: {
-          [this.tableName]: {
+          [this._tableName]: {
             Keys: batch,
             ProjectionExpression: params.projectionExpression,
             ExpressionAttributeNames: params.expressionAttributeNames,
@@ -359,7 +366,7 @@ export class DynamoDBOptimized {
 
       const input: BatchWriteCommandInput = {
         RequestItems: {
-          [this.tableName]: requestItems,
+          [this._tableName]: requestItems,
         },
         ReturnConsumedCapacity: this.returnConsumedCapacity,
       };
@@ -554,7 +561,7 @@ export class DynamoDBOptimized {
    */
   async get<T = any>(params: GetParams): Promise<DynamoDBResponse<T | null>> {
     const input: GetCommandInput = {
-      TableName: this.tableName,
+      TableName: this._tableName,
       Key: params.key,
       ProjectionExpression: params.projectionExpression,
       ExpressionAttributeNames: params.expressionAttributeNames,
@@ -586,7 +593,7 @@ export class DynamoDBOptimized {
    */
   async put<T = any>(params: PutParams): Promise<DynamoDBResponse<T | null>> {
     const input: PutCommandInput = {
-      TableName: this.tableName,
+      TableName: this._tableName,
       Item: params.item,
       ConditionExpression: params.conditionExpression,
       ExpressionAttributeNames: params.expressionAttributeNames,
@@ -619,7 +626,7 @@ export class DynamoDBOptimized {
    */
   async delete<T = any>(params: DeleteParams): Promise<DynamoDBResponse<T | null>> {
     const input: DeleteCommandInput = {
-      TableName: this.tableName,
+      TableName: this._tableName,
       Key: params.key,
       ConditionExpression: params.conditionExpression,
       ExpressionAttributeNames: params.expressionAttributeNames,
@@ -650,9 +657,15 @@ export class DynamoDBOptimized {
   /**
    * Execute transaction with up to 25 items
    * All operations succeed or fail together (atomic)
+   *
+   * @param transactItems - Array of transaction items (Put, Update, Delete, ConditionCheck)
+   * @param clientRequestToken - Optional idempotency token for safe retries
    */
-  async transactWrite(transactItems: any[]): Promise<void> {
-    if (transactItems.length === 0) {
+  async transactWrite(
+    transactItems: TransactWriteCommandInput['TransactItems'],
+    clientRequestToken?: string
+  ): Promise<void> {
+    if (!transactItems || transactItems.length === 0) {
       return;
     }
 
@@ -662,6 +675,7 @@ export class DynamoDBOptimized {
 
     const input: TransactWriteCommandInput = {
       TransactItems: transactItems,
+      ClientRequestToken: clientRequestToken,
       ReturnConsumedCapacity: this.returnConsumedCapacity,
     };
 
