@@ -23,7 +23,6 @@ import { AuthError, requireAuth } from '../auth';
 import {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
-  successResponse,
   errorResponse,
 } from '../types';
 
@@ -182,23 +181,21 @@ export async function getCart(
     const userId = tryGetUserId(event);
     const service = getCartService();
 
-    // For unauthenticated guests, get/create by session only.
-    // For authenticated users, pass the userId so CartService can associate the
-    // session with the user's existing cart (login merge) when no session cart
-    // is present.  When both a session cart and a user cart exist and differ,
-    // we explicitly merge them so the guest items carry over.
-    const sessionCart = await service.getOrCreateCart(sessionId);
-
-    if (userId !== undefined) {
-      const userCart = await service.getOrCreateCart(sessionId, userId);
-      if (userCart.id !== sessionCart.id) {
-        await service.mergeCarts(sessionCart.id, userCart.id);
-        return buildCartResponse(service, userCart.id, sessionId, userCart.discount_code);
-      }
-      return buildCartResponse(service, userCart.id, sessionId, userCart.discount_code);
+    if (userId === undefined) {
+      const sessionCart = await service.getOrCreateCart(sessionId);
+      return buildCartResponse(service, sessionCart.id, sessionId, sessionCart.discount_code);
     }
 
-    return buildCartResponse(service, sessionCart.id, sessionId, sessionCart.discount_code);
+    // For authenticated users, look up/create the user's cart independently from
+    // session lookup, then merge guest cart items when both carts exist and differ.
+    const userCart = await service.getOrCreateCart(undefined, userId);
+    const sessionCart = await service.getOrCreateCart(sessionId);
+
+    if (userCart.id !== sessionCart.id) {
+      await service.mergeCarts(sessionCart.id, userCart.id);
+    }
+
+    return buildCartResponse(service, userCart.id, sessionId, userCart.discount_code);
   } catch (error) {
     return handleError(error);
   }

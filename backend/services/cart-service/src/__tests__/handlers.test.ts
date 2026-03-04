@@ -167,7 +167,11 @@ describe('getCart', () => {
   });
 
   it('extracts user ID from JWT when authenticated', async () => {
-    mockGetOrCreateCart.mockResolvedValue(MOCK_CART);
+    const userCart = { ...MOCK_CART, id: 'user-cart', user_id: 42 };
+    const sessionCart = { ...MOCK_CART, id: 'session-cart', session_id: 'sess-abc' };
+    mockGetOrCreateCart
+      .mockResolvedValueOnce(userCart)
+      .mockResolvedValueOnce(sessionCart);
     mockGetCartItems.mockResolvedValue([]);
     mockCalculateTotals.mockResolvedValue(MOCK_TOTALS);
 
@@ -175,8 +179,8 @@ describe('getCart', () => {
       makeEvent({ headers: { ...SESSION_HEADERS, ...AUTH_HEADERS } })
     );
 
-    // userId 42 should be passed to the second getOrCreateCart call
-    expect(mockGetOrCreateCart).toHaveBeenCalledWith('sess-abc', 42);
+    expect(mockGetOrCreateCart).toHaveBeenNthCalledWith(1, undefined, 42);
+    expect(mockGetOrCreateCart).toHaveBeenNthCalledWith(2, 'sess-abc');
   });
 
   it('returns 500 on service error', async () => {
@@ -681,10 +685,10 @@ describe('Session Management', () => {
     const sessionCart = { ...MOCK_CART, id: 'session-cart', session_id: 'sess-abc' };
     const userCart = { ...MOCK_CART, id: 'user-cart', user_id: 42, session_id: 'sess-abc' };
 
-    // First call returns the session cart, second returns the user cart
+    // First call returns the user cart lookup, second returns the session cart lookup
     mockGetOrCreateCart
-      .mockResolvedValueOnce(sessionCart)
-      .mockResolvedValueOnce(userCart);
+      .mockResolvedValueOnce(userCart)
+      .mockResolvedValueOnce(sessionCart);
     mockMergeCarts.mockResolvedValue(undefined);
     mockGetCartItems.mockResolvedValue([]);
     mockCalculateTotals.mockResolvedValue(MOCK_TOTALS);
@@ -695,5 +699,7 @@ describe('Session Management', () => {
 
     expect(result.statusCode).toBe(200);
     expect(mockMergeCarts).toHaveBeenCalledWith('session-cart', 'user-cart');
+    expect(mockGetOrCreateCart).toHaveBeenNthCalledWith(1, undefined, 42);
+    expect(mockGetOrCreateCart).toHaveBeenNthCalledWith(2, 'sess-abc');
   });
 });
