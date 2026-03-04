@@ -170,7 +170,7 @@ export interface BatchWriteResponse extends DynamoDBResponse<void> {
  * Configuration for DynamoDB client
  */
 export interface DynamoDBConfig {
-  tableName: string;
+  tableName?: string;
   region?: string;
   endpoint?: string;
   maxRetries?: number;

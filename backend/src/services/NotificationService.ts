@@ -21,7 +21,7 @@ export class NotificationService {
 
   constructor() {
     const dynamoDB = new DynamoDBOptimized({
-      tableName: process.env.DYNAMODB_TABLE_NAME || 'art-management-table',
+      tableName: process.env.DYNAMODB_TABLE_NAME,
       region: process.env.AWS_REGION || 'us-east-1',
     });
     this.notificationRepo = new NotificationRepository(dynamoDB);
@@ -41,16 +41,20 @@ export class NotificationService {
   }
 
   /**
-   * Get notifications with filters and pagination
+   * Get notifications with filters and pagination.
+   *
+   * Note: DynamoDB does not support offset-based pagination. The underlying
+   * repository uses limit-based, cursor-style pagination (LastEvaluatedKey).
+   *
    * @param unreadOnly - Filter for unread notifications only
-   * @param page - Page number (1-indexed) - converted to limit/offset for DynamoDB
-   * @param perPage - Number of items per page
+   * @param lastEvaluatedKey - Pagination cursor (from previous response) to retrieve next page
+   * @param perPage - Number of items per page (mapped to DynamoDB limit)
    */
   async getNotifications(
     unreadOnly: boolean = false,
-    page: number = 1,
+    lastEvaluatedKey?: Record<string, any>,
     perPage: number = 20
-  ): Promise<{ notifications: Notification[]; total: number }> {
+  ): Promise<{ notifications: Notification[]; count: number; lastEvaluatedKey?: Record<string, any> }> {
     const filters: NotificationFilters = {};
     if (unreadOnly) {
       filters.is_read = false;
@@ -58,13 +62,15 @@ export class NotificationService {
 
     const params: PaginationParams = {
       limit: perPage,
+      lastEvaluatedKey,
     };
 
     const result: PaginatedResponse<Notification> = await this.notificationRepo.findAll(filters, params);
 
     return {
       notifications: result.items,
-      total: result.count, // Note: DynamoDB count is for current page, not total
+      count: result.count, // Number of items in the current page, not total across all pages
+      lastEvaluatedKey: result.lastEvaluatedKey,
     };
   }
 

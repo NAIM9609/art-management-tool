@@ -154,10 +154,25 @@ export function createAdminRoutes(
 
   router.get('/notifications', async (req: Request, res: Response) => {
     try {
-      const { unread, page = 1, per_page = 20 } = req.query;
+      const { unread, last_key, per_page = 20 } = req.query;
+
+      // Parse last_key if provided (should be JSON-encoded)
+      let lastEvaluatedKey: Record<string, any> | undefined;
+      if (last_key) {
+        try {
+          const parsed = JSON.parse(last_key as string);
+          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            return res.status(400).json({ error: 'last_key must be a plain object' });
+          }
+          lastEvaluatedKey = parsed;
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid last_key format (must be valid JSON)' });
+        }
+      }
+
       const result = await notificationService.getNotifications(
         unread === 'true',
-        parseInt(page as string),
+        lastEvaluatedKey,
         parseInt(per_page as string)
       );
       res.json(result);
