@@ -100,7 +100,7 @@ export function createAdminRoutes(
 
   router.patch('/shop/variants/:id', async (req: Request, res: Response) => {
     try {
-      const variant = await productService.updateVariant(req.params.id, req.body);
+      const variant = await productService.updateVariant(parseInt(req.params.id), req.body);
       res.json(variant);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -301,7 +301,7 @@ export function createAdminRoutes(
     try {
       const image = await productService.updateImage(
         parseInt(req.params.id),
-        req.params.imageId,
+        parseInt(req.params.imageId),
         req.body
       );
       res.json({ message: 'Image updated', image });
@@ -314,7 +314,7 @@ export function createAdminRoutes(
     try {
       await productService.deleteImage(
         parseInt(req.params.id),
-        req.params.imageId
+        parseInt(req.params.imageId)
       );
       res.json({ message: 'Image deleted' });
     } catch (error: any) {
