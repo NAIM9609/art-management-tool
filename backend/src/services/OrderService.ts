@@ -369,23 +369,24 @@ export class OrderService {
 
     // No status filter — query all statuses in parallel and merge results
     const allStatuses = Object.values(OrderStatus);
-    const perStatusLimit = Math.ceil(perPage / allStatuses.length);
 
+    // Fetch up to `perPage` per status so merging produces enough candidates even when
+    // some statuses return no results; results are trimmed to `perPage` after sorting.
     const results = await Promise.all(
       allStatuses.map(s =>
         this.orderRepo.findAll(
           { status: s },
-          { limit: perStatusLimit }
+          { limit: perPage }
         )
       )
     );
 
     const allOrders = results.flatMap(r => r.items);
-    // Sort by created_at descending (most recent first) and cap at perPage
-    allOrders.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    // Sort by created_at descending (most recent first)
+    allOrders.sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
     const paged = allOrders.slice(0, perPage);
 
-    return { orders: paged, total: paged.length };
+    return { orders: paged, total: allOrders.length };
   }
 
   /**
