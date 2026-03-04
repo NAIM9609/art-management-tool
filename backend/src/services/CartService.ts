@@ -15,8 +15,9 @@ export class CartService {
   private variantRepo: ProductVariantRepository;
 
   constructor(dynamoDB?: DynamoDBOptimized) {
+    // Rely on DYNAMODB_TABLE_NAME env var; DynamoDBOptimized throws loudly when missing.
     const db = dynamoDB || new DynamoDBOptimized({
-      tableName: process.env.DYNAMODB_TABLE_NAME || 'art-management',
+      tableName: process.env.DYNAMODB_TABLE_NAME,
       region: process.env.AWS_REGION || 'us-east-1',
     });
 
@@ -29,12 +30,12 @@ export class CartService {
 
   /**
    * Validate variant stock against the requested quantity.
-   * If variant is not found, stock validation is skipped.
+   * variantId is a UUID string matching ProductVariant.id.
    */
-  private async validateStock(variantId: number | undefined, quantity: number): Promise<void> {
+  private async validateStock(variantId: string | undefined, quantity: number): Promise<void> {
     if (variantId == null) return;
 
-    const variant = await this.variantRepo.findById(String(variantId));
+    const variant = await this.variantRepo.findById(variantId);
     if (variant && variant.stock < quantity) {
       throw new Error(
         `Insufficient stock available. Requested: ${quantity}, Available: ${variant.stock}`
@@ -92,13 +93,15 @@ export class CartService {
 
   /**
    * Add an item to the cart, or update quantity if it already exists.
-   * Validates product existence, variant existence (if provided), and stock.
+   * Validates product existence, variant existence (if provided), and stock
+   * against the FINAL quantity (existing + incoming) to prevent overselling.
+   * variantId must be a UUID string matching ProductVariant.id.
    * Refreshes cart TTL on success.
    */
   async addItem(
     cartId: string,
     productId: number,
-    variantId: number | undefined,
+    variantId: string | undefined,
     quantity: number
   ): Promise<CartItem> {
     if (quantity <= 0) {
@@ -111,12 +114,20 @@ export class CartService {
     }
 
     if (variantId != null) {
-      const variant = await this.variantRepo.findById(String(variantId));
+      const variant = await this.variantRepo.findById(variantId);
       if (!variant) {
         throw new Error('Variant not found');
       }
-      await this.validateStock(variantId, quantity);
     }
+
+    // Determine the final cart quantity (existing + incoming) and validate stock
+    // against that total so we never allow the cart to exceed available stock.
+    const currentItems = await this.cartItemRepo.findByCartId(cartId);
+    const existingItem = currentItems.find(
+      item => item.product_id === productId && item.variant_id === variantId
+    );
+    const finalQuantity = (existingItem?.quantity ?? 0) + quantity;
+    await this.validateStock(variantId, finalQuantity);
 
     const item = await this.cartItemRepo.addItem(cartId, productId, variantId, quantity);
 
@@ -134,7 +145,7 @@ export class CartService {
    * Refreshes cart TTL on success.
    */
   async updateQuantity(cartId: string, itemId: string, quantity: number): Promise<CartItem> {
-    if (quantity <= 0) {
+    if (!Number.isFinite(quantity) || quantity <= 0) {
       throw new Error('Invalid quantity');
     }
 
@@ -191,17 +202,21 @@ export class CartService {
   /**
    * Validate a discount code and apply it to the cart.
    * Supports percentage and fixed discount types.
-   * Throws if the code is invalid or expired.
+   * Atomically increments the usage counter via DiscountCodeRepository.incrementUsage()
+   * so that max_uses limits are enforced at the point of application.
+   * Throws if the code is invalid, expired, or has reached its usage limit.
    */
   async applyDiscount(cartId: string, code: string): Promise<Cart> {
+    // First fetch the code details (type, value, caps) needed for the calculation.
     const discountCode = await this.discountRepo.findByCode(code);
-
     if (!discountCode) {
       throw new Error('Invalid discount code');
     }
 
-    const isValid = await this.discountRepo.isValid(code);
-    if (!isValid) {
+    // Atomically validate (active, not expired, under max_uses) and increment usage.
+    // Returns null if any condition fails, enforcing max_uses without a TOCTOU window.
+    const updatedCode = await this.discountRepo.incrementUsage(code);
+    if (!updatedCode) {
       throw new Error('Discount code is expired or no longer active');
     }
 
@@ -249,8 +264,9 @@ export class CartService {
     if (items.length > 0) {
       // Fetch all products and variants in parallel to avoid N+1 queries
       const productIds = [...new Set(items.map(item => item.product_id))];
+      // variant_id is now a UUID string matching ProductVariant.id directly
       const variantIds = [...new Set(
-        items.filter(item => item.variant_id != null).map(item => String(item.variant_id!))
+        items.filter(item => item.variant_id != null).map(item => item.variant_id!)
       )];
 
       const [products, variants] = await Promise.all([
@@ -261,15 +277,10 @@ export class CartService {
       const productMap = new Map(
         products.filter(Boolean).map(p => [p!.id, p!])
       );
-      // Key the variant map by the CartItem variant_id string so lookups
-      // below (String(item.variant_id)) work regardless of the UUID stored in
-      // the ProductVariant.id field.
-      const variantMap = new Map<string, ProductVariant>();
-      variantIds.forEach((id, i) => {
-        if (variants[i]) {
-          variantMap.set(id, variants[i]!);
-        }
-      });
+      // variant_id on CartItem now equals ProductVariant.id, so key by v!.id
+      const variantMap = new Map<string, ProductVariant>(
+        variants.filter(Boolean).map(v => [v!.id, v!])
+      );
 
       for (const item of items) {
         const product = productMap.get(item.product_id);
@@ -277,7 +288,7 @@ export class CartService {
           let itemPrice = Number(product.base_price);
 
           if (item.variant_id != null) {
-            const variant = variantMap.get(String(item.variant_id));
+            const variant = variantMap.get(item.variant_id);
             if (variant) {
               itemPrice += Number(variant.price_adjustment);
             }

@@ -76,7 +76,7 @@ export class CartItemRepository {
    * Generate deterministic item ID based on cart, product, and variant
    * This ensures idempotency and prevents race conditions
    */
-  private generateItemId(cartId: string, productId: number, variantId: number | undefined): string {
+  private generateItemId(cartId: string, productId: number, variantId: string | undefined): string {
     const key = `${cartId}:${productId}:${variantId ?? 'null'}`;
     return crypto.createHash('sha256').update(key).digest('hex').substring(0, 32);
   }
@@ -88,7 +88,7 @@ export class CartItemRepository {
   async addItem(
     cartId: string,
     productId: number,
-    variantId: number | undefined,
+    variantId: string | undefined,
     quantity: number
   ): Promise<CartItem> {
     const now = new Date().toISOString();

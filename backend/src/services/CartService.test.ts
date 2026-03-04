@@ -245,6 +245,7 @@ describe('CartService', () => {
       const product = makeProduct();
       const item = makeCartItem();
       mockProductRepo.findById.mockResolvedValue(product);
+      mockCartItemRepo.findByCartId.mockResolvedValue([]);
       mockCartItemRepo.addItem.mockResolvedValue(item);
 
       const result = await service.addItem('cart-uuid-1', 101, undefined, 2);
@@ -258,14 +259,15 @@ describe('CartService', () => {
     it('should validate variant exists when variantId is provided', async () => {
       const product = makeProduct();
       const variant = makeVariant();
-      const item = makeCartItem({ variant_id: 5 });
+      const item = makeCartItem({ variant_id: 'variant-uuid-1' });
       mockProductRepo.findById.mockResolvedValue(product);
       mockVariantRepo.findById.mockResolvedValue(variant);
+      mockCartItemRepo.findByCartId.mockResolvedValue([]);
       mockCartItemRepo.addItem.mockResolvedValue(item);
 
-      await service.addItem('cart-uuid-1', 101, 5, 1);
+      await service.addItem('cart-uuid-1', 101, 'variant-uuid-1', 1);
 
-      expect(mockVariantRepo.findById).toHaveBeenCalledWith('5');
+      expect(mockVariantRepo.findById).toHaveBeenCalledWith('variant-uuid-1');
     });
 
     it('should throw when product is not found', async () => {
@@ -280,7 +282,7 @@ describe('CartService', () => {
       mockProductRepo.findById.mockResolvedValue(makeProduct());
       mockVariantRepo.findById.mockResolvedValue(null);
 
-      await expect(service.addItem('cart-uuid-1', 101, 999, 1)).rejects.toThrow(
+      await expect(service.addItem('cart-uuid-1', 101, 'variant-uuid-999', 1)).rejects.toThrow(
         'Variant not found'
       );
     });
@@ -297,8 +299,9 @@ describe('CartService', () => {
     it('should throw when stock is insufficient', async () => {
       mockProductRepo.findById.mockResolvedValue(makeProduct());
       mockVariantRepo.findById.mockResolvedValue(makeVariant({ stock: 2 }));
+      mockCartItemRepo.findByCartId.mockResolvedValue([]);
 
-      await expect(service.addItem('cart-uuid-1', 101, 5, 5)).rejects.toThrow(
+      await expect(service.addItem('cart-uuid-1', 101, 'variant-uuid-1', 5)).rejects.toThrow(
         'Insufficient stock available'
       );
     });
@@ -306,12 +309,24 @@ describe('CartService', () => {
     it('should not throw on stock validation when variant is not found in DynamoDB', async () => {
       const product = makeProduct();
       mockProductRepo.findById.mockResolvedValue(product);
-      // findById called twice: once for "variant found?" check, once for stock validation
       mockVariantRepo.findById.mockResolvedValue(null);
 
       // variant_id exists but cannot be found — should throw "Variant not found"
-      await expect(service.addItem('cart-uuid-1', 101, 999, 1)).rejects.toThrow(
+      await expect(service.addItem('cart-uuid-1', 101, 'variant-uuid-999', 1)).rejects.toThrow(
         'Variant not found'
+      );
+    });
+
+    it('should validate stock against final merged quantity (existing + incoming)', async () => {
+      mockProductRepo.findById.mockResolvedValue(makeProduct());
+      mockVariantRepo.findById.mockResolvedValue(makeVariant({ stock: 5 }));
+      // Cart already has 4 units; adding 2 more would make 6, exceeding stock of 5
+      mockCartItemRepo.findByCartId.mockResolvedValue([
+        makeCartItem({ variant_id: 'variant-uuid-1', quantity: 4 }),
+      ]);
+
+      await expect(service.addItem('cart-uuid-1', 101, 'variant-uuid-1', 2)).rejects.toThrow(
+        'Insufficient stock available'
       );
     });
   });
@@ -335,6 +350,15 @@ describe('CartService', () => {
         'Invalid quantity'
       );
       await expect(service.updateQuantity('cart-uuid-1', 'item-hash-1', -3)).rejects.toThrow(
+        'Invalid quantity'
+      );
+    });
+
+    it('should throw when quantity is not a finite number', async () => {
+      await expect(service.updateQuantity('cart-uuid-1', 'item-hash-1', NaN)).rejects.toThrow(
+        'Invalid quantity'
+      );
+      await expect(service.updateQuantity('cart-uuid-1', 'item-hash-1', Infinity)).rejects.toThrow(
         'Invalid quantity'
       );
     });
@@ -406,17 +430,17 @@ describe('CartService', () => {
       const updatedCart = makeCart({ discount_code: 'SAVE10', discount_amount: 10 });
 
       mockDiscountRepo.findByCode.mockResolvedValue(discountCode);
-      mockDiscountRepo.isValid.mockResolvedValue(true);
+      mockDiscountRepo.incrementUsage.mockResolvedValue({ ...discountCode, times_used: 1 });
       // calculateTotals will need cartRepo + cartItemRepo
       mockCartRepo.findById.mockResolvedValue(makeCart());
       mockCartItemRepo.findByCartId.mockResolvedValue([makeCartItem({ quantity: 2 })]); // 2 × $50 = $100
       mockProductRepo.findById.mockResolvedValue(makeProduct({ base_price: 50 }));
-      mockVariantRepo.findById.mockResolvedValue(null);
       mockCartRepo.update.mockResolvedValue(updatedCart);
 
       const result = await service.applyDiscount('cart-uuid-1', 'SAVE10');
 
       // 10% of subtotal (100) = 10
+      expect(mockDiscountRepo.incrementUsage).toHaveBeenCalledWith('SAVE10');
       expect(mockCartRepo.update).toHaveBeenCalledWith('cart-uuid-1', {
         discount_code: 'SAVE10',
         discount_amount: 10,
@@ -429,11 +453,12 @@ describe('CartService', () => {
       const updatedCart = makeCart({ discount_code: 'FLAT15', discount_amount: 15 });
 
       mockDiscountRepo.findByCode.mockResolvedValue(discountCode);
-      mockDiscountRepo.isValid.mockResolvedValue(true);
+      mockDiscountRepo.incrementUsage.mockResolvedValue({ ...discountCode, times_used: 1 });
       mockCartRepo.update.mockResolvedValue(updatedCart);
 
       const result = await service.applyDiscount('cart-uuid-1', 'FLAT15');
 
+      expect(mockDiscountRepo.incrementUsage).toHaveBeenCalledWith('FLAT15');
       expect(mockCartRepo.update).toHaveBeenCalledWith('cart-uuid-1', {
         discount_code: 'FLAT15',
         discount_amount: 15,
@@ -450,12 +475,11 @@ describe('CartService', () => {
       const updatedCart = makeCart({ discount_code: 'BIGDEAL', discount_amount: 20 });
 
       mockDiscountRepo.findByCode.mockResolvedValue(discountCode);
-      mockDiscountRepo.isValid.mockResolvedValue(true);
+      mockDiscountRepo.incrementUsage.mockResolvedValue({ ...discountCode, times_used: 1 });
       mockCartRepo.findById.mockResolvedValue(makeCart());
       // subtotal = 2 × $50 = $100, 50% = $50 but capped at $20
       mockCartItemRepo.findByCartId.mockResolvedValue([makeCartItem({ quantity: 2 })]);
       mockProductRepo.findById.mockResolvedValue(makeProduct({ base_price: 50 }));
-      mockVariantRepo.findById.mockResolvedValue(null);
       mockCartRepo.update.mockResolvedValue(updatedCart);
 
       const result = await service.applyDiscount('cart-uuid-1', 'BIGDEAL');
@@ -475,11 +499,22 @@ describe('CartService', () => {
       );
     });
 
-    it('should throw when discount code is expired or inactive', async () => {
+    it('should throw when incrementUsage returns null (expired, inactive, or max_uses hit)', async () => {
       mockDiscountRepo.findByCode.mockResolvedValue(makeDiscountCode());
-      mockDiscountRepo.isValid.mockResolvedValue(false);
+      mockDiscountRepo.incrementUsage.mockResolvedValue(null);
 
       await expect(service.applyDiscount('cart-uuid-1', 'EXPIRED')).rejects.toThrow(
+        'Discount code is expired or no longer active'
+      );
+    });
+
+    it('should enforce max_uses by relying on incrementUsage atomic check', async () => {
+      const maxedCode = makeDiscountCode({ max_uses: 5, times_used: 5 });
+      mockDiscountRepo.findByCode.mockResolvedValue(maxedCode);
+      // incrementUsage returns null when max_uses is reached
+      mockDiscountRepo.incrementUsage.mockResolvedValue(null);
+
+      await expect(service.applyDiscount('cart-uuid-1', 'MAXED')).rejects.toThrow(
         'Discount code is expired or no longer active'
       );
     });
@@ -487,7 +522,7 @@ describe('CartService', () => {
     it('should throw when cart is not found during update', async () => {
       const discountCode = makeDiscountCode({ discount_type: DiscountType.FIXED, discount_value: 5 });
       mockDiscountRepo.findByCode.mockResolvedValue(discountCode);
-      mockDiscountRepo.isValid.mockResolvedValue(true);
+      mockDiscountRepo.incrementUsage.mockResolvedValue({ ...discountCode, times_used: 1 });
       mockCartRepo.update.mockResolvedValue(null);
 
       await expect(service.applyDiscount('cart-uuid-1', 'SAVE10')).rejects.toThrow(
@@ -528,7 +563,7 @@ describe('CartService', () => {
     });
 
     it('should add variant price_adjustment to item price', async () => {
-      const items = [makeCartItem({ quantity: 1, variant_id: 5 })];
+      const items = [makeCartItem({ quantity: 1, variant_id: 'variant-uuid-1' })];
       mockCartRepo.findById.mockResolvedValue(makeCart({ discount_amount: 0 }));
       mockCartItemRepo.findByCartId.mockResolvedValue(items);
       mockProductRepo.findById.mockResolvedValue(makeProduct({ base_price: 50 }));
@@ -573,6 +608,7 @@ describe('CartService', () => {
   describe('TTL management', () => {
     it('should refresh TTL after addItem', async () => {
       mockProductRepo.findById.mockResolvedValue(makeProduct());
+      mockCartItemRepo.findByCartId.mockResolvedValue([]);
       mockCartItemRepo.addItem.mockResolvedValue(makeCartItem());
 
       await service.addItem('cart-uuid-1', 101, undefined, 1);

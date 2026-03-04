@@ -102,10 +102,10 @@ describe('CartItemRepository', () => {
     it('should create item with variant_id', async () => {
       ddbMock.on(PutCommand).resolves({});
 
-      const item = await repository.addItem('cart-123', 200, 10, 2);
+      const item = await repository.addItem('cart-123', 200, 'variant-uuid-10', 2);
 
       expect(item.product_id).toBe(200);
-      expect(item.variant_id).toBe(10);
+      expect(item.variant_id).toBe('variant-uuid-10');
       expect(item.quantity).toBe(2);
     });
 
@@ -148,8 +148,8 @@ describe('CartItemRepository', () => {
     it('should generate same ID for same product/variant combination', async () => {
       ddbMock.on(PutCommand).resolves({});
 
-      const item1 = await repository.addItem('cart-123', 100, 5, 1);
-      const item2 = await repository.addItem('cart-123', 100, 5, 2);
+      const item1 = await repository.addItem('cart-123', 100, 'variant-uuid-5', 1);
+      const item2 = await repository.addItem('cart-123', 100, 'variant-uuid-5', 2);
 
       // Same product and variant should generate same ID
       expect(item1.id).toBe(item2.id);
@@ -422,7 +422,7 @@ describe('CartItemRepository', () => {
           id: 'item-1',
           cart_id: 'source-cart',
           product_id: 100,
-          variant_id: 5,
+          variant_id: 'variant-uuid-5',
           quantity: 2,
           created_at: '2024-01-01T00:00:00.000Z',
           updated_at: '2024-01-01T00:00:00.000Z',
@@ -436,7 +436,7 @@ describe('CartItemRepository', () => {
           id: 'item-2',
           cart_id: 'dest-cart',
           product_id: 100,
-          variant_id: 5,
+          variant_id: 'variant-uuid-5',
           quantity: 3,
           created_at: '2024-01-01T00:00:00.000Z',
           updated_at: '2024-01-01T00:00:00.000Z',
@@ -494,7 +494,7 @@ describe('CartItemRepository', () => {
           id: 'item-1',
           cart_id: 'source-cart',
           product_id: 100,
-          variant_id: 5,
+          variant_id: 'variant-uuid-5',
           quantity: 2,
           created_at: '2024-01-01T00:00:00.000Z',
           updated_at: '2024-01-01T00:00:00.000Z',
@@ -508,7 +508,7 @@ describe('CartItemRepository', () => {
           id: 'item-2',
           cart_id: 'dest-cart',
           product_id: 100,
-          variant_id: 6, // Different variant
+          variant_id: 'variant-uuid-6', // Different variant
           quantity: 3,
           created_at: '2024-01-01T00:00:00.000Z',
           updated_at: '2024-01-01T00:00:00.000Z',
