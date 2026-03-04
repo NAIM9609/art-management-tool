@@ -40,8 +40,8 @@ export class EtsyPaymentProvider extends PaymentProvider {
   }
 
   async refundPayment(
-    transactionId: string,
-    amount: number
+    _transactionId: string,
+    _amount: number
   ): Promise<RefundResult> {
     return {
       success: false,
@@ -51,8 +51,8 @@ export class EtsyPaymentProvider extends PaymentProvider {
   }
 
   async validateWebhook(
-    payload: Buffer,
-    signature: string
+    _payload: Buffer,
+    _signature: string
   ): Promise<WebhookValidation> {
     return {
       valid: false,

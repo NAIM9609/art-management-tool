@@ -8,7 +8,6 @@ import { NotificationService } from '../../services/NotificationService';
 import { AppDataSource } from '../../database/connection';
 import { Category } from '../../entities/Category';
 import { config } from '../../config';
-import { AuthRequest } from '../../middleware/auth';
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -53,8 +52,7 @@ export function createAdminRoutes(
 
   router.post('/shop/products', async (req: Request, res: Response) => {
     try {
-      const userId = (req as AuthRequest).user?.id.toString();
-      const product = await productService.createProduct(req.body, userId);
+      const product = await productService.createProduct(req.body);
       res.status(201).json(product);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -75,8 +73,7 @@ export function createAdminRoutes(
 
   router.patch('/shop/products/:id', async (req: Request, res: Response) => {
     try {
-      const userId = (req as AuthRequest).user?.id.toString();
-      const product = await productService.updateProduct(parseInt(req.params.id), req.body, userId);
+      const product = await productService.updateProduct(parseInt(req.params.id), req.body);
       res.json(product);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -85,8 +82,7 @@ export function createAdminRoutes(
 
   router.delete('/shop/products/:id', async (req: Request, res: Response) => {
     try {
-      const userId = (req as AuthRequest).user?.id.toString();
-      await productService.deleteProduct(parseInt(req.params.id), userId);
+      await productService.deleteProduct(parseInt(req.params.id));
       res.json({ message: 'Product deleted' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -104,7 +100,7 @@ export function createAdminRoutes(
 
   router.patch('/shop/variants/:id', async (req: Request, res: Response) => {
     try {
-      const variant = await productService.updateVariant(req.params.id, req.body);
+      const variant = await productService.updateVariant(parseInt(req.params.id), req.body);
       res.json(variant);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -158,25 +154,10 @@ export function createAdminRoutes(
 
   router.get('/notifications', async (req: Request, res: Response) => {
     try {
-      const { unread, last_key, per_page = 20 } = req.query;
-
-      // Parse last_key if provided (should be JSON-encoded)
-      let lastEvaluatedKey: Record<string, any> | undefined;
-      if (last_key) {
-        try {
-          const parsed = JSON.parse(last_key as string);
-          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-            return res.status(400).json({ error: 'last_key must be a plain object' });
-          }
-          lastEvaluatedKey = parsed;
-        } catch (e) {
-          return res.status(400).json({ error: 'Invalid last_key format (must be valid JSON)' });
-        }
-      }
-
+      const { unread, page = 1, per_page = 20 } = req.query;
       const result = await notificationService.getNotifications(
         unread === 'true',
-        lastEvaluatedKey,
+        parseInt(page as string),
         parseInt(per_page as string)
       );
       res.json(result);
@@ -187,7 +168,7 @@ export function createAdminRoutes(
 
   router.get('/notifications/:id', async (req: Request, res: Response) => {
     try {
-      const notification = await notificationService.getNotificationById(req.params.id);
+      const notification = await notificationService.getNotificationById(parseInt(req.params.id));
       if (!notification) {
         return res.status(404).json({ error: 'Notification not found' });
       }
@@ -199,10 +180,7 @@ export function createAdminRoutes(
 
   router.patch('/notifications/:id/read', async (req: Request, res: Response) => {
     try {
-      const notification = await notificationService.markAsRead(req.params.id);
-      if (!notification) {
-        return res.status(404).json({ error: 'Notification not found' });
-      }
+      const notification = await notificationService.markAsRead(parseInt(req.params.id));
       res.json(notification);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -220,7 +198,7 @@ export function createAdminRoutes(
 
   router.delete('/notifications/:id', async (req: Request, res: Response) => {
     try {
-      await notificationService.deleteNotification(req.params.id);
+      await notificationService.deleteNotification(parseInt(req.params.id));
       res.json({ message: 'Notification deleted' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -323,7 +301,7 @@ export function createAdminRoutes(
     try {
       const image = await productService.updateImage(
         parseInt(req.params.id),
-        req.params.imageId,
+        parseInt(req.params.imageId),
         req.body
       );
       res.json({ message: 'Image updated', image });
@@ -336,7 +314,7 @@ export function createAdminRoutes(
     try {
       await productService.deleteImage(
         parseInt(req.params.id),
-        req.params.imageId
+        parseInt(req.params.imageId)
       );
       res.json({ message: 'Image deleted' });
     } catch (error: any) {

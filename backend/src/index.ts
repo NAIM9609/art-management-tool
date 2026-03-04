@@ -22,7 +22,7 @@ setupRoutes(app);
 
 app.use('/uploads', express.static(config.uploadBaseDir));
 
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   console.error('Error:', err);
   res.status(500).json({
     error: 'Internal server error',

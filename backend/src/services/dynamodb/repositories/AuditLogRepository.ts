@@ -326,9 +326,9 @@ export class AuditLogRepository {
 
       do {
         const result = await this.dynamoDB.queryEventuallyConsistent({
-          keyConditionExpression: 'PK = :pk',
+          keyConditionExpression: 'begins_with(PK, :pk)',
           expressionAttributeValues: {
-            ':pk': `AUDIT#${date}`,
+            ':pk': `AUDIT#${date}#`,
           },
           scanIndexForward: false, // Newest first
           exclusiveStartKey,

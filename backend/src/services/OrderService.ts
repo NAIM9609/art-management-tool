@@ -1,19 +1,14 @@
-import { DynamoDBOptimized } from './dynamodb/DynamoDBOptimized';
-import { OrderRepository } from './dynamodb/repositories/OrderRepository';
-import { OrderItemRepository } from './dynamodb/repositories/OrderItemRepository';
-import { ProductVariantRepository } from './dynamodb/repositories/ProductVariantRepository';
-import { AuditLogRepository } from './dynamodb/repositories/AuditLogRepository';
-import { NotificationRepository } from './dynamodb/repositories/NotificationRepository';
-import {
-  Order,
-  OrderItem,
-  CreateOrderItemData,
-  OrderStatus,
-  PaginationParams,
-  PaginatedResponse,
-  OrderSummary
-} from './dynamodb/repositories/types';
-import { v4 as uuidv4 } from 'uuid';
+import { Repository, In } from 'typeorm';
+import { AppDataSource } from '../database/connection';
+import { Order, PaymentStatus, FulfillmentStatus } from '../entities/Order';
+import { OrderItem } from '../entities/OrderItem';
+import { Cart } from '../entities/Cart';
+import { CartItem } from '../entities/CartItem';
+import { EnhancedProduct } from '../entities/EnhancedProduct';
+import { ProductVariant } from '../entities/ProductVariant';
+import { NotificationService } from './NotificationService';
+import { PaymentProvider } from './payment/PaymentProvider';
+import { AuditService } from './AuditService';
 import { config } from '../config';
 
 export interface CreateOrderData {
@@ -43,22 +38,26 @@ export interface PaymentData {
 }
 
 export class OrderService {
-  private dynamoDB: DynamoDBOptimized;
-  private orderRepo: OrderRepository;
-  private orderItemRepo: OrderItemRepository;
-  private variantRepo: ProductVariantRepository;
-  private auditLogRepo: AuditLogRepository;
-  private notificationRepo: NotificationRepository;
-  private tableName: string;
+  private orderRepo: Repository<Order>;
+  private orderItemRepo: Repository<OrderItem>;
+  private cartRepo: Repository<Cart>;
+  private cartItemRepo: Repository<CartItem>;
+  private productRepo: Repository<EnhancedProduct>;
+  private variantRepo: Repository<ProductVariant>;
+  private notificationService: NotificationService;
+  private paymentProvider: PaymentProvider;
+  private auditService: AuditService;
 
-  constructor(dynamoDB: DynamoDBOptimized) {
-    this.dynamoDB = dynamoDB;
-    this.tableName = (dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME || 'products';
-    this.orderRepo = new OrderRepository(dynamoDB);
-    this.orderItemRepo = new OrderItemRepository(dynamoDB);
-    this.variantRepo = new ProductVariantRepository(dynamoDB);
-    this.auditLogRepo = new AuditLogRepository(dynamoDB);
-    this.notificationRepo = new NotificationRepository(dynamoDB);
+  constructor(paymentProvider: PaymentProvider, notificationService: NotificationService, auditService?: AuditService) {
+    this.orderRepo = AppDataSource.getRepository(Order);
+    this.orderItemRepo = AppDataSource.getRepository(OrderItem);
+    this.cartRepo = AppDataSource.getRepository(Cart);
+    this.cartItemRepo = AppDataSource.getRepository(CartItem);
+    this.productRepo = AppDataSource.getRepository(EnhancedProduct);
+    this.variantRepo = AppDataSource.getRepository(ProductVariant);
+    this.paymentProvider = paymentProvider;
+    this.notificationService = notificationService;
+    this.auditService = auditService || new AuditService();
   }
 
   /**
@@ -345,24 +344,12 @@ export class OrderService {
     return updatedOrder;
   }
 
-  /**
-   * Process payment and update payment status
-   */
-  async processPayment(
-    orderId: string,
-    paymentData: PaymentData,
-    userId: string = 'system'
-  ): Promise<Order | null> {
-    // Get current order
-    const currentOrder = await this.orderRepo.findById(orderId);
-    if (!currentOrder) {
-      return null;
-    }
+  async updatePaymentStatus(id: number, status: PaymentStatus, paymentIntentId?: string, userId?: string): Promise<Order> {
+    const oldOrder = await this.getOrderById(id);
 
-    // Update payment status
-    const updatedOrder = await this.orderRepo.update(orderId, {
-      payment_status: paymentData.payment_status,
-      payment_intent_id: paymentData.payment_intent_id,
+    await this.orderRepo.update(id, {
+      payment_status: status,
+      payment_intent_id: paymentIntentId,
     });
 
     if (!updatedOrder) {
@@ -447,46 +434,46 @@ export class OrderService {
       currentPage++;
     }
 
-    // Note: DynamoDB doesn't provide total count easily, so we return count of current page
-    return {
-      orders: result.items,
-      total: result.count,
-    };
-  }
+    // Log audit trail (non-blocking)
+    if (userId && oldOrder) {
+      this.auditService.logAction(
+        userId,
+        'UPDATE_PAYMENT_STATUS',
+        'Order',
+        id.toString(),
+        {
+          payment_status: { old: oldOrder.payment_status, new: status },
+          payment_intent_id: paymentIntentId
+        }
+      ).catch(err => console.error('Failed to log audit action:', err));
+    }
 
-  /**
-   * Update payment status (backward compatibility)
-   * Maps to processPayment method
-   */
-  async updatePaymentStatus(
-    id: number | string,
-    status: string,
-    paymentIntentId?: string
-  ): Promise<any> {
-    const result = await this.processPayment(
-      id.toString(),
-      {
-        payment_status: status.toLowerCase(),
-        payment_intent_id: paymentIntentId,
-      }
-    );
-
-    if (!result) {
+    const order = await this.getOrderById(id);
+    if (!order) {
       throw new Error(`Order with id ${id} not found`);
     }
 
     return result;
   }
 
-  /**
-   * Update fulfillment status (backward compatibility)
-   */
-  async updateFulfillmentStatus(
-    id: number | string,
-    status: string
-  ): Promise<any> {
-    const currentOrder = await this.orderRepo.findById(id.toString());
-    if (!currentOrder) {
+  async updateFulfillmentStatus(id: number, status: FulfillmentStatus, userId?: string): Promise<Order> {
+    const oldOrder = await this.getOrderById(id);
+
+    await this.orderRepo.update(id, { fulfillment_status: status });
+
+    // Log audit trail (non-blocking)
+    if (userId && oldOrder) {
+      this.auditService.logAction(
+        userId,
+        'UPDATE_FULFILLMENT_STATUS',
+        'Order',
+        id.toString(),
+        { fulfillment_status: { old: oldOrder.fulfillment_status, new: status } }
+      ).catch(err => console.error('Failed to log audit action:', err));
+    }
+
+    const order = await this.getOrderById(id);
+    if (!order) {
       throw new Error(`Order with id ${id} not found`);
     }
 

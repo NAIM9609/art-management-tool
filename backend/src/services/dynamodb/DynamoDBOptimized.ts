@@ -116,8 +116,10 @@ export class DynamoDBOptimized {
       region: config.region || process.env.AWS_REGION || 'us-east-1',
     };
 
-    if (config.endpoint) {
-      dynamoConfig.endpoint = config.endpoint;
+    // Support LocalStack endpoint override for local testing
+    const endpoint = config.endpoint || process.env.AWS_ENDPOINT_URL;
+    if (endpoint) {
+      dynamoConfig.endpoint = endpoint;
     }
 
     const ddbClient = new DynamoDBClient(dynamoConfig);
@@ -166,8 +168,12 @@ export class DynamoDBOptimized {
         return this.executeWithRetry(commandFn, operation, attempt + 1);
       }
 
-      // Log error and rethrow
-      console.error(`[DynamoDB] ${operation} failed:`, error);
+      // Don't log ConditionalCheckFailedException - it's expected for conditional writes
+      const isConditionalCheckFailed = error.name === 'ConditionalCheckFailedException' || 
+                                        error.code === 'ConditionalCheckFailedException';
+      if (!isConditionalCheckFailed) {
+        console.error(`[DynamoDB] ${operation} failed:`, error);
+      }
       throw this.normalizeError(error);
     }
   }
@@ -271,7 +277,7 @@ export class DynamoDBOptimized {
 
     const allItems: T[] = [];
     const allConsumedCapacities: any[] = [];
-    let unprocessedKeys: Record<string, any>[] = [];
+    const unprocessedKeys: Record<string, any>[] = [];
 
     // Process each batch
     for (const batch of batches) {
@@ -338,7 +344,7 @@ export class DynamoDBOptimized {
     }
 
     const allConsumedCapacities: any[] = [];
-    let unprocessedItems: BatchWriteItem[] = [];
+    const unprocessedItems: BatchWriteItem[] = [];
 
     // Process each batch
     for (const batch of batches) {
@@ -536,7 +542,7 @@ export class DynamoDBOptimized {
     // require that it already exists.
     let conditionExpression = params.conditionExpression;
     let expressionAttributeNames = params.expressionAttributeNames;
-    let expressionAttributeValues = params.expressionAttributeValues;
+    const expressionAttributeValues = params.expressionAttributeValues;
 
     if (!conditionExpression) {
       const keyAttributeNames = Object.keys(params.key || {});
