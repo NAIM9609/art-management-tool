@@ -33,6 +33,7 @@ export interface LambdaEvent {
   queryStringParameters?: Record<string, string> | null;
   headers?: Record<string, string> | null;
   body?: string | null;
+  isBase64Encoded?: boolean;
 }
 
 export interface LambdaResponse {
@@ -101,7 +102,10 @@ export function createOrderServiceDeps(): OrderServiceDeps {
   let paymentProvider: PaymentProvider;
   const providerName = process.env.PAYMENT_PROVIDER ?? 'mock';
 
-  if (providerName === 'stripe' && process.env.STRIPE_API_KEY) {
+  if (providerName === 'stripe') {
+    if (!process.env.STRIPE_API_KEY) {
+      throw new Error('PAYMENT_PROVIDER=stripe requires STRIPE_API_KEY');
+    }
     paymentProvider = new StripePaymentProvider();
   } else {
     paymentProvider = new MockPaymentProvider();
@@ -146,13 +150,20 @@ export async function createOrder(
       discount: totals.discount,
       total: totals.total,
       currency: body.currency ?? 'EUR',
-      status: body.status ?? OrderStatus.PENDING,
+      status: OrderStatus.PENDING,
       payment_method: body.payment_method,
       shipping_address: body.shipping_address,
       billing_address: body.billing_address,
       notes: body.notes,
       items: body.items,
     };
+
+    if (body.status !== undefined) {
+      if (!Object.values(OrderStatus).includes(body.status)) {
+        return errorResponse('Invalid status value', 400);
+      }
+      orderData.status = body.status as OrderStatus;
+    }
 
     const result = await svc.createOrder(orderData);
     return successResponse(result, 201);
@@ -214,8 +225,16 @@ export async function listOrders(
   try {
     const { orderService: svc } = deps ?? createOrderServiceDeps();
     const query = event.queryStringParameters ?? {};
-    const page = parseInt(query.page ?? '1', 10);
-    const perPage = parseInt(query.per_page ?? '20', 10);
+    const parsedPage = parseInt(query.page ?? '1', 10);
+    const parsedPerPage = parseInt(query.per_page ?? '20', 10);
+
+    const page = !Number.isNaN(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const maxPerPage = 100;
+    let perPage = !Number.isNaN(parsedPerPage) && parsedPerPage > 0 ? parsedPerPage : 20;
+    if (perPage > maxPerPage) {
+      perPage = maxPerPage;
+    }
+
     const filters: OrderListFilters = {};
     if (query.status) filters.status = query.status;
 
@@ -259,7 +278,9 @@ export async function updateOrderStatus(
       );
     }
 
-    const userId = event.headers?.['x-user-id'] ?? undefined;
+    const headers = event.headers ?? {};
+    const userIdHeaderKey = Object.keys(headers).find((key) => key.toLowerCase() === 'x-user-id');
+    const userId = userIdHeaderKey ? headers[userIdHeaderKey] : undefined;
     const updated = await svc.updateOrderStatus(
       id,
       body.status as OrderStatus,
@@ -297,7 +318,17 @@ export async function getCustomerOrders(
       return errorResponse('email query parameter is required', 400);
     }
 
-    const limit = query.limit ? parseInt(query.limit, 10) : 20;
+    const DEFAULT_LIMIT = 20;
+    const MAX_LIMIT = 100;
+
+    let limit = DEFAULT_LIMIT;
+    if (query.limit !== undefined) {
+      const parsed = parseInt(query.limit, 10);
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        limit = Math.min(parsed, MAX_LIMIT);
+      }
+    }
+
     const result = await svc.getOrdersByCustomer(email, { limit });
     return successResponse(result);
   } catch (err: any) {
@@ -349,6 +380,10 @@ export async function processPayment(
     };
 
     const updatedOrder = await svc.processPayment(id, paymentData);
+    if (!updatedOrder) {
+      return errorResponse('Order not found', 404);
+    }
+
     return successResponse({
       order: updatedOrder,
       transaction_id: paymentResult.transactionId,
@@ -374,14 +409,23 @@ export async function webhookHandler(
     const { orderService: svc, paymentProvider: provider } =
       deps ?? createOrderServiceDeps();
 
+    const headers = event.headers ?? {};
+    const normalizedHeaders: Record<string, string | undefined> = Object.fromEntries(
+      Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value])
+    );
+
     const signature =
-      event.headers?.['stripe-signature'] ??
-      event.headers?.['x-webhook-signature'] ??
+      normalizedHeaders['stripe-signature'] ??
+      normalizedHeaders['x-webhook-signature'] ??
       '';
+
     const rawBody = event.body ?? '';
+    const payloadBuffer = event.isBase64Encoded
+      ? Buffer.from(rawBody, 'base64')
+      : Buffer.from(rawBody);
 
     const validation = await provider.validateWebhook(
-      Buffer.from(rawBody),
+      payloadBuffer,
       signature
     );
 

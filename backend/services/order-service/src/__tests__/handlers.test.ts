@@ -225,6 +225,24 @@ describe('createOrder', () => {
     expect(JSON.parse(response.body).error).toMatch(/items/);
   });
 
+  it('returns 400 when status is invalid', async () => {
+    const deps = makeDeps();
+    const event = baseEvent({
+      httpMethod: 'POST',
+      body: JSON.stringify({
+        customer_email: 'test@example.com',
+        customer_name: 'Test User',
+        status: 'not-a-real-status',
+        items: [{ quantity: 1, unit_price: 10 }],
+      }),
+    });
+
+    const response = await createOrder(event, deps);
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body).error).toMatch(/Invalid status/i);
+  });
+
   it('returns 400 on insufficient stock error', async () => {
     const deps = makeDeps({
       createOrder: jest.fn().mockRejectedValue(new Error('Insufficient stock for variant var-1')),
@@ -409,6 +427,34 @@ describe('listOrders', () => {
     expect(mockListOrders).toHaveBeenCalledWith(expect.any(Object), 1, 20);
   });
 
+  it('normalizes invalid pagination values to defaults', async () => {
+    const mockListOrders = jest
+      .fn()
+      .mockResolvedValue({ orders: [], total: 0 });
+    const deps = makeDeps({ listOrders: mockListOrders });
+    const event = baseEvent({
+      queryStringParameters: { page: '0', per_page: 'abc' },
+    });
+
+    await listOrders(event, deps);
+
+    expect(mockListOrders).toHaveBeenCalledWith(expect.any(Object), 1, 20);
+  });
+
+  it('caps per_page to 100', async () => {
+    const mockListOrders = jest
+      .fn()
+      .mockResolvedValue({ orders: [], total: 0 });
+    const deps = makeDeps({ listOrders: mockListOrders });
+    const event = baseEvent({
+      queryStringParameters: { per_page: '999', page: '1' },
+    });
+
+    await listOrders(event, deps);
+
+    expect(mockListOrders).toHaveBeenCalledWith(expect.any(Object), 1, 100);
+  });
+
   it('returns 500 on service error', async () => {
     const deps = makeDeps({
       listOrders: jest.fn().mockRejectedValue(new Error('Query failed')),
@@ -514,6 +560,26 @@ describe('updateOrderStatus', () => {
     );
   });
 
+  it('forwards X-User-Id header to service case-insensitively', async () => {
+    const mockUpdateStatus = jest
+      .fn()
+      .mockResolvedValue({ ...MOCK_ORDER, status: OrderStatus.PROCESSING });
+    const deps = makeDeps({ updateOrderStatus: mockUpdateStatus });
+    const event = baseEvent({
+      pathParameters: { id: 'order-uuid-1' },
+      headers: { 'X-User-Id': 'admin-user-99' },
+      body: JSON.stringify({ status: 'processing' }),
+    });
+
+    await updateOrderStatus(event, deps);
+
+    expect(mockUpdateStatus).toHaveBeenCalledWith(
+      'order-uuid-1',
+      OrderStatus.PROCESSING,
+      'admin-user-99'
+    );
+  });
+
   it('returns 500 on service error', async () => {
     const deps = makeDeps({
       updateOrderStatus: jest.fn().mockRejectedValue(new Error('DB write failed')),
@@ -576,6 +642,40 @@ describe('getCustomerOrders', () => {
     );
   });
 
+  it('uses default limit for invalid query value', async () => {
+    const mockGetByCustomer = jest
+      .fn()
+      .mockResolvedValue({ items: [], count: 0 });
+    const deps = makeDeps({ getOrdersByCustomer: mockGetByCustomer });
+    const event = baseEvent({
+      queryStringParameters: { email: 'test@example.com', limit: 'abc' },
+    });
+
+    await getCustomerOrders(event, deps);
+
+    expect(mockGetByCustomer).toHaveBeenCalledWith(
+      'test@example.com',
+      { limit: 20 }
+    );
+  });
+
+  it('caps customer order limit at 100', async () => {
+    const mockGetByCustomer = jest
+      .fn()
+      .mockResolvedValue({ items: [], count: 0 });
+    const deps = makeDeps({ getOrdersByCustomer: mockGetByCustomer });
+    const event = baseEvent({
+      queryStringParameters: { email: 'test@example.com', limit: '999' },
+    });
+
+    await getCustomerOrders(event, deps);
+
+    expect(mockGetByCustomer).toHaveBeenCalledWith(
+      'test@example.com',
+      { limit: 100 }
+    );
+  });
+
   it('returns 500 on service error', async () => {
     const deps = makeDeps({
       getOrdersByCustomer: jest.fn().mockRejectedValue(new Error('Query error')),
@@ -632,6 +732,22 @@ describe('processPayment', () => {
     const response = await processPayment(event, deps);
 
     expect(response.statusCode).toBe(404);
+  });
+
+  it('returns 404 when payment update returns null', async () => {
+    const deps = makeDeps({
+      processPayment: jest.fn().mockResolvedValue(null),
+    });
+    const event = baseEvent({
+      httpMethod: 'POST',
+      pathParameters: { id: 'order-uuid-1' },
+      body: JSON.stringify({ payment_details: {} }),
+    });
+
+    const response = await processPayment(event, deps);
+
+    expect(response.statusCode).toBe(404);
+    expect(JSON.parse(response.body).error).toMatch(/not found/i);
   });
 
   it('returns 400 when payment provider rejects the payment', async () => {
@@ -771,6 +887,47 @@ describe('webhookHandler', () => {
       expect.any(Buffer),
       'fallback-sig'
     );
+  });
+
+  it('accepts signature header with different casing', async () => {
+    const mockValidateWebhook = jest.fn().mockResolvedValue({
+      valid: true,
+      event: { type: 'other', data: {} },
+    });
+    const deps = makeDeps({}, { validateWebhook: mockValidateWebhook });
+    const event = baseEvent({
+      httpMethod: 'POST',
+      headers: { 'Stripe-Signature': 'mixed-case-sig' },
+      body: '{}',
+    });
+
+    await webhookHandler(event, deps);
+
+    expect(mockValidateWebhook).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      'mixed-case-sig'
+    );
+  });
+
+  it('decodes base64-encoded webhook body before validation', async () => {
+    const mockValidateWebhook = jest.fn().mockResolvedValue({
+      valid: true,
+      event: { type: 'other', data: {} },
+    });
+    const deps = makeDeps({}, { validateWebhook: mockValidateWebhook });
+    const base64Payload = Buffer.from('{"hello":"world"}').toString('base64');
+    const event = baseEvent({
+      httpMethod: 'POST',
+      headers: { 'stripe-signature': 'sig' },
+      body: base64Payload,
+      isBase64Encoded: true,
+    });
+
+    await webhookHandler(event, deps);
+
+    const firstCallArgs = mockValidateWebhook.mock.calls[0];
+    expect(Buffer.isBuffer(firstCallArgs[0])).toBe(true);
+    expect((firstCallArgs[0] as Buffer).toString()).toBe('{"hello":"world"}');
   });
 
   it('returns 500 on unexpected error', async () => {
