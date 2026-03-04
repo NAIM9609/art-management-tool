@@ -1,204 +1,308 @@
-import { Repository, In } from 'typeorm';
-import { AppDataSource } from '../database/connection';
-import { Cart } from '../entities/Cart';
-import { CartItem } from '../entities/CartItem';
-import { EnhancedProduct } from '../entities/EnhancedProduct';
-import { ProductVariant } from '../entities/ProductVariant';
+import { DynamoDBOptimized } from './dynamodb/DynamoDBOptimized';
+import { CartRepository } from './dynamodb/repositories/CartRepository';
+import { CartItemRepository } from './dynamodb/repositories/CartItemRepository';
+import { DiscountCodeRepository } from './dynamodb/repositories/DiscountCodeRepository';
+import { ProductRepository } from './dynamodb/repositories/ProductRepository';
+import { ProductVariantRepository } from './dynamodb/repositories/ProductVariantRepository';
+import { Cart, CartItem, DiscountType, ProductVariant } from './dynamodb/repositories/types';
 import { config } from '../config';
 
 export class CartService {
-  private cartRepo: Repository<Cart>;
-  private cartItemRepo: Repository<CartItem>;
-  private productRepo: Repository<EnhancedProduct>;
-  private variantRepo: Repository<ProductVariant>;
+  private cartRepo: CartRepository;
+  private cartItemRepo: CartItemRepository;
+  private discountRepo: DiscountCodeRepository;
+  private productRepo: ProductRepository;
+  private variantRepo: ProductVariantRepository;
 
-  constructor() {
-    this.cartRepo = AppDataSource.getRepository(Cart);
-    this.cartItemRepo = AppDataSource.getRepository(CartItem);
-    this.productRepo = AppDataSource.getRepository(EnhancedProduct);
-    this.variantRepo = AppDataSource.getRepository(ProductVariant);
+  constructor(dynamoDB?: DynamoDBOptimized) {
+    // Rely on DYNAMODB_TABLE_NAME env var; DynamoDBOptimized throws loudly when missing.
+    const db = dynamoDB || new DynamoDBOptimized({
+      tableName: process.env.DYNAMODB_TABLE_NAME,
+      region: process.env.AWS_REGION || 'us-east-1',
+    });
+
+    this.cartRepo = new CartRepository(db);
+    this.cartItemRepo = new CartItemRepository(db);
+    this.discountRepo = new DiscountCodeRepository(db);
+    this.productRepo = new ProductRepository(db);
+    this.variantRepo = new ProductVariantRepository(db);
   }
 
-  private validateStock(variant: ProductVariant | null, quantity: number): void {
+  /**
+   * Validate variant stock against the requested quantity.
+   * variantId is a UUID string matching ProductVariant.id.
+   */
+  private async validateStock(variantId: string | undefined, quantity: number): Promise<void> {
+    if (variantId == null) return;
+
+    const variant = await this.variantRepo.findById(variantId);
     if (variant && variant.stock < quantity) {
-      throw new Error(`Insufficient stock available. Requested: ${quantity}, Available: ${variant.stock}`);
+      throw new Error(
+        `Insufficient stock available. Requested: ${quantity}, Available: ${variant.stock}`
+      );
     }
   }
 
+  /**
+   * Find an existing cart by session ID, or create a new one.
+   * If a userId is provided and no session cart exists, an existing user cart is
+   * reused (associating the current session with it). TTL is refreshed on every call.
+   */
   async getOrCreateCart(sessionId: string, userId?: number): Promise<Cart> {
-    let cart = await this.cartRepo.findOne({
-      where: { session_id: sessionId },
-      relations: ['items'],
-    });
+    let cart = await this.cartRepo.findBySessionId(sessionId);
 
     if (!cart) {
-      cart = this.cartRepo.create({
-        session_id: sessionId,
-        user_id: userId,
-        items: [],
-      });
-      await this.cartRepo.save(cart);
+      if (userId) {
+        cart = await this.cartRepo.findByUserId(userId);
+      }
+
+      if (cart) {
+        // Associate the current session with the existing user cart
+        const updated = await this.cartRepo.update(cart.id, { session_id: sessionId });
+        if (updated) {
+          cart = updated;
+        }
+      } else {
+        cart = await this.cartRepo.create({
+          session_id: sessionId,
+          user_id: userId,
+        });
+      }
+    } else {
+      // Refresh TTL on activity
+      await this.cartRepo.refreshTTL(cart.id);
     }
 
     return cart;
   }
 
-  async addItem(sessionId: string, productId: number, variantId: number | undefined, quantity: number): Promise<Cart> {
+  /**
+   * Return all items in a cart.
+   */
+  async getCartItems(cartId: string): Promise<CartItem[]> {
+    return this.cartItemRepo.findByCartId(cartId);
+  }
+
+  /**
+   * Get the cart (find or create) by session ID.
+   * Kept for backward compatibility with the shop handler.
+   */
+  async getCart(sessionId: string): Promise<Cart> {
+    return this.getOrCreateCart(sessionId);
+  }
+
+  /**
+   * Add an item to the cart, or update quantity if it already exists.
+   * Validates product existence, variant existence (if provided), and stock
+   * against the FINAL quantity (existing + incoming) to prevent overselling.
+   * variantId must be a UUID string matching ProductVariant.id.
+   * Refreshes cart TTL on success.
+   */
+  async addItem(
+    cartId: string,
+    productId: number,
+    variantId: string | undefined,
+    quantity: number
+  ): Promise<CartItem> {
     if (quantity <= 0) {
       throw new Error('Invalid quantity');
     }
 
-    const product = await this.productRepo.findOne({ where: { id: productId } });
+    const product = await this.productRepo.findById(productId);
     if (!product) {
       throw new Error('Product not found');
     }
 
-    let variant: ProductVariant | null = null;
     if (variantId != null) {
-      variant = await this.variantRepo.findOne({ where: { id: variantId } });
+      const variant = await this.variantRepo.findById(variantId);
       if (!variant) {
         throw new Error('Variant not found');
       }
     }
 
-    const cart = await this.getOrCreateCart(sessionId);
+    // Determine the final cart quantity (existing + incoming) and validate stock
+    // against that total so we never allow the cart to exceed available stock.
+    const currentItems = await this.cartItemRepo.findByCartId(cartId);
+    const existingItem = currentItems.find(
+      item => item.product_id === productId && item.variant_id === variantId
+    );
+    const finalQuantity = (existingItem?.quantity ?? 0) + quantity;
+    await this.validateStock(variantId, finalQuantity);
 
-    const existingItem = await this.cartItemRepo.findOne({
-      where: {
-        cart_id: cart.id,
-        product_id: productId,
-        variant_id: variantId ?? undefined,
-      },
+    const item = await this.cartItemRepo.addItem(cartId, productId, variantId, quantity);
+
+    // Refresh TTL on activity (non-blocking; failure must not prevent the addItem response)
+    this.cartRepo.refreshTTL(cartId).catch(err => {
+      console.error(`[CartService] Failed to refresh TTL for cart ${cartId}:`, err);
     });
 
-    if (existingItem) {
-      const finalQuantity = existingItem.quantity + quantity;
-      
-      // Validate stock for the final quantity
-      this.validateStock(variant, finalQuantity);
-      
-      existingItem.quantity = finalQuantity;
-      await this.cartItemRepo.save(existingItem);
-    } else {
-      // Validate stock for new items
-      this.validateStock(variant, quantity);
-      
-      const newItem = this.cartItemRepo.create({
-        cart_id: cart.id,
-        product_id: productId,
-        variant_id: variantId,
-        quantity,
-      });
-      await this.cartItemRepo.save(newItem);
-    }
-
-    return this.cartRepo.findOne({
-      where: { id: cart.id },
-      relations: ['items'],
-    }) as Promise<Cart>;
+    return item;
   }
 
-  async updateItem(sessionId: string, itemId: number, quantity: number): Promise<Cart> {
-    if (quantity < 0) {
+  /**
+   * Update the quantity of an existing cart item atomically.
+   * Use removeItem() to delete an item instead of passing quantity=0 here.
+   * Refreshes cart TTL on success.
+   */
+  async updateQuantity(cartId: string, itemId: string, quantity: number): Promise<CartItem> {
+    if (!Number.isFinite(quantity) || quantity <= 0) {
       throw new Error('Invalid quantity');
     }
 
-    const cart = await this.getOrCreateCart(sessionId);
-    const item = await this.cartItemRepo.findOne({ where: { id: itemId, cart_id: cart.id } });
+    const item = await this.cartItemRepo.updateQuantity(cartId, itemId, quantity);
 
-    if (!item) {
-      throw new Error('Item not found');
+    // Refresh TTL on activity (non-blocking)
+    this.cartRepo.refreshTTL(cartId).catch(err => {
+      console.error(`[CartService] Failed to refresh TTL for cart ${cartId}:`, err);
+    });
+
+    return item;
+  }
+
+  /**
+   * Remove an item from the cart.
+   * Refreshes cart TTL on success.
+   */
+  async removeItem(cartId: string, itemId: string): Promise<void> {
+    await this.cartItemRepo.removeItem(cartId, itemId);
+
+    // Refresh TTL on activity (non-blocking)
+    this.cartRepo.refreshTTL(cartId).catch(err => {
+      console.error(`[CartService] Failed to refresh TTL for cart ${cartId}:`, err);
+    });
+  }
+
+  /**
+   * Remove all items from the cart.
+   * Refreshes cart TTL on success.
+   */
+  async clearCart(cartId: string): Promise<void> {
+    await this.cartItemRepo.clearCart(cartId);
+
+    // Refresh TTL on activity (non-blocking)
+    this.cartRepo.refreshTTL(cartId).catch(err => {
+      console.error(`[CartService] Failed to refresh TTL for cart ${cartId}:`, err);
+    });
+  }
+
+  /**
+   * Merge the session cart's items into the user cart, then delete the session cart.
+   * Item quantities are summed for matching product/variant combinations.
+   */
+  async mergeCarts(sessionCartId: string, userCartId: string): Promise<void> {
+    const mergedCount = await this.cartItemRepo.mergeItems(sessionCartId, userCartId);
+    await this.cartRepo.mergeCarts(sessionCartId, userCartId, mergedCount);
+
+    // Refresh TTL on the user cart after merge (non-blocking)
+    this.cartRepo.refreshTTL(userCartId).catch(err => {
+      console.error(`[CartService] Failed to refresh TTL for cart ${userCartId}:`, err);
+    });
+  }
+
+  /**
+   * Validate a discount code and apply it to the cart.
+   * Supports percentage and fixed discount types.
+   * Atomically increments the usage counter via DiscountCodeRepository.incrementUsage()
+   * so that max_uses limits are enforced at the point of application.
+   * Throws if the code is invalid, expired, or has reached its usage limit.
+   */
+  async applyDiscount(cartId: string, code: string): Promise<Cart> {
+    // First fetch the code details (type, value, caps) needed for the calculation.
+    const discountCode = await this.discountRepo.findByCode(code);
+    if (!discountCode) {
+      throw new Error('Invalid discount code');
     }
 
-    if (quantity === 0) {
-      await this.cartItemRepo.remove(item);
-    } else {
-      item.quantity = quantity;
-      await this.cartItemRepo.save(item);
+    // Atomically validate (active, not expired, under max_uses) and increment usage.
+    // Returns null if any condition fails, enforcing max_uses without a TOCTOU window.
+    const updatedCode = await this.discountRepo.incrementUsage(code);
+    if (!updatedCode) {
+      throw new Error('Discount code is expired or no longer active');
     }
 
-    return this.cartRepo.findOne({
-      where: { id: cart.id },
-      relations: ['items'],
-    }) as Promise<Cart>;
-  }
-
-  async removeItem(sessionId: string, itemId: number): Promise<Cart> {
-    const cart = await this.getOrCreateCart(sessionId);
-    const item = await this.cartItemRepo.findOne({ where: { id: itemId, cart_id: cart.id } });
-
-    if (!item) {
-      throw new Error('Item not found');
+    // Calculate discount amount based on type
+    let discountAmount = 0;
+    if (discountCode.discount_type === DiscountType.FIXED) {
+      discountAmount = discountCode.discount_value;
+    } else if (discountCode.discount_type === DiscountType.PERCENTAGE) {
+      const totals = await this.calculateTotals(cartId);
+      discountAmount = totals.subtotal * (discountCode.discount_value / 100);
+      if (discountCode.max_discount_amount) {
+        discountAmount = Math.min(discountAmount, discountCode.max_discount_amount);
+      }
     }
 
-    await this.cartItemRepo.remove(item);
+    const updated = await this.cartRepo.update(cartId, {
+      discount_code: code,
+      discount_amount: discountAmount,
+    });
 
-    return this.cartRepo.findOne({
-      where: { id: cart.id },
-      relations: ['items'],
-    }) as Promise<Cart>;
+    if (!updated) {
+      throw new Error('Cart not found');
+    }
+
+    return updated;
   }
 
-  async clearCart(sessionId: string): Promise<void> {
-    const cart = await this.getOrCreateCart(sessionId);
-    await this.cartItemRepo.delete({ cart_id: cart.id });
-  }
-
-  async getCart(sessionId: string): Promise<Cart> {
-    return this.getOrCreateCart(sessionId);
-  }
-
-  async calculateTotals(sessionId: string): Promise<{
+  /**
+   * Calculate cart totals: subtotal, tax, discount amount, and final total.
+   * Fetches product and variant prices from DynamoDB to avoid stale data.
+   */
+  async calculateTotals(cartId: string): Promise<{
     subtotal: number;
     tax: number;
     discount: number;
     total: number;
   }> {
-    const cart = await this.getOrCreateCart(sessionId);
-    
+    const [cart, items] = await Promise.all([
+      this.cartRepo.findById(cartId),
+      this.cartItemRepo.findByCartId(cartId),
+    ]);
+
     let subtotal = 0;
-    
-    if (cart.items && cart.items.length > 0) {
-      // Fetch all products and variants in bulk to avoid N+1 queries
-      const productIds = cart.items.map(item => item.product_id);
-      const variantIds = cart.items.filter(item => item.variant_id).map(item => item.variant_id!);
-      
-      const products = await this.productRepo.findBy({ id: In(productIds) });
-      const variants = variantIds.length > 0 
-        ? await this.variantRepo.findBy({ id: In(variantIds) })
-        : [];
-      
-      // Create lookup maps for O(1) access
-      const productMap = new Map(products.map(p => [p.id, p]));
-      const variantMap = new Map(variants.map(v => [v.id, v]));
-      
-      for (const item of cart.items) {
+
+    if (items.length > 0) {
+      // Fetch all products and variants in parallel to avoid N+1 queries
+      const productIds = [...new Set(items.map(item => item.product_id))];
+      // variant_id is now a UUID string matching ProductVariant.id directly
+      const variantIds = [...new Set(
+        items.filter(item => item.variant_id != null).map(item => item.variant_id!)
+      )];
+
+      const [products, variants] = await Promise.all([
+        Promise.all(productIds.map(id => this.productRepo.findById(id))),
+        Promise.all(variantIds.map(id => this.variantRepo.findById(id))),
+      ]);
+
+      const productMap = new Map(
+        products.filter(Boolean).map(p => [p!.id, p!])
+      );
+      // variant_id on CartItem now equals ProductVariant.id, so key by v!.id
+      const variantMap = new Map<string, ProductVariant>(
+        variants.filter(Boolean).map(v => [v!.id, v!])
+      );
+
+      for (const item of items) {
         const product = productMap.get(item.product_id);
         if (product) {
-          let itemPrice = parseFloat(product.base_price.toString());
-          
-          // Add variant price adjustment if applicable
-          if (item.variant_id) {
+          let itemPrice = Number(product.base_price);
+
+          if (item.variant_id != null) {
             const variant = variantMap.get(item.variant_id);
             if (variant) {
-              itemPrice += parseFloat(variant.price_adjustment.toString());
+              itemPrice += Number(variant.price_adjustment);
             }
           }
-          
+
           subtotal += itemPrice * item.quantity;
         }
       }
     }
-    
+
     const tax = subtotal * config.taxRate;
-    const discount = parseFloat(cart.discount_amount.toString());
-    const total = subtotal + tax - discount;
-    
-    return {
-      subtotal,
-      tax,
-      discount,
-      total,
-    };
+    const discount = cart?.discount_amount != null ? Number(cart.discount_amount) : 0;
+    const total = Math.max(0, subtotal + tax - discount);
+
+    return { subtotal, tax, discount, total };
   }
 }

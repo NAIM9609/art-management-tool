@@ -68,12 +68,15 @@ export function createShopRoutes(
     try {
       const sessionId = getSessionToken(req);
       setSessionCookie(res, sessionId);
-      
-      const cart = await cartService.getCart(sessionId);
-      const totals = await cartService.calculateTotals(sessionId);
-      
+
+      const cart = await cartService.getOrCreateCart(sessionId);
+      const [items, totals] = await Promise.all([
+        cartService.getCartItems(cart.id),
+        cartService.calculateTotals(cart.id),
+      ]);
+
       res.json({
-        cart,
+        cart: { ...cart, items },
         ...totals,
       });
     } catch (error: any) {
@@ -85,11 +88,21 @@ export function createShopRoutes(
     try {
       const sessionId = getSessionToken(req);
       setSessionCookie(res, sessionId);
-      
+
       const { product_id, variant_id, quantity } = req.body;
-      
-      const cart = await cartService.addItem(sessionId, product_id, variant_id, quantity || 1);
-      res.json(cart);
+
+      const cart = await cartService.getOrCreateCart(sessionId);
+      await cartService.addItem(cart.id, product_id, variant_id, quantity || 1);
+
+      const [items, totals] = await Promise.all([
+        cartService.getCartItems(cart.id),
+        cartService.calculateTotals(cart.id),
+      ]);
+
+      res.json({
+        cart: { ...cart, items },
+        ...totals,
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -99,11 +112,21 @@ export function createShopRoutes(
     try {
       const sessionId = getSessionToken(req);
       setSessionCookie(res, sessionId);
-      
+
       const { quantity } = req.body;
-      
-      const cart = await cartService.updateItem(sessionId, parseInt(req.params.id), quantity);
-      res.json(cart);
+
+      const cart = await cartService.getOrCreateCart(sessionId);
+      await cartService.updateQuantity(cart.id, req.params.id, quantity);
+
+      const [items, totals] = await Promise.all([
+        cartService.getCartItems(cart.id),
+        cartService.calculateTotals(cart.id),
+      ]);
+
+      res.json({
+        cart: { ...cart, items },
+        ...totals,
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -113,9 +136,19 @@ export function createShopRoutes(
     try {
       const sessionId = getSessionToken(req);
       setSessionCookie(res, sessionId);
-      
-      const cart = await cartService.removeItem(sessionId, parseInt(req.params.id));
-      res.json(cart);
+
+      const cart = await cartService.getOrCreateCart(sessionId);
+      await cartService.removeItem(cart.id, req.params.id);
+
+      const [items, totals] = await Promise.all([
+        cartService.getCartItems(cart.id),
+        cartService.calculateTotals(cart.id),
+      ]);
+
+      res.json({
+        cart: { ...cart, items },
+        ...totals,
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -125,8 +158,9 @@ export function createShopRoutes(
     try {
       const sessionId = getSessionToken(req);
       setSessionCookie(res, sessionId);
-      
-      await cartService.clearCart(sessionId);
+
+      const cart = await cartService.getOrCreateCart(sessionId);
+      await cartService.clearCart(cart.id);
       res.json({ message: 'Cart cleared' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });

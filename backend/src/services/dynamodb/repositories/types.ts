@@ -323,7 +323,7 @@ export interface CartItem {
   id: string;
   cart_id: string;
   product_id: number;
-  variant_id?: number;
+  variant_id?: string;
   quantity: number;
   created_at: string;
   updated_at: string;
