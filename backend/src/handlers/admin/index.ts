@@ -169,7 +169,7 @@ export function createAdminRoutes(
             return res.status(400).json({ error: 'last_key must be a plain object' });
           }
           lastEvaluatedKey = parsed;
-        } catch (e) {
+        } catch {
           return res.status(400).json({ error: 'Invalid last_key format (must be valid JSON)' });
         }
       }

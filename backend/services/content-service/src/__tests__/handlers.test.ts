@@ -174,6 +174,19 @@ describe('Personaggi Handlers', () => {
 
       expect(result.statusCode).toBe(500);
     });
+
+    it('changes ETag when response content changes with same count', async () => {
+      mockPersonaggioFindAll
+        .mockResolvedValueOnce([{ ...MOCK_PERSONAGGIO, name: 'Mario A' }])
+        .mockResolvedValueOnce([{ ...MOCK_PERSONAGGIO, name: 'Mario B' }]);
+
+      const first = await listPersonaggi(makeEvent());
+      const second = await listPersonaggi(makeEvent());
+
+      expect(first.headers?.['ETag']).toBeTruthy();
+      expect(second.headers?.['ETag']).toBeTruthy();
+      expect(first.headers?.['ETag']).not.toBe(second.headers?.['ETag']);
+    });
   });
 
   // ── getPersonaggio ──────────────────────────────────────────────────────────
@@ -389,6 +402,19 @@ describe('Personaggi Handlers', () => {
 
       expect(result.statusCode).toBe(400);
     });
+
+    it('returns 400 when name is empty string', async () => {
+      const result = await updatePersonaggio(
+        makeEvent({
+          headers: ADMIN_HEADERS,
+          pathParameters: { id: '1' },
+          body: JSON.stringify({ name: '   ' }),
+        })
+      );
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toContain('name');
+    });
   });
 
   // ── deletePersonaggio ───────────────────────────────────────────────────────
@@ -438,10 +464,6 @@ describe('Personaggi Handlers', () => {
     it('returns 200 with upload URL and CDN URL', async () => {
       mockPersonaggioFindById.mockResolvedValueOnce(MOCK_PERSONAGGIO);
       mockGeneratePresignedUploadUrl.mockResolvedValueOnce(MOCK_PRESIGNED);
-      mockPersonaggioUpdate.mockResolvedValueOnce({
-        ...MOCK_PERSONAGGIO,
-        images: [...MOCK_PERSONAGGIO.images, MOCK_PRESIGNED.cdnUrl],
-      });
 
       const result = await uploadImage(
         makeEvent({ headers: ADMIN_HEADERS, pathParameters: { id: '1' } })
@@ -455,21 +477,15 @@ describe('Personaggi Handlers', () => {
       expect(body.expires_in).toBe(300);
     });
 
-    it('appends CDN URL to images array in DynamoDB', async () => {
+    it('does not persist CDN URL before upload confirmation', async () => {
       mockPersonaggioFindById.mockResolvedValueOnce(MOCK_PERSONAGGIO);
       mockGeneratePresignedUploadUrl.mockResolvedValueOnce(MOCK_PRESIGNED);
-      mockPersonaggioUpdate.mockResolvedValueOnce(MOCK_PERSONAGGIO);
 
       await uploadImage(
         makeEvent({ headers: ADMIN_HEADERS, pathParameters: { id: '1' } })
       );
 
-      expect(mockPersonaggioUpdate).toHaveBeenCalledWith(
-        1,
-        expect.objectContaining({
-          images: [...MOCK_PERSONAGGIO.images, MOCK_PRESIGNED.cdnUrl],
-        })
-      );
+      expect(mockPersonaggioUpdate).not.toHaveBeenCalled();
     });
 
     it('uses content_type from query string', async () => {
@@ -555,9 +571,30 @@ describe('Fumetti Handlers', () => {
       expect(result.statusCode).toBe(200);
       const body = JSON.parse(result.body);
       expect(body.fumetti).toHaveLength(1);
-      expect(body.total).toBe(1);
+      expect(body.pageCount).toBe(1);
       expect(result.headers?.['Cache-Control']).toBe('public, max-age=3600');
       expect(result.headers?.['ETag']).toBeTruthy();
+    });
+
+    it('changes ETag when response content changes with same count', async () => {
+      mockFumettoFindAll
+        .mockResolvedValueOnce({
+          items: [{ ...MOCK_FUMETTO, title: 'Title A' }],
+          count: 1,
+          lastEvaluatedKey: undefined,
+        })
+        .mockResolvedValueOnce({
+          items: [{ ...MOCK_FUMETTO, title: 'Title B' }],
+          count: 1,
+          lastEvaluatedKey: undefined,
+        });
+
+      const first = await listFumetti(makeEvent());
+      const second = await listFumetti(makeEvent());
+
+      expect(first.headers?.['ETag']).toBeTruthy();
+      expect(second.headers?.['ETag']).toBeTruthy();
+      expect(first.headers?.['ETag']).not.toBe(second.headers?.['ETag']);
     });
 
     it('passes limit from query string', async () => {
@@ -827,6 +864,19 @@ describe('Fumetti Handlers', () => {
 
       expect(result.statusCode).toBe(400);
     });
+
+    it('returns 400 when title is empty string', async () => {
+      const result = await updateFumetto(
+        makeEvent({
+          headers: ADMIN_HEADERS,
+          pathParameters: { id: '1' },
+          body: JSON.stringify({ title: '   ' }),
+        })
+      );
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toContain('title');
+    });
   });
 
   // ── deleteFumetto ───────────────────────────────────────────────────────────
@@ -882,10 +932,6 @@ describe('Fumetti Handlers', () => {
     it('returns 200 with upload URL and CDN URL', async () => {
       mockFumettoFindById.mockResolvedValueOnce(MOCK_FUMETTO);
       mockGeneratePresignedUploadUrl.mockResolvedValueOnce(MOCK_PAGE_PRESIGNED);
-      mockFumettoUpdate.mockResolvedValueOnce({
-        ...MOCK_FUMETTO,
-        pages: [...(MOCK_FUMETTO.pages || []), MOCK_PAGE_PRESIGNED.cdnUrl],
-      });
 
       const result = await uploadPage(
         makeEvent({ headers: ADMIN_HEADERS, pathParameters: { id: '1' } })
@@ -899,21 +945,15 @@ describe('Fumetti Handlers', () => {
       expect(body.expires_in).toBe(300);
     });
 
-    it('appends CDN URL to pages array in DynamoDB', async () => {
+    it('does not persist CDN URL before upload confirmation', async () => {
       mockFumettoFindById.mockResolvedValueOnce(MOCK_FUMETTO);
       mockGeneratePresignedUploadUrl.mockResolvedValueOnce(MOCK_PAGE_PRESIGNED);
-      mockFumettoUpdate.mockResolvedValueOnce(MOCK_FUMETTO);
 
       await uploadPage(
         makeEvent({ headers: ADMIN_HEADERS, pathParameters: { id: '1' } })
       );
 
-      expect(mockFumettoUpdate).toHaveBeenCalledWith(
-        1,
-        expect.objectContaining({
-          pages: [...(MOCK_FUMETTO.pages || []), MOCK_PAGE_PRESIGNED.cdnUrl],
-        })
-      );
+      expect(mockFumettoUpdate).not.toHaveBeenCalled();
     });
 
     it('uses content_type from query string', async () => {
@@ -973,5 +1013,68 @@ describe('Fumetti Handlers', () => {
 
       expect(result.statusCode).toBe(400);
     });
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Auth middleware
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('Auth middleware (requireAuth)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('accepts demo-token-12345 for backward compatibility', async () => {
+    mockPersonaggioFindById.mockResolvedValueOnce(MOCK_PERSONAGGIO);
+    mockGeneratePresignedUploadUrl.mockResolvedValueOnce(MOCK_PRESIGNED);
+
+    const result = await uploadImage(
+      makeEvent({
+        headers: { Authorization: 'Bearer demo-token-12345' },
+        pathParameters: { id: '1' },
+      })
+    );
+
+    expect(result.statusCode).toBe(200);
+  });
+
+  it('rejects malformed Authorization header', async () => {
+    const result = await uploadImage(
+      makeEvent({
+        headers: { Authorization: 'Token bad-format' },
+        pathParameters: { id: '1' },
+      })
+    );
+
+    expect(result.statusCode).toBe(401);
+  });
+
+  it('rejects expired JWT', async () => {
+    const expiredToken = jwt.sign({ id: 1, username: 'admin' }, 'test-secret', {
+      expiresIn: -1,
+    });
+
+    const result = await uploadImage(
+      makeEvent({
+        headers: { Authorization: `Bearer ${expiredToken}` },
+        pathParameters: { id: '1' },
+      })
+    );
+
+    expect(result.statusCode).toBe(401);
+  });
+
+  it('accepts lowercase authorization header', async () => {
+    mockPersonaggioFindById.mockResolvedValueOnce(MOCK_PERSONAGGIO);
+    mockGeneratePresignedUploadUrl.mockResolvedValueOnce(MOCK_PRESIGNED);
+
+    const token = makeAdminToken();
+    const result = await uploadImage(
+      makeEvent({
+        headers: { authorization: `Bearer ${token}` },
+        pathParameters: { id: '1' },
+      })
+    );
+
+    expect(result.statusCode).toBe(200);
   });
 });

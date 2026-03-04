@@ -13,6 +13,7 @@
 import { DynamoDBOptimized } from '../../../../src/services/dynamodb/DynamoDBOptimized';
 import { PersonaggioRepository } from '../../../../src/services/dynamodb/repositories/PersonaggioRepository';
 import { S3Service } from '../../../../src/services/s3/S3Service';
+import { createHash } from 'crypto';
 import { requireAuth, AuthError } from '../auth';
 import {
   APIGatewayProxyEvent,
@@ -69,27 +70,33 @@ function parseId(idParam: string | undefined): number | null {
   return id;
 }
 
+function makeEtag(prefix: string, payload: unknown): string {
+  const hash = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  return `"${prefix}-${hash}"`;
+}
+
 /**
  * GET /api/personaggi
  * List all personaggi sorted by order field.
  */
 export async function listPersonaggi(
-  event: APIGatewayProxyEvent
+  _event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> {
   try {
     const repo = getPersonaggioRepository();
     const personaggi = await repo.findAll(false);
+    const responseBody = {
+      personaggi,
+      total: personaggi.length,
+    };
 
     return {
       statusCode: 200,
       headers: {
         ...LIST_CACHE_HEADERS,
-        ETag: `"personaggi-${personaggi.length}"`,
+        ETag: makeEtag('personaggi', responseBody),
       },
-      body: JSON.stringify({
-        personaggi,
-        total: personaggi.length,
-      }),
+      body: JSON.stringify(responseBody),
     };
   } catch (error) {
     return handleError(error);
@@ -198,9 +205,15 @@ export async function updatePersonaggio(
       return errorResponse('At least one field is required for update', 400);
     }
 
+    if (body.name !== undefined) {
+      if (typeof body.name !== 'string' || body.name.trim() === '') {
+        return errorResponse('name must be a non-empty string when provided', 400);
+      }
+    }
+
     const repo = getPersonaggioRepository();
     const personaggio = await repo.update(id, {
-      name: body.name as string | undefined,
+      name: typeof body.name === 'string' ? body.name.trim() : undefined,
       description: body.description as string | undefined,
       images: Array.isArray(body.images) ? (body.images as string[]) : undefined,
       order: typeof body.order === 'number' ? body.order : undefined,
@@ -247,7 +260,6 @@ export async function deletePersonaggio(
 /**
  * POST /api/personaggi/{id}/upload
  * Generate a pre-signed S3 upload URL for a personaggio image.
- * Stores the CDN URL in DynamoDB by appending it to the personaggio's images array.
  * Requires admin authentication.
  */
 export async function uploadImage(
@@ -281,10 +293,6 @@ export async function uploadImage(
       contentType,
       `personaggi/${id}`
     );
-
-    // Store CDN URL in DynamoDB by appending to images array
-    const updatedImages = [...(personaggio.images || []), result.cdnUrl];
-    await repo.update(id, { images: updatedImages });
 
     return successResponse({
       upload_url: result.uploadUrl,

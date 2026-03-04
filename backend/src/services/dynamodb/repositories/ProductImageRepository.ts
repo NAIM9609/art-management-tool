@@ -63,7 +63,7 @@ export class ProductImageRepository {
         
         const baseUrl = this.cdnUrl.endsWith('/') ? this.cdnUrl.slice(0, -1) : this.cdnUrl;
         return `${baseUrl}/${key}`;
-      } catch (error) {
+      } catch {
         // If URL parsing fails, return as-is
         return urlOrKey;
       }
@@ -87,7 +87,7 @@ export class ProductImageRepository {
         return parsedUrl.pathname.startsWith('/') 
           ? parsedUrl.pathname.substring(1) 
           : parsedUrl.pathname;
-      } catch (error) {
+      } catch {
         // If URL parsing fails, return as-is
         return url;
       }

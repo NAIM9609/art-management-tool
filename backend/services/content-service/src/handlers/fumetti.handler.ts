@@ -13,6 +13,7 @@
 import { DynamoDBOptimized } from '../../../../src/services/dynamodb/DynamoDBOptimized';
 import { FumettoRepository } from '../../../../src/services/dynamodb/repositories/FumettoRepository';
 import { S3Service } from '../../../../src/services/s3/S3Service';
+import { createHash } from 'crypto';
 import { requireAuth, AuthError } from '../auth';
 import {
   APIGatewayProxyEvent,
@@ -72,6 +73,11 @@ function parseId(idParam: string | undefined): number | null {
   return id;
 }
 
+function makeEtag(prefix: string, payload: unknown): string {
+  const hash = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  return `"${prefix}-${hash}"`;
+}
+
 /**
  * GET /api/fumetti
  * List fumetti sorted by order field with optional pagination.
@@ -95,18 +101,19 @@ export async function listFumetti(
 
     const repo = getFumettoRepository();
     const result = await repo.findAll({ limit, lastEvaluatedKey });
+    const responseBody = {
+      fumetti: result.items,
+      pageCount: result.count,
+      lastEvaluatedKey: result.lastEvaluatedKey,
+    };
 
     return {
       statusCode: 200,
       headers: {
         ...LIST_CACHE_HEADERS,
-        ETag: `"fumetti-${result.count}"`,
+        ETag: makeEtag('fumetti', responseBody),
       },
-      body: JSON.stringify({
-        fumetti: result.items,
-        total: result.count,
-        lastEvaluatedKey: result.lastEvaluatedKey,
-      }),
+      body: JSON.stringify(responseBody),
     };
   } catch (error) {
     return handleError(error);
@@ -216,9 +223,15 @@ export async function updateFumetto(
       return errorResponse('At least one field is required for update', 400);
     }
 
+    if (body.title !== undefined) {
+      if (typeof body.title !== 'string' || body.title.trim() === '') {
+        return errorResponse('title must be a non-empty string when provided', 400);
+      }
+    }
+
     const repo = getFumettoRepository();
     const fumetto = await repo.update(id, {
-      title: body.title as string | undefined,
+      title: typeof body.title === 'string' ? body.title.trim() : undefined,
       description: body.description as string | undefined,
       coverImage: body.coverImage as string | undefined,
       pages: Array.isArray(body.pages) ? (body.pages as string[]) : undefined,
@@ -266,7 +279,6 @@ export async function deleteFumetto(
 /**
  * POST /api/fumetti/{id}/upload
  * Generate a pre-signed S3 upload URL for a fumetto page.
- * Stores the CDN URL in DynamoDB by appending it to the fumetto's pages array.
  * Requires admin authentication.
  */
 export async function uploadPage(
@@ -300,10 +312,6 @@ export async function uploadPage(
       contentType,
       `fumetti/${id}`
     );
-
-    // Store CDN URL in DynamoDB by appending to pages array
-    const updatedPages = [...(fumetto.pages || []), result.cdnUrl];
-    await repo.update(id, { pages: updatedPages });
 
     return successResponse({
       upload_url: result.uploadUrl,

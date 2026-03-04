@@ -43,7 +43,7 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
     const decoded = jwt.verify(token, config.jwtSecret) as { id: number; username: string };
     (req as AuthRequest).user = decoded;
     next();
-  } catch (error) {
+  } catch {
     // In production, reject invalid tokens
     if (config.server.environment === 'production') {
       res.status(401).json({ error: 'Invalid or expired token' });
