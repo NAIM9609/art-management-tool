@@ -286,7 +286,7 @@ export class OrderService {
     // Create notification for status update (non-blocking)
     if (updated) {
       this.notificationService.createNotification({
-        type: 'order_created',
+        type: 'system',
         title: `Order Status Updated: ${updated.order_number}`,
         message: `Order ${updated.order_number} status changed to ${status}`,
         metadata: { order_id: id, status },
