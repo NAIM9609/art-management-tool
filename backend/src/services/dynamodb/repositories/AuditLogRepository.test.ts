@@ -393,13 +393,13 @@ describe('AuditLogRepository', () => {
       let queryCount = 0;
       ddbMock.on(QueryCommand).callsFake((input) => {
         queryCount++;
-        expect(input.KeyConditionExpression).toBe('PK = :pk');
+        expect(input.KeyConditionExpression).toBe('begins_with(PK, :pk)');
         if (queryCount === 1) {
-          expect(input.ExpressionAttributeValues![':pk']).toBe('AUDIT#2024-01-01');
+          expect(input.ExpressionAttributeValues![':pk']).toBe('AUDIT#2024-01-01#');
         } else if (queryCount === 2) {
-          expect(input.ExpressionAttributeValues![':pk']).toBe('AUDIT#2024-01-02');
+          expect(input.ExpressionAttributeValues![':pk']).toBe('AUDIT#2024-01-02#');
         } else if (queryCount === 3) {
-          expect(input.ExpressionAttributeValues![':pk']).toBe('AUDIT#2024-01-03');
+          expect(input.ExpressionAttributeValues![':pk']).toBe('AUDIT#2024-01-03#');
         }
         return { Items: [], Count: 0 };
       });
