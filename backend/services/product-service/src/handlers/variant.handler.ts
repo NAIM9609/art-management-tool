@@ -17,8 +17,10 @@ import {
   errorResponse,
 } from '../types';
 
+const productService = new ProductService();
+
 function getProductService(): ProductService {
-  return new ProductService();
+  return productService;
 }
 
 function handleError(error: unknown): APIGatewayProxyResult {
@@ -33,7 +35,9 @@ function handleError(error: unknown): APIGatewayProxyResult {
     if (
       message.includes('validation') ||
       message.includes('invalid') ||
-      message.includes('required')
+      message.includes('required') ||
+      message.includes('negative') ||
+      message.includes('cannot')
     ) {
       return errorResponse(error.message, 400);
     }
@@ -207,6 +211,9 @@ export async function updateStock(
     }
     if (typeof body.quantity !== 'number') {
       return errorResponse('quantity must be a number', 400);
+    }
+    if (body.quantity < 0) {
+      return errorResponse('quantity must be non-negative', 400);
     }
 
     const service = getProductService();

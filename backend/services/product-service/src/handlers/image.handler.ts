@@ -17,12 +17,15 @@ import {
   errorResponse,
 } from '../types';
 
+const productService = new ProductService();
+const s3Service = new S3Service();
+
 function getProductService(): ProductService {
-  return new ProductService();
+  return productService;
 }
 
 function getS3Service(): S3Service {
-  return new S3Service();
+  return s3Service;
 }
 
 function handleError(error: unknown): APIGatewayProxyResult {

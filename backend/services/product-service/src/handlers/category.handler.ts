@@ -23,14 +23,17 @@ import {
 const DEFAULT_CATEGORY_LIMIT = 50;
 const MAX_CATEGORY_LIMIT = 100;
 
+const dynamoDB = new DynamoDBOptimized({
+  tableName: process.env.DYNAMODB_TABLE_NAME,
+  region: process.env.AWS_REGION || 'us-east-1',
+  maxRetries: 3,
+  retryDelay: 100,
+});
+
+const categoryRepository = new CategoryRepository(dynamoDB);
+
 function getCategoryRepository(): CategoryRepository {
-  const dynamoDB = new DynamoDBOptimized({
-    tableName: process.env.DYNAMODB_TABLE_NAME || 'products',
-    region: process.env.AWS_REGION || 'us-east-1',
-    maxRetries: 3,
-    retryDelay: 100,
-  });
-  return new CategoryRepository(dynamoDB);
+  return categoryRepository;
 }
 
 function handleError(error: unknown): APIGatewayProxyResult {
@@ -47,7 +50,9 @@ function handleError(error: unknown): APIGatewayProxyResult {
       message.includes('invalid') ||
       message.includes('required') ||
       message.includes('already exists') ||
-      message.includes('circular')
+      message.includes('circular') ||
+      message.includes('does not exist') ||
+      message.includes('deleted')
     ) {
       return errorResponse(error.message, 400);
     }
@@ -78,9 +83,18 @@ export async function listCategories(
   try {
     const qs = event.queryStringParameters || {};
     const limit = Math.min(MAX_CATEGORY_LIMIT, Math.max(1, parseInt(qs.limit || String(DEFAULT_CATEGORY_LIMIT), 10) || DEFAULT_CATEGORY_LIMIT));
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
+
+    if (qs.last_key) {
+      try {
+        lastEvaluatedKey = JSON.parse(qs.last_key) as Record<string, unknown>;
+      } catch {
+        return errorResponse('last_key must be a valid JSON object', 400);
+      }
+    }
 
     const repo = getCategoryRepository();
-    const result = await repo.findAll({ limit });
+    const result = await repo.findAll({ limit, lastEvaluatedKey });
 
     return {
       statusCode: 200,

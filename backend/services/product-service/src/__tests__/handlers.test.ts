@@ -578,6 +578,19 @@ describe('Variant Handlers', () => {
       expect(result.statusCode).toBe(400);
     });
 
+    it('returns 400 when quantity is negative', async () => {
+      const result = await updateStock(
+        makeEvent({
+          headers: ADMIN_HEADERS,
+          pathParameters: { id: 'v1' },
+          body: JSON.stringify({ quantity: -1 }),
+        })
+      );
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toContain('non-negative');
+    });
+
     it('returns 401 without token', async () => {
       const result = await updateStock(
         makeEvent({ pathParameters: { id: 'v1' }, body: JSON.stringify({ quantity: 5 }) })
@@ -776,6 +789,32 @@ describe('Category Handlers', () => {
       await listCategories(makeEvent({ queryStringParameters: { limit: '999' } }));
 
       expect(mockFindAll).toHaveBeenCalledWith({ limit: 100 });
+    });
+
+    it('passes parsed last_key to repository', async () => {
+      mockFindAll.mockResolvedValueOnce({ items: [], lastEvaluatedKey: undefined });
+
+      await listCategories(
+        makeEvent({
+          queryStringParameters: {
+            last_key: JSON.stringify({ PK: 'CATEGORY#1', SK: 'METADATA' }),
+          },
+        })
+      );
+
+      expect(mockFindAll).toHaveBeenCalledWith({
+        limit: 50,
+        lastEvaluatedKey: { PK: 'CATEGORY#1', SK: 'METADATA' },
+      });
+    });
+
+    it('returns 400 for invalid last_key JSON', async () => {
+      const result = await listCategories(
+        makeEvent({ queryStringParameters: { last_key: 'not-json' } })
+      );
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toContain('last_key');
     });
 
     it('returns 500 on service error', async () => {

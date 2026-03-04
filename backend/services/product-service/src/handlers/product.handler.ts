@@ -21,9 +21,13 @@ import {
 
 const DEFAULT_PER_PAGE = 20;
 const MAX_PER_PAGE = 100;
+let productService: ProductService | null = null;
 
 function getProductService(): ProductService {
-  return new ProductService();
+  if (!productService) {
+    productService = new ProductService();
+  }
+  return productService;
 }
 
 function handleError(error: unknown): APIGatewayProxyResult {
