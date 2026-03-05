@@ -74,7 +74,7 @@ export function createAuthRoutes(auditService?: AuditService): Router {
             undefined,
             ipAddress
           ).catch(err => console.error('Failed to log audit action:', err));
-        } catch (err) {
+        } catch {
           // Token invalid or expired, ignore
         }
       }

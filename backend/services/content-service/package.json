@@ -1,0 +1,11 @@
+{
+  "name": "content-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AWS Lambda handlers for Content Service API (Personaggi and Fumetti)",
+  "scripts": {
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch"
+  }
+}

@@ -146,7 +146,7 @@ export class S3Service {
     // Validate that the buffer is actually a decodable image
     try {
       await getImageDimensions(file);
-    } catch (error) {
+    } catch {
       throw new Error('Invalid image data: unable to decode image buffer');
     }
 
