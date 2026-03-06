@@ -364,6 +364,43 @@ describe('listDiscounts', () => {
     );
   });
 
+  it('returns 400 when is_active query param is invalid', async () => {
+    const result = await listDiscounts(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        queryStringParameters: { is_active: 'foo' },
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/is_active/i);
+  });
+
+  it('returns 400 when cursor is malformed', async () => {
+    const result = await listDiscounts(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        queryStringParameters: { cursor: 'not-valid-base64' },
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/invalid cursor/i);
+  });
+
+  it('returns 400 when cursor decodes to non-object JSON', async () => {
+    const cursor = Buffer.from(JSON.stringify(['bad', 'cursor']), 'utf8').toString('base64');
+    const result = await listDiscounts(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        queryStringParameters: { cursor },
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/invalid cursor/i);
+  });
+
   it('returns nextCursor when there is a lastEvaluatedKey', async () => {
     const key = { PK: 'DISCOUNT#5', SK: 'METADATA' };
     mockFindAll.mockResolvedValue({ items: [], count: 0, lastEvaluatedKey: key });
@@ -599,6 +636,74 @@ describe('createDiscount', () => {
 
     expect(result.statusCode).toBe(500);
   });
+
+  it('returns 400 when description is not a string', async () => {
+    const result = await createDiscount(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        body: JSON.stringify({
+          code: 'NEWYEAR',
+          discount_type: 'percentage',
+          discount_value: 20,
+          description: 123,
+        }),
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/description must be a string/i);
+  });
+
+  it('returns 400 when valid_from is not a valid date string', async () => {
+    const result = await createDiscount(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        body: JSON.stringify({
+          code: 'NEWYEAR',
+          discount_type: 'percentage',
+          discount_value: 20,
+          valid_from: 'not-a-date',
+        }),
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/valid_from must be a valid date string/i);
+  });
+
+  it('returns 400 when max_uses is not a positive integer', async () => {
+    const result = await createDiscount(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        body: JSON.stringify({
+          code: 'NEWYEAR',
+          discount_type: 'percentage',
+          discount_value: 20,
+          max_uses: 0,
+        }),
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/max_uses must be a positive integer/i);
+  });
+
+  it('returns 400 when is_active is not a boolean', async () => {
+    const result = await createDiscount(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        body: JSON.stringify({
+          code: 'NEWYEAR',
+          discount_type: 'percentage',
+          discount_value: 20,
+          is_active: 'true',
+        }),
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/is_active must be a boolean/i);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -711,6 +816,84 @@ describe('updateDiscount', () => {
       1,
       expect.objectContaining({ code: 'NEWCODE' })
     );
+  });
+
+  it('returns 400 when code is not a string', async () => {
+    const result = await updateDiscount(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        pathParameters: { id: '1' },
+        body: JSON.stringify({ code: 12345 }),
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/code must be a non-empty string/i);
+  });
+
+  it('returns 400 when code is an empty string', async () => {
+    const result = await updateDiscount(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        pathParameters: { id: '1' },
+        body: JSON.stringify({ code: '   ' }),
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/code must be a non-empty string/i);
+  });
+
+  it('returns 400 when discount_value is not a finite number', async () => {
+    const result = await updateDiscount(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        pathParameters: { id: '1' },
+        body: JSON.stringify({ discount_value: 'abc' }),
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/discount_value must be a finite number/i);
+  });
+
+  it('returns 400 when max_uses is not a positive integer', async () => {
+    const result = await updateDiscount(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        pathParameters: { id: '1' },
+        body: JSON.stringify({ max_uses: 1.5 }),
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/max_uses must be a positive integer/i);
+  });
+
+  it('returns 400 when is_active is not a boolean', async () => {
+    const result = await updateDiscount(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        pathParameters: { id: '1' },
+        body: JSON.stringify({ is_active: 'false' }),
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/is_active must be a boolean/i);
+  });
+
+  it('returns 400 when valid_until is not a valid date string', async () => {
+    const result = await updateDiscount(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        pathParameters: { id: '1' },
+        body: JSON.stringify({ valid_until: 'not-a-date' }),
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/valid_until must be a valid date string/i);
   });
 
   it('returns 500 on service error', async () => {

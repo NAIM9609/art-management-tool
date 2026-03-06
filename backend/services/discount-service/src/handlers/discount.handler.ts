@@ -101,6 +101,18 @@ function handleError(error: unknown): APIGatewayProxyResult {
   return errorResponse('Internal server error', 500);
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isValidDateString(value: string): boolean {
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 /**
  * Calculate the discount amount for a given cart total and discount code.
  * Returns 0 when the cart total is below min_purchase_amount.
@@ -240,13 +252,28 @@ export async function listDiscounts(
     const filters: { is_active?: boolean } = {};
 
     if (qs.is_active !== undefined) {
+      if (qs.is_active !== 'true' && qs.is_active !== 'false') {
+        return errorResponse('Invalid is_active query parameter; must be "true" or "false".', 400);
+      }
       filters.is_active = qs.is_active === 'true';
     }
 
     const limit = qs.limit ? Math.min(100, Math.max(1, parseInt(qs.limit, 10) || 30)) : 30;
-    const lastEvaluatedKey = qs.cursor
-      ? JSON.parse(Buffer.from(qs.cursor, 'base64').toString('utf8'))
-      : undefined;
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
+    if (qs.cursor) {
+      try {
+        const decoded = Buffer.from(qs.cursor, 'base64').toString('utf8');
+        const parsed = JSON.parse(decoded);
+
+        if (!isPlainObject(parsed)) {
+          return errorResponse('Invalid cursor', 400);
+        }
+
+        lastEvaluatedKey = parsed;
+      } catch {
+        return errorResponse('Invalid cursor', 400);
+      }
+    }
 
     const repo = getRepository();
     const result = await repo.findAll(filters, { limit, lastEvaluatedKey });
@@ -338,7 +365,7 @@ export async function createDiscount(
       return errorResponse('discount_value is required', 400);
     }
 
-    if (typeof body.discount_value !== 'number') {
+    if (!isFiniteNumber(body.discount_value)) {
       return errorResponse('discount_value must be a number', 400);
     }
 
@@ -348,15 +375,60 @@ export async function createDiscount(
       discount_value: body.discount_value as number,
     };
 
-    if (body.description !== undefined) data.description = body.description as string;
-    if (body.min_purchase_amount !== undefined)
-      data.min_purchase_amount = body.min_purchase_amount as number;
-    if (body.max_discount_amount !== undefined)
-      data.max_discount_amount = body.max_discount_amount as number;
-    if (body.valid_from !== undefined) data.valid_from = body.valid_from as string;
-    if (body.valid_until !== undefined) data.valid_until = body.valid_until as string;
-    if (body.max_uses !== undefined) data.max_uses = body.max_uses as number;
-    if (body.is_active !== undefined) data.is_active = body.is_active as boolean;
+    if (body.description !== undefined) {
+      if (typeof body.description !== 'string') {
+        return errorResponse('description must be a string', 400);
+      }
+      data.description = body.description;
+    }
+
+    if (body.min_purchase_amount !== undefined) {
+      if (!isFiniteNumber(body.min_purchase_amount)) {
+        return errorResponse('min_purchase_amount must be a number', 400);
+      }
+      data.min_purchase_amount = body.min_purchase_amount;
+    }
+
+    if (body.max_discount_amount !== undefined) {
+      if (!isFiniteNumber(body.max_discount_amount)) {
+        return errorResponse('max_discount_amount must be a number', 400);
+      }
+      data.max_discount_amount = body.max_discount_amount;
+    }
+
+    if (body.valid_from !== undefined) {
+      if (typeof body.valid_from !== 'string') {
+        return errorResponse('valid_from must be a string', 400);
+      }
+      if (!isValidDateString(body.valid_from)) {
+        return errorResponse('valid_from must be a valid date string', 400);
+      }
+      data.valid_from = body.valid_from;
+    }
+
+    if (body.valid_until !== undefined) {
+      if (typeof body.valid_until !== 'string') {
+        return errorResponse('valid_until must be a string', 400);
+      }
+      if (!isValidDateString(body.valid_until)) {
+        return errorResponse('valid_until must be a valid date string', 400);
+      }
+      data.valid_until = body.valid_until;
+    }
+
+    if (body.max_uses !== undefined) {
+      if (!isFiniteNumber(body.max_uses) || !Number.isInteger(body.max_uses) || body.max_uses <= 0) {
+        return errorResponse('max_uses must be a positive integer', 400);
+      }
+      data.max_uses = body.max_uses;
+    }
+
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== 'boolean') {
+        return errorResponse('is_active must be a boolean', 400);
+      }
+      data.is_active = body.is_active;
+    }
 
     const repo = getRepository();
     const discount = await repo.create(data);
@@ -414,18 +486,80 @@ export async function updateDiscount(
 
     const data: UpdateDiscountCodeData = {};
 
-    if (body.code !== undefined) data.code = (body.code as string).trim().toUpperCase();
-    if (body.description !== undefined) data.description = body.description as string;
+    if (body.code !== undefined) {
+      if (typeof body.code !== 'string') {
+        return errorResponse('code must be a non-empty string', 400);
+      }
+      const trimmedCode = body.code.trim();
+      if (!trimmedCode) {
+        return errorResponse('code must be a non-empty string', 400);
+      }
+      data.code = trimmedCode.toUpperCase();
+    }
+
+    if (body.description !== undefined) {
+      if (typeof body.description !== 'string') {
+        return errorResponse('description must be a string', 400);
+      }
+      data.description = body.description;
+    }
+
     if (body.discount_type !== undefined) data.discount_type = body.discount_type as DiscountType;
-    if (body.discount_value !== undefined) data.discount_value = body.discount_value as number;
-    if (body.min_purchase_amount !== undefined)
-      data.min_purchase_amount = body.min_purchase_amount as number;
-    if (body.max_discount_amount !== undefined)
-      data.max_discount_amount = body.max_discount_amount as number;
-    if (body.valid_from !== undefined) data.valid_from = body.valid_from as string;
-    if (body.valid_until !== undefined) data.valid_until = body.valid_until as string;
-    if (body.max_uses !== undefined) data.max_uses = body.max_uses as number;
-    if (body.is_active !== undefined) data.is_active = body.is_active as boolean;
+
+    if (body.discount_value !== undefined) {
+      if (!isFiniteNumber(body.discount_value)) {
+        return errorResponse('discount_value must be a finite number', 400);
+      }
+      data.discount_value = body.discount_value;
+    }
+
+    if (body.min_purchase_amount !== undefined) {
+      if (!isFiniteNumber(body.min_purchase_amount)) {
+        return errorResponse('min_purchase_amount must be a finite number', 400);
+      }
+      data.min_purchase_amount = body.min_purchase_amount;
+    }
+
+    if (body.max_discount_amount !== undefined) {
+      if (!isFiniteNumber(body.max_discount_amount)) {
+        return errorResponse('max_discount_amount must be a finite number', 400);
+      }
+      data.max_discount_amount = body.max_discount_amount;
+    }
+
+    if (body.valid_from !== undefined) {
+      if (typeof body.valid_from !== 'string') {
+        return errorResponse('valid_from must be a string', 400);
+      }
+      if (!isValidDateString(body.valid_from)) {
+        return errorResponse('valid_from must be a valid date string', 400);
+      }
+      data.valid_from = body.valid_from;
+    }
+
+    if (body.valid_until !== undefined) {
+      if (typeof body.valid_until !== 'string') {
+        return errorResponse('valid_until must be a string', 400);
+      }
+      if (!isValidDateString(body.valid_until)) {
+        return errorResponse('valid_until must be a valid date string', 400);
+      }
+      data.valid_until = body.valid_until;
+    }
+
+    if (body.max_uses !== undefined) {
+      if (!isFiniteNumber(body.max_uses) || !Number.isInteger(body.max_uses) || body.max_uses <= 0) {
+        return errorResponse('max_uses must be a positive integer', 400);
+      }
+      data.max_uses = body.max_uses;
+    }
+
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== 'boolean') {
+        return errorResponse('is_active must be a boolean', 400);
+      }
+      data.is_active = body.is_active;
+    }
 
     const repo = getRepository();
     const discount = await repo.update(id, data);
