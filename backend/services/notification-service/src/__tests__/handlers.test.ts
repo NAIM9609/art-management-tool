@@ -195,6 +195,30 @@ describe('listNotifications', () => {
     expect(JSON.parse(result.body).error).toMatch(/perPage/i);
   });
 
+  it('returns 400 for perPage with trailing non-digit characters', async () => {
+    const result = await listNotifications(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        queryStringParameters: { perPage: '10abc' },
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/perPage/i);
+  });
+
+  it('returns 400 for invalid notification type filter', async () => {
+    const result = await listNotifications(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        queryStringParameters: { type: 'not-a-valid-type' },
+      })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toMatch(/invalid notification type/i);
+  });
+
   it('returns 400 for invalid lastEvaluatedKey', async () => {
     const result = await listNotifications(
       makeEvent({
@@ -352,6 +376,7 @@ describe('deleteNotification', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('deletes notification and returns 200', async () => {
+    mockGetNotificationById.mockResolvedValueOnce(MOCK_NOTIFICATION);
     mockDeleteNotification.mockResolvedValueOnce(undefined);
 
     const result = await deleteNotification(
@@ -365,6 +390,21 @@ describe('deleteNotification', () => {
     const body = JSON.parse(result.body);
     expect(body.message).toMatch(/deleted/i);
     expect(mockDeleteNotification).toHaveBeenCalledWith('notif-uuid-1');
+  });
+
+  it('returns 404 when notification does not exist', async () => {
+    mockGetNotificationById.mockResolvedValueOnce(null);
+
+    const result = await deleteNotification(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        pathParameters: { id: 'missing-id' },
+      })
+    );
+
+    expect(result.statusCode).toBe(404);
+    expect(JSON.parse(result.body).error).toMatch(/not found/i);
+    expect(mockDeleteNotification).not.toHaveBeenCalled();
   });
 
   it('returns 400 when id is missing', async () => {
@@ -385,6 +425,7 @@ describe('deleteNotification', () => {
   });
 
   it('returns 500 on service error', async () => {
+    mockGetNotificationById.mockResolvedValueOnce(MOCK_NOTIFICATION);
     mockDeleteNotification.mockRejectedValueOnce(new Error('DynamoDB error'));
 
     const result = await deleteNotification(

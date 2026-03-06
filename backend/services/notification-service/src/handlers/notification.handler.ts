@@ -75,10 +75,23 @@ export async function listNotifications(
     const query = event.queryStringParameters || {};
 
     const unreadOnly = query.unreadOnly === 'true';
-    const typeFilter = query.type as NotificationType | undefined;
+    const rawType = query.type;
+    let typeFilter: NotificationType | undefined;
+    if (rawType !== undefined) {
+      const allowedTypes = Object.values(NotificationType);
+      if (!allowedTypes.includes(rawType as NotificationType)) {
+        return errorResponse('Invalid notification type', 400);
+      }
+      typeFilter = rawType as NotificationType;
+    }
+
     let perPage = 20;
     if (query.perPage !== undefined) {
-      const parsed = parseInt(query.perPage, 10);
+      const perPageRaw = query.perPage;
+      if (!/^\d+$/.test(perPageRaw)) {
+        return errorResponse('perPage must be a positive integer', 400);
+      }
+      const parsed = Number(perPageRaw);
       if (!Number.isInteger(parsed) || parsed <= 0) {
         return errorResponse('perPage must be a positive integer', 400);
       }
@@ -177,6 +190,12 @@ export async function deleteNotification(
     }
 
     const service = getNotificationService();
+
+    const existing = await service.getNotificationById(id);
+    if (!existing) {
+      return errorResponse('Notification not found', 404);
+    }
+
     await service.deleteNotification(id);
 
     return successResponse({ message: 'Notification deleted' });
