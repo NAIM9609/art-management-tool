@@ -53,9 +53,6 @@ export default function OptimizedImage({
       } catch {
         if (!cancelled) {
           setError(true);
-        }
-      } finally {
-        if (!cancelled) {
           setLoading(false);
         }
       }

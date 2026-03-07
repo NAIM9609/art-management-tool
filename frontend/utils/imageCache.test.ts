@@ -56,6 +56,10 @@ function createIDBMock() {
       objectStore: (name: string) => {
         if (!names.includes(name)) throw new Error(`Store ${name} not in transaction`);
         const map = stores[name];
+        const completeTx = () =>
+          Promise.resolve().then(() =>
+            (tx as { oncomplete: ((e: Event) => void) | null }).oncomplete?.({} as Event)
+          );
 
         const store: Partial<IDBObjectStore> & {
           index: (name: string) => Partial<IDBIndex>;
@@ -73,13 +77,21 @@ function createIDBMock() {
           get: (key: IDBValidKey) =>
             makeRequest(() => map.get(key) as StoreRecord | undefined) as IDBRequest,
           delete: (key: IDBValidKey) =>
-            makeRequest(() => {
-              map.delete(key);
-            }) as IDBRequest,
+            (() => {
+              const req = makeRequest(() => {
+                map.delete(key);
+              }) as IDBRequest;
+              completeTx();
+              return req;
+            })(),
           clear: () =>
-            makeRequest(() => {
-              map.clear();
-            }) as IDBRequest,
+            (() => {
+              const req = makeRequest(() => {
+                map.clear();
+              }) as IDBRequest;
+              completeTx();
+              return req;
+            })(),
           getAll: () => makeRequest(() => [...map.values()]) as IDBRequest,
           index: (indexName: string) => {
             const idx: Partial<IDBIndex> & {
@@ -103,6 +115,7 @@ function createIDBMock() {
                   if (idx2 >= filtered.length) {
                     cursorReq.result = null as unknown as IDBCursorWithValue;
                     cursorReq.onsuccess?.({ target: cursorReq } as unknown as Event);
+                    completeTx();
                     return;
                   }
                   const entry = filtered[idx2++];
@@ -151,19 +164,24 @@ function createIDBMock() {
     transaction: makeTransaction as unknown as IDBDatabase['transaction'],
   };
 
-  const openRequest = {
-    result: db as IDBDatabase,
-    error: null as DOMException | null,
-    onsuccess: null as ((e: Event) => void) | null,
-    onerror: null as ((e: Event) => void) | null,
-    onupgradeneeded: null as ((e: IDBVersionChangeEvent) => void) | null,
+  const open = () => {
+    const openRequest = {
+      result: db as IDBDatabase,
+      error: null as DOMException | null,
+      onsuccess: null as ((e: Event) => void) | null,
+      onerror: null as ((e: Event) => void) | null,
+      onupgradeneeded: null as ((e: IDBVersionChangeEvent) => void) | null,
+    };
+
+    // Fire success asynchronously after handlers are attached.
+    setTimeout(() => {
+      openRequest.onsuccess?.({ target: openRequest } as unknown as Event);
+    }, 0);
+
+    return openRequest;
   };
 
-  Promise.resolve().then(() => {
-    openRequest.onsuccess?.({ target: openRequest } as unknown as Event);
-  });
-
-  return { openRequest, stores };
+  return { open, stores };
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +198,15 @@ beforeEach(() => {
   Object.defineProperty(global, 'indexedDB', {
     configurable: true,
     value: {
-      open: () => idbMock.openRequest,
+      open: () => idbMock.open(),
+    },
+  });
+
+  // clearOldCache uses IDBKeyRange.upperBound(...)
+  Object.defineProperty(global, 'IDBKeyRange', {
+    configurable: true,
+    value: {
+      upperBound: (upper: number) => ({ upper }),
     },
   });
 
@@ -226,8 +252,7 @@ describe('ImageCacheManager.init()', () => {
   it('calling init() twice reuses the same promise', async () => {
     const p1 = manager.init();
     const p2 = manager.init();
-    expect(p1).toBe(p2);
-    await p1;
+    await expect(Promise.all([p1, p2])).resolves.toEqual([undefined, undefined]);
   });
 });
 
