@@ -14,7 +14,7 @@ resource "aws_apigatewayv2_api" "content_service" {
     max_age       = 300
   }
 
-  tags = local.common_tags
+  tags = local.content_common_tags
 }
 
 resource "aws_apigatewayv2_stage" "content_service" {
@@ -38,14 +38,14 @@ resource "aws_apigatewayv2_stage" "content_service" {
     })
   }
 
-  tags = local.common_tags
+  tags = local.content_common_tags
 }
 
 resource "aws_cloudwatch_log_group" "content_service_api_gateway" {
   name              = "/aws/apigateway/${var.project_name}-${var.environment}-content-service"
   retention_in_days = 14
 
-  tags = local.common_tags
+  tags = local.content_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ resource "aws_cloudwatch_log_group" "content_service_api_gateway" {
 # ---------------------------------------------------------------------------
 
 resource "aws_apigatewayv2_integration" "content_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.content_lambda_functions_config
 
   api_id             = aws_apigatewayv2_api.content_service.id
   integration_type   = "AWS_PROXY"
@@ -101,7 +101,7 @@ resource "aws_apigatewayv2_route" "content_service" {
 # ---------------------------------------------------------------------------
 
 resource "aws_lambda_permission" "content_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.content_lambda_functions_config
 
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"

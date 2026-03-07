@@ -1,85 +1,10 @@
-terraform {
-  required_version = ">= 1.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    archive = {
-      source  = "hashicorp/archive"
-      version = "~> 2.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-}
-
 # ---------------------------------------------------------------------------
-# Variables
+# Content Service – Lambda functions, IAM, CloudWatch, and placeholder package
+#
+# NOTE: This file is part of the same Terraform root module as
+# product-service.tf. Shared provider/variable declarations are defined there
+# and reused here.
 # ---------------------------------------------------------------------------
-
-variable "aws_region" {
-  description = "AWS region to deploy resources"
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "project_name" {
-  description = "Project name used for resource naming"
-  type        = string
-  default     = "art-management-tool"
-}
-
-variable "environment" {
-  description = "Environment name (dev, staging, prod)"
-  type        = string
-  default     = "dev"
-}
-
-variable "dynamodb_table_name" {
-  description = "DynamoDB table name. Defaults to '{project_name}-{environment}-art-management' if empty."
-  type        = string
-  default     = ""
-}
-
-variable "s3_bucket_name" {
-  description = "S3 bucket name for content images. Defaults to 'art-management-images-{environment}' if empty."
-  type        = string
-  default     = ""
-}
-
-variable "cdn_url" {
-  description = "CloudFront CDN base URL for serving content images"
-  type        = string
-  default     = ""
-}
-
-variable "allowed_origins" {
-  description = "List of origins allowed to call the Content Service API (CORS). Restrict to trusted domains in production."
-  type        = list(string)
-  default     = ["http://localhost:3000"]
-}
-
-variable "lambda_reserved_concurrency" {
-  description = "Reserved concurrency per Lambda function. Set to null to leave unreserved."
-  type        = number
-  default     = 10
-  nullable    = true
-}
-
-variable "jwt_secret" {
-  description = "JWT secret for Content Service auth. If empty, Terraform generates a strong random secret."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
 
 # ---------------------------------------------------------------------------
 # Locals
@@ -87,12 +12,12 @@ variable "jwt_secret" {
 
 locals {
   # Resolve table/bucket names so they match the naming convention in main.tf
-  dynamodb_table_name = var.dynamodb_table_name != "" ? var.dynamodb_table_name : "${var.project_name}-${var.environment}-art-management"
-  s3_bucket_name      = var.s3_bucket_name != "" ? var.s3_bucket_name : "art-management-images-${var.environment}"
+  content_dynamodb_table_name = var.dynamodb_table_name != "" ? var.dynamodb_table_name : "${var.project_name}-${var.environment}-art-management"
+  content_s3_bucket_name      = var.s3_bucket_name != "" ? var.s3_bucket_name : "art-management-images-${var.environment}"
 
   # One entry per Lambda handler.  Key becomes the suffix of the function name.
   # list-* operations get a longer timeout to handle paginated DynamoDB scans.
-  lambda_functions_config = {
+  content_lambda_functions_config = {
     # Personaggi (Characters)
     "content-service-list-personaggi" = {
       timeout     = 10
@@ -158,17 +83,17 @@ locals {
     }
   }
 
-  common_tags = {
+  content_common_tags = {
     Environment = var.environment
     Project     = var.project_name
     Service     = "content-service"
     ManagedBy   = "Terraform"
   }
 
-  effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.content_service_jwt_secret.result
+  content_effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.content_service_jwt_secret.result
 }
 
-data "aws_caller_identity" "current" {}
+data "aws_caller_identity" "content_current" {}
 
 resource "random_password" "content_service_jwt_secret" {
   length           = 48
@@ -198,7 +123,7 @@ resource "aws_iam_role" "content_service_lambda" {
     ]
   })
 
-  tags = local.common_tags
+  tags = local.content_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -228,14 +153,14 @@ resource "aws_iam_policy" "content_service_dynamodb" {
           "dynamodb:TransactGetItems"
         ]
         Resource = [
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}",
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}/index/*"
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.content_current.account_id}:table/${local.content_dynamodb_table_name}",
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.content_current.account_id}:table/${local.content_dynamodb_table_name}/index/*"
         ]
       }
     ]
   })
 
-  tags = local.common_tags
+  tags = local.content_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -244,7 +169,7 @@ resource "aws_iam_policy" "content_service_dynamodb" {
 
 resource "aws_iam_policy" "content_service_s3" {
   name        = "${var.project_name}-${var.environment}-content-service-s3"
-  description = "S3 read/write access for Content Service image operations"
+  description = "S3 put-object access for Content Service image uploads"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -253,34 +178,22 @@ resource "aws_iam_policy" "content_service_s3" {
         Sid    = "S3PersonaggiAccess"
         Effect = "Allow"
         Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject"
+          "s3:PutObject"
         ]
-        Resource = "arn:aws:s3:::${local.s3_bucket_name}/personaggi/*"
+        Resource = "arn:aws:s3:::${local.content_s3_bucket_name}/personaggi/*"
       },
       {
         Sid    = "S3FumettiAccess"
         Effect = "Allow"
         Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject"
+          "s3:PutObject"
         ]
-        Resource = "arn:aws:s3:::${local.s3_bucket_name}/fumetti/*"
-      },
-      {
-        Sid    = "S3BucketList"
-        Effect = "Allow"
-        Action = [
-          "s3:ListBucket"
-        ]
-        Resource = "arn:aws:s3:::${local.s3_bucket_name}"
+        Resource = "arn:aws:s3:::${local.content_s3_bucket_name}/fumetti/*"
       }
     ]
   })
 
-  tags = local.common_tags
+  tags = local.content_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -319,7 +232,7 @@ data "archive_file" "content_service_placeholder" {
     filename = "index.js"
   }
 
-  # Match personaggi handlers from local.lambda_functions_config.
+  # Match personaggi handlers from local.content_lambda_functions_config.
   source {
     content  = <<-JS
       exports.listPersonaggi = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'listPersonaggi' }) });
@@ -332,7 +245,7 @@ data "archive_file" "content_service_placeholder" {
     filename = "dist/handlers/personaggi.handler.js"
   }
 
-  # Match fumetti handlers from local.lambda_functions_config.
+  # Match fumetti handlers from local.content_lambda_functions_config.
   source {
     content  = <<-JS
       exports.listFumetti = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'listFumetti' }) });
@@ -351,12 +264,12 @@ data "archive_file" "content_service_placeholder" {
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "content_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.content_lambda_functions_config
 
   name              = "/aws/lambda/${var.project_name}-${var.environment}-${each.key}"
   retention_in_days = 14
 
-  tags = local.common_tags
+  tags = local.content_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -364,7 +277,7 @@ resource "aws_cloudwatch_log_group" "content_service" {
 # ---------------------------------------------------------------------------
 
 resource "aws_lambda_function" "content_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.content_lambda_functions_config
 
   function_name = "${var.project_name}-${var.environment}-${each.key}"
   description   = each.value.description
@@ -387,13 +300,13 @@ resource "aws_lambda_function" "content_service" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE_NAME = local.dynamodb_table_name
-      S3_BUCKET_NAME      = local.s3_bucket_name
+      DYNAMODB_TABLE_NAME = local.content_dynamodb_table_name
+      S3_BUCKET_NAME      = local.content_s3_bucket_name
       CDN_URL             = var.cdn_url
       AWS_REGION          = var.aws_region
       AWS_REGION_NAME     = var.aws_region
       ENVIRONMENT         = var.environment
-      JWT_SECRET          = local.effective_jwt_secret
+      JWT_SECRET          = local.content_effective_jwt_secret
     }
   }
 
@@ -406,7 +319,7 @@ resource "aws_lambda_function" "content_service" {
     aws_iam_role_policy_attachment.content_service_s3,
   ]
 
-  tags = merge(local.common_tags, {
+  tags = merge(local.content_common_tags, {
     Name    = "${var.project_name}-${var.environment}-${each.key}"
     Timeout = tostring(each.value.timeout)
   })
