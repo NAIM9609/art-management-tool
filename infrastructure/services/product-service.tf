@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/archive"
       version = "~> 2.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -61,6 +65,20 @@ variable "allowed_origins" {
   description = "List of origins allowed to call the Product Service API (CORS). Restrict to trusted domains in production."
   type        = list(string)
   default     = ["http://localhost:3000"]
+}
+
+variable "lambda_reserved_concurrency" {
+  description = "Reserved concurrency per Lambda function. Set to null to leave unreserved."
+  type        = number
+  default     = 10
+  nullable    = true
+}
+
+variable "jwt_secret" {
+  description = "JWT secret for Product Service auth. If empty, Terraform generates a strong random secret."
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 # ---------------------------------------------------------------------------
@@ -168,6 +186,16 @@ locals {
     Service     = "product-service"
     ManagedBy   = "Terraform"
   }
+
+  effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.product_service_jwt_secret.result
+}
+
+data "aws_caller_identity" "current" {}
+
+resource "random_password" "product_service_jwt_secret" {
+  length           = 48
+  special          = true
+  override_special = "!@#$%^&*()-_=+[]{}<>?"
 }
 
 # ---------------------------------------------------------------------------
@@ -222,8 +250,8 @@ resource "aws_iam_policy" "product_service_dynamodb" {
           "dynamodb:TransactGetItems"
         ]
         Resource = [
-          "arn:aws:dynamodb:${var.aws_region}:*:table/${local.dynamodb_table_name}",
-          "arn:aws:dynamodb:${var.aws_region}:*:table/${local.dynamodb_table_name}/index/*"
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}",
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}/index/*"
         ]
       }
     ]
@@ -260,7 +288,7 @@ resource "aws_iam_policy" "product_service_s3" {
           "s3:GetObject",
           "s3:PutObject"
         ]
-        Resource = "arn:aws:s3:::${local.s3_bucket_name}/*"
+        Resource = "arn:aws:s3:::${local.s3_bucket_name}/products/*"
       },
       {
         Sid    = "S3BucketList"
@@ -306,9 +334,55 @@ data "archive_file" "product_service_placeholder" {
   type        = "zip"
   output_path = "${path.module}/product-service-placeholder.zip"
 
+  # Generic top-level placeholder for compatibility.
   source {
     content  = "exports.handler = async (event) => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD' }) });"
     filename = "index.js"
+  }
+
+  # Match product handlers from local.lambda_functions_config.
+  source {
+    content  = <<-JS
+      exports.listProducts = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'listProducts' }) });
+      exports.getProduct = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'getProduct' }) });
+      exports.createProduct = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'createProduct' }) });
+      exports.updateProduct = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'updateProduct' }) });
+      exports.deleteProduct = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'deleteProduct' }) });
+    JS
+    filename = "dist/handlers/product.handler.js"
+  }
+
+  # Match category handlers from local.lambda_functions_config.
+  source {
+    content  = <<-JS
+      exports.listCategories = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'listCategories' }) });
+      exports.getCategory = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'getCategory' }) });
+      exports.createCategory = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'createCategory' }) });
+      exports.updateCategory = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'updateCategory' }) });
+      exports.deleteCategory = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'deleteCategory' }) });
+    JS
+    filename = "dist/handlers/category.handler.js"
+  }
+
+  # Match variant handlers from local.lambda_functions_config.
+  source {
+    content  = <<-JS
+      exports.listVariants = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'listVariants' }) });
+      exports.createVariant = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'createVariant' }) });
+      exports.updateVariant = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'updateVariant' }) });
+      exports.updateStock = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'updateStock' }) });
+    JS
+    filename = "dist/handlers/variant.handler.js"
+  }
+
+  # Match image handlers from local.lambda_functions_config.
+  source {
+    content  = <<-JS
+      exports.getUploadUrl = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'getUploadUrl' }) });
+      exports.listImages = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'listImages' }) });
+      exports.deleteImage = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'deleteImage' }) });
+    JS
+    filename = "dist/handlers/image.handler.js"
   }
 }
 
@@ -348,15 +422,18 @@ resource "aws_lambda_function" "product_service" {
   timeout     = each.value.timeout
   memory_size = 256
 
-  # Prevent runaway costs: cap concurrency per function
-  reserved_concurrent_executions = 10
+  # Prevent runaway costs: cap concurrency per function (configurable).
+  reserved_concurrent_executions = lookup(each.value, "reserved_concurrent_executions", var.lambda_reserved_concurrency)
 
   environment {
     variables = {
       DYNAMODB_TABLE_NAME = local.dynamodb_table_name
       S3_BUCKET_NAME      = local.s3_bucket_name
       CDN_URL             = var.cdn_url
+      AWS_REGION          = var.aws_region
       AWS_REGION_NAME     = var.aws_region
+      ENVIRONMENT         = var.environment
+      JWT_SECRET          = local.effective_jwt_secret
     }
   }
 
