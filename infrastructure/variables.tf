@@ -21,3 +21,19 @@ variable "table_name" {
   type        = string
   default     = null
 }
+
+variable "admin_email" {
+  description = "Email address to receive CloudWatch alarm notifications via SNS. Must be a real deliverable address; AWS sends a confirmation email before the subscription is active."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[^@]+@[^@]+\\.[^@]+$", var.admin_email)) && var.admin_email != "admin@example.com"
+    error_message = "admin_email must be a valid email address (not the default placeholder 'admin@example.com')."
+  }
+}
+
+variable "api_gateway_id" {
+  description = "ID of the API Gateway HTTP API (v2) to monitor. If not provided, API Gateway alarms and dashboard widgets will be skipped."
+  type        = string
+  default     = ""
+}
