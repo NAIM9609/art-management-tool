@@ -61,12 +61,6 @@ variable "cdn_url" {
   default     = ""
 }
 
-variable "allowed_origins" {
-  description = "List of origins allowed to call the Product Service API (CORS). Restrict to trusted domains in production."
-  type        = list(string)
-  default     = ["http://localhost:3000"]
-}
-
 variable "lambda_reserved_concurrency" {
   description = "Reserved concurrency per Lambda function. Set to null to leave unreserved."
   type        = number
