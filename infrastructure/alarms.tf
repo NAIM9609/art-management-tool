@@ -1,3 +1,9 @@
+# CloudFront metrics are emitted in us-east-1 regardless of stack region.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 # ---------------------------------------------------------------------------
 # DynamoDB Consumed Capacity Alarms
 # Threshold: 20 RCU / WCU per minute – approaching the 25 RCU/WCU free tier.
@@ -88,7 +94,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_invocations" {
 
 resource "aws_cloudwatch_metric_alarm" "lambda_error_rate" {
   alarm_name        = "${var.project_name}-${var.environment}-lambda-error-rate"
-  alarm_description = "Lambda error rate > 1% (5-minute window)"
+  alarm_description = "Lambda error rate > 1% (25-minute evaluation window; 3 of 5 datapoints)"
 
   comparison_operator = "GreaterThanThreshold"
   threshold           = 1 # percent
@@ -138,7 +144,7 @@ resource "aws_cloudwatch_metric_alarm" "api_gateway_5xx_error_rate" {
   count = var.api_gateway_id != "" ? 1 : 0
 
   alarm_name        = "${var.project_name}-${var.environment}-api-gateway-5xx-error-rate"
-  alarm_description = "API Gateway 5xx error rate > 5% (5-minute window)"
+  alarm_description = "API Gateway 5xx error rate > 5% (25-minute evaluation window; 3 of 5 datapoints)"
 
   comparison_operator = "GreaterThanThreshold"
   threshold           = 5 # percent
@@ -192,6 +198,8 @@ resource "aws_cloudwatch_metric_alarm" "api_gateway_5xx_error_rate" {
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_metric_alarm" "cloudfront_data_transfer" {
+  provider = aws.us_east_1
+
   alarm_name        = "${var.project_name}-${var.environment}-cloudfront-data-transfer"
   alarm_description = "CloudFront BytesDownloaded > 1.5 GB/day (pace for 45 GB/month)"
 

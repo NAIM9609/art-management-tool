@@ -37,7 +37,7 @@ locals {
   # Cost-allocation tags applied to every monitoring resource.
   monitoring_tags = {
     Environment = var.environment
-    Project     = "art-management"
+    Project     = var.project_name
     Service     = "monitoring"
     ManagedBy   = "Terraform"
   }
@@ -68,15 +68,82 @@ locals {
     ["AWS/Lambda", "Duration", "FunctionName", name, { stat = "p99", period = 60 }]
   ]
 
-  # API Gateway metric widgets – empty when no API ID is supplied.
-  dashboard_apigw_request_metrics = var.api_gateway_id != "" ? [
-    ["AWS/ApiGateway", "Count", "ApiId", var.api_gateway_id, { stat = "Sum", period = 60 }]
-  ] : []
-
-  dashboard_apigw_error_metrics = var.api_gateway_id != "" ? [
-    ["AWS/ApiGateway", "4XXError", "ApiId", var.api_gateway_id, { stat = "Sum", period = 60, color = "#FF9900" }],
-    ["AWS/ApiGateway", "5XXError", "ApiId", var.api_gateway_id, { stat = "Sum", period = 60, color = "#D62728" }],
-  ] : []
+  # API Gateway dashboard widgets are conditional so we never render metric widgets
+  # with an empty metrics array (CloudWatch rejects those).
+  dashboard_apigw_widgets = jsondecode(var.api_gateway_id != "" ? <<-JSON
+    [
+      {
+        "type": "text",
+        "x": 0,
+        "y": 20,
+        "width": 24,
+        "height": 1,
+        "properties": {
+          "markdown": "## API Gateway - Product Service"
+        }
+      },
+      {
+        "type": "metric",
+        "x": 0,
+        "y": 21,
+        "width": 12,
+        "height": 6,
+        "properties": {
+          "title": "API Gateway Requests",
+          "view": "timeSeries",
+          "stacked": false,
+          "metrics": [
+            ["AWS/ApiGateway", "Count", "ApiId", "${var.api_gateway_id}", { "stat": "Sum", "period": 60 }]
+          ],
+          "region": "${var.aws_region}",
+          "yAxis": { "left": { "min": 0 } }
+        }
+      },
+      {
+        "type": "metric",
+        "x": 12,
+        "y": 21,
+        "width": 12,
+        "height": 6,
+        "properties": {
+          "title": "API Gateway 4xx / 5xx Errors",
+          "view": "timeSeries",
+          "stacked": false,
+          "metrics": [
+            ["AWS/ApiGateway", "4XXError", "ApiId", "${var.api_gateway_id}", { "stat": "Sum", "period": 60, "color": "#FF9900" }],
+            ["AWS/ApiGateway", "5XXError", "ApiId", "${var.api_gateway_id}", { "stat": "Sum", "period": 60, "color": "#D62728" }]
+          ],
+          "region": "${var.aws_region}",
+          "yAxis": { "left": { "min": 0 } }
+        }
+      }
+    ]
+  JSON
+    : <<-JSON
+    [
+      {
+        "type": "text",
+        "x": 0,
+        "y": 20,
+        "width": 24,
+        "height": 1,
+        "properties": {
+          "markdown": "## API Gateway - Product Service"
+        }
+      },
+      {
+        "type": "text",
+        "x": 0,
+        "y": 21,
+        "width": 24,
+        "height": 6,
+        "properties": {
+          "markdown": "_API Gateway monitoring is disabled: set api_gateway_id to render API metrics widgets._"
+        }
+      }
+    ]
+  JSON
+  )
 }
 
 # ---------------------------------------------------------------------------
@@ -105,7 +172,7 @@ resource "aws_cloudwatch_dashboard" "main" {
   dashboard_name = "${var.project_name}-${var.environment}"
 
   dashboard_body = jsonencode({
-    widgets = [
+    widgets = concat([
 
       # ── DynamoDB ─────────────────────────────────────────────────────────
 
@@ -227,49 +294,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         }
       },
 
-      # ── API Gateway – Product Service ─────────────────────────────────────
-
-      {
-        type   = "text"
-        x      = 0
-        y      = 20
-        width  = 24
-        height = 1
-        properties = {
-          markdown = "## API Gateway – Product Service"
-        }
-      },
-      {
-        type   = "metric"
-        x      = 0
-        y      = 21
-        width  = 12
-        height = 6
-        properties = {
-          title   = "API Gateway Requests"
-          view    = "timeSeries"
-          stacked = false
-          metrics = local.dashboard_apigw_request_metrics
-          region  = var.aws_region
-          yAxis   = { left = { min = 0 } }
-        }
-      },
-      {
-        type   = "metric"
-        x      = 12
-        y      = 21
-        width  = 12
-        height = 6
-        properties = {
-          title   = "API Gateway 4xx / 5xx Errors"
-          view    = "timeSeries"
-          stacked = false
-          metrics = local.dashboard_apigw_error_metrics
-          region  = var.aws_region
-          yAxis   = { left = { min = 0 } }
-        }
-      },
-
+      ], local.dashboard_apigw_widgets, [
       # ── CloudFront ───────────────────────────────────────────────────────
 
       {
@@ -299,8 +324,8 @@ resource "aws_cloudwatch_dashboard" "main" {
           region = "us-east-1"
           yAxis  = { left = { min = 0 } }
         }
-      },
-    ]
+      }
+    ])
   })
 }
 
