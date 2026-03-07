@@ -25,6 +25,7 @@ import {
 } from '../types';
 
 const DEFAULT_PER_PAGE = 30;
+const MAX_PER_PAGE = 100;
 
 let auditService: AuditService | null = null;
 
@@ -58,7 +59,7 @@ function handleError(error: unknown): APIGatewayProxyResult {
 
 /**
  * Parse and validate the perPage query parameter.
- * Returns the parsed value, or an error response string if invalid.
+ * Returns the parsed value, or an error response if invalid.
  */
 function parsePerPage(raw: string | undefined): number | APIGatewayProxyResult {
   if (raw === undefined) {
@@ -71,7 +72,7 @@ function parsePerPage(raw: string | undefined): number | APIGatewayProxyResult {
   if (!Number.isInteger(parsed) || parsed <= 0) {
     return errorResponse('perPage must be a positive integer', 400);
   }
-  return parsed;
+  return Math.min(parsed, MAX_PER_PAGE);
 }
 
 /**

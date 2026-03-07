@@ -151,6 +151,27 @@ describe('getEntityHistory', () => {
     });
   });
 
+  it('clamps perPage to 100 when value is too large', async () => {
+    mockGetEntityHistory.mockResolvedValueOnce({
+      items: [],
+      count: 0,
+      lastEvaluatedKey: undefined,
+    });
+
+    await getEntityHistory(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        pathParameters: { type: 'product', id: 'prod-uuid-1' },
+        queryStringParameters: { perPage: '1000' },
+      })
+    );
+
+    expect(mockGetEntityHistory).toHaveBeenCalledWith('product', 'prod-uuid-1', {
+      limit: 100,
+      lastEvaluatedKey: undefined,
+    });
+  });
+
   it('parses lastEvaluatedKey query parameter', async () => {
     const cursor = { GSI1PK: 'AUDIT_ENTITY#product#prod-uuid-1', GSI1SK: '2024-01-15T10:00:00.000Z' };
     mockGetEntityHistory.mockResolvedValueOnce({
@@ -330,6 +351,27 @@ describe('getUserActivity', () => {
     });
   });
 
+  it('clamps perPage to 100 when value is too large', async () => {
+    mockGetUserActivity.mockResolvedValueOnce({
+      items: [],
+      count: 0,
+      lastEvaluatedKey: undefined,
+    });
+
+    await getUserActivity(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        pathParameters: { userId: 'user-1' },
+        queryStringParameters: { perPage: '500' },
+      })
+    );
+
+    expect(mockGetUserActivity).toHaveBeenCalledWith('user-1', {
+      limit: 100,
+      lastEvaluatedKey: undefined,
+    });
+  });
+
   it('parses lastEvaluatedKey query parameter', async () => {
     const cursor = { GSI2PK: 'AUDIT_USER#user-1', GSI2SK: '2024-01-15T10:00:00.000Z' };
     mockGetUserActivity.mockResolvedValueOnce({
@@ -503,6 +545,31 @@ describe('getActivityByDate', () => {
           startDate: '2024-01-01',
           endDate: '2024-01-31',
           perPage: '100',
+        },
+      })
+    );
+
+    expect(mockGetActivityByDateRange).toHaveBeenCalledWith(
+      '2024-01-01',
+      '2024-01-31',
+      { limit: 100, lastEvaluatedKey: undefined }
+    );
+  });
+
+  it('clamps perPage to 100 when value is too large', async () => {
+    mockGetActivityByDateRange.mockResolvedValueOnce({
+      items: [],
+      count: 0,
+      lastEvaluatedKey: undefined,
+    });
+
+    await getActivityByDate(
+      makeEvent({
+        headers: AUTH_HEADERS,
+        queryStringParameters: {
+          startDate: '2024-01-01',
+          endDate: '2024-01-31',
+          perPage: '999',
         },
       })
     );
