@@ -14,7 +14,11 @@
     "test:coverage": "jest --coverage",
     "test:integration": "jest --testMatch='**/*.integration.test.ts'",
     "lint": "eslint \"src/**/*.ts\"",
-    "lint:fix": "eslint \"src/**/*.ts\" --fix"
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "migrate:test": "DYNAMODB_TABLE_NAME=art-management-local AWS_ENDPOINT_URL=http://localhost:4566 ts-node scripts/migrate-to-dynamodb.ts",
+    "migrate:production": "ts-node scripts/migrate-to-dynamodb.ts",
+    "validate:migration": "ts-node scripts/validate-migration.ts",
+    "rollback:migration": "ts-node scripts/rollback-migration.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.986.0",
