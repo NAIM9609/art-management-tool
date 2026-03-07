@@ -1,73 +1,10 @@
-terraform {
-  required_version = ">= 1.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    archive = {
-      source  = "hashicorp/archive"
-      version = "~> 2.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-}
-
 # ---------------------------------------------------------------------------
-# Variables
+# Audit Service – Lambda functions, IAM, CloudWatch, and API Gateway
+#
+# NOTE: This file is part of the same Terraform root module as
+# product-service.tf. Shared provider/variable declarations are defined there
+# and reused here.
 # ---------------------------------------------------------------------------
-
-variable "aws_region" {
-  description = "AWS region to deploy resources"
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "project_name" {
-  description = "Project name used for resource naming"
-  type        = string
-  default     = "art-management-tool"
-}
-
-variable "environment" {
-  description = "Environment name (dev, staging, prod)"
-  type        = string
-  default     = "dev"
-}
-
-variable "dynamodb_table_name" {
-  description = "DynamoDB table name. Defaults to '{project_name}-{environment}-art-management' if empty."
-  type        = string
-  default     = ""
-}
-
-variable "allowed_origins" {
-  description = "List of origins allowed to call the Audit Service API (CORS). Restrict to trusted domains in production."
-  type        = list(string)
-  default     = ["http://localhost:3000"]
-}
-
-variable "lambda_reserved_concurrency" {
-  description = "Reserved concurrency per Lambda function. Set to null to leave unreserved."
-  type        = number
-  default     = 10
-  nullable    = true
-}
-
-variable "jwt_secret" {
-  description = "JWT secret for Audit Service auth. If empty, Terraform generates a strong random secret."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
 
 # ---------------------------------------------------------------------------
 # Locals
@@ -75,11 +12,11 @@ variable "jwt_secret" {
 
 locals {
   # Resolve table name so it matches the naming convention in main.tf
-  dynamodb_table_name = var.dynamodb_table_name != "" ? var.dynamodb_table_name : "${var.project_name}-${var.environment}-art-management"
+  audit_dynamodb_table_name = var.dynamodb_table_name != "" ? var.dynamodb_table_name : "${var.project_name}-${var.environment}-art-management"
 
   # One entry per Lambda handler. Key becomes the suffix of the function name.
   # Audit logs are read-only from the API; writes happen internally via audit helpers.
-  lambda_functions_config = {
+  audit_lambda_functions_config = {
     "audit-service-get-entity-history" = {
       timeout     = 10
       handler     = "dist/handlers/audit.handler.getEntityHistory"
@@ -97,17 +34,17 @@ locals {
     }
   }
 
-  common_tags = {
+  audit_common_tags = {
     Environment = var.environment
     Project     = var.project_name
     Service     = "audit-service"
     ManagedBy   = "Terraform"
   }
 
-  effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.audit_service_jwt_secret.result
+  audit_effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.audit_service_jwt_secret.result
 }
 
-data "aws_caller_identity" "current" {}
+data "aws_caller_identity" "audit_current" {}
 
 resource "random_password" "audit_service_jwt_secret" {
   length           = 48
@@ -137,7 +74,7 @@ resource "aws_iam_role" "audit_service_lambda" {
     ]
   })
 
-  tags = local.common_tags
+  tags = local.audit_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -158,18 +95,17 @@ resource "aws_iam_policy" "audit_service_dynamodb" {
         Action = [
           "dynamodb:GetItem",
           "dynamodb:Query",
-          "dynamodb:Scan",
           "dynamodb:BatchGetItem"
         ]
         Resource = [
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}",
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}/index/*"
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.audit_current.account_id}:table/${local.audit_dynamodb_table_name}",
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.audit_current.account_id}:table/${local.audit_dynamodb_table_name}/index/*"
         ]
       }
     ]
   })
 
-  tags = local.common_tags
+  tags = local.audit_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -216,12 +152,12 @@ data "archive_file" "audit_service_placeholder" {
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "audit_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.audit_lambda_functions_config
 
   name              = "/aws/lambda/${var.project_name}-${var.environment}-${each.key}"
   retention_in_days = 14
 
-  tags = local.common_tags
+  tags = local.audit_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -229,7 +165,7 @@ resource "aws_cloudwatch_log_group" "audit_service" {
 # ---------------------------------------------------------------------------
 
 resource "aws_lambda_function" "audit_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.audit_lambda_functions_config
 
   function_name = "${var.project_name}-${var.environment}-${each.key}"
   description   = each.value.description
@@ -248,11 +184,11 @@ resource "aws_lambda_function" "audit_service" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE_NAME = local.dynamodb_table_name
+      DYNAMODB_TABLE_NAME = local.audit_dynamodb_table_name
       AWS_REGION          = var.aws_region
       AWS_REGION_NAME     = var.aws_region
       ENVIRONMENT         = var.environment
-      JWT_SECRET          = local.effective_jwt_secret
+      JWT_SECRET          = local.audit_effective_jwt_secret
     }
   }
 
@@ -262,7 +198,7 @@ resource "aws_lambda_function" "audit_service" {
     aws_iam_role_policy_attachment.audit_service_dynamodb,
   ]
 
-  tags = merge(local.common_tags, {
+  tags = merge(local.audit_common_tags, {
     Name    = "${var.project_name}-${var.environment}-${each.key}"
     Timeout = tostring(each.value.timeout)
   })
@@ -284,7 +220,7 @@ resource "aws_apigatewayv2_api" "audit_service" {
     max_age       = 300
   }
 
-  tags = local.common_tags
+  tags = local.audit_common_tags
 }
 
 resource "aws_apigatewayv2_stage" "audit_service" {
@@ -308,14 +244,14 @@ resource "aws_apigatewayv2_stage" "audit_service" {
     })
   }
 
-  tags = local.common_tags
+  tags = local.audit_common_tags
 }
 
 resource "aws_cloudwatch_log_group" "audit_service_api_gateway" {
   name              = "/aws/apigateway/${var.project_name}-${var.environment}-audit-service"
   retention_in_days = 14
 
-  tags = local.common_tags
+  tags = local.audit_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -323,7 +259,7 @@ resource "aws_cloudwatch_log_group" "audit_service_api_gateway" {
 # ---------------------------------------------------------------------------
 
 resource "aws_apigatewayv2_integration" "audit_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.audit_lambda_functions_config
 
   api_id             = aws_apigatewayv2_api.audit_service.id
   integration_type   = "AWS_PROXY"
@@ -358,7 +294,7 @@ resource "aws_apigatewayv2_route" "audit_service" {
 # ---------------------------------------------------------------------------
 
 resource "aws_lambda_permission" "audit_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.audit_lambda_functions_config
 
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"

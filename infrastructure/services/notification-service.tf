@@ -1,73 +1,10 @@
-terraform {
-  required_version = ">= 1.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    archive = {
-      source  = "hashicorp/archive"
-      version = "~> 2.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-}
-
 # ---------------------------------------------------------------------------
-# Variables
+# Notification Service – Lambda functions, IAM, CloudWatch, and API Gateway
+#
+# NOTE: This file is part of the same Terraform root module as
+# product-service.tf. Shared provider/variable declarations are defined there
+# and reused here.
 # ---------------------------------------------------------------------------
-
-variable "aws_region" {
-  description = "AWS region to deploy resources"
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "project_name" {
-  description = "Project name used for resource naming"
-  type        = string
-  default     = "art-management-tool"
-}
-
-variable "environment" {
-  description = "Environment name (dev, staging, prod)"
-  type        = string
-  default     = "dev"
-}
-
-variable "dynamodb_table_name" {
-  description = "DynamoDB table name. Defaults to '{project_name}-{environment}-art-management' if empty."
-  type        = string
-  default     = ""
-}
-
-variable "allowed_origins" {
-  description = "List of origins allowed to call the Notification Service API (CORS). Restrict to trusted domains in production."
-  type        = list(string)
-  default     = ["http://localhost:3000"]
-}
-
-variable "lambda_reserved_concurrency" {
-  description = "Reserved concurrency per Lambda function. Set to null to leave unreserved."
-  type        = number
-  default     = 10
-  nullable    = true
-}
-
-variable "jwt_secret" {
-  description = "JWT secret for Notification Service auth. If empty, Terraform generates a strong random secret."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
 
 # ---------------------------------------------------------------------------
 # Locals
@@ -75,10 +12,10 @@ variable "jwt_secret" {
 
 locals {
   # Resolve table name so it matches the naming convention in main.tf
-  dynamodb_table_name = var.dynamodb_table_name != "" ? var.dynamodb_table_name : "${var.project_name}-${var.environment}-art-management"
+  notification_dynamodb_table_name = var.dynamodb_table_name != "" ? var.dynamodb_table_name : "${var.project_name}-${var.environment}-art-management"
 
   # One entry per Lambda handler. Key becomes the suffix of the function name.
-  lambda_functions_config = {
+  notification_lambda_functions_config = {
     "notification-service-list-notifications" = {
       timeout     = 10
       handler     = "dist/handlers/notification.handler.listNotifications"
@@ -101,17 +38,17 @@ locals {
     }
   }
 
-  common_tags = {
+  notification_common_tags = {
     Environment = var.environment
     Project     = var.project_name
     Service     = "notification-service"
     ManagedBy   = "Terraform"
   }
 
-  effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.notification_service_jwt_secret.result
+  notification_effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.notification_service_jwt_secret.result
 }
 
-data "aws_caller_identity" "current" {}
+data "aws_caller_identity" "notification_current" {}
 
 resource "random_password" "notification_service_jwt_secret" {
   length           = 48
@@ -141,7 +78,7 @@ resource "aws_iam_role" "notification_service_lambda" {
     ]
   })
 
-  tags = local.common_tags
+  tags = local.notification_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -163,22 +100,17 @@ resource "aws_iam_policy" "notification_service_dynamodb" {
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
           "dynamodb:DeleteItem",
-          "dynamodb:Query",
-          "dynamodb:Scan",
-          "dynamodb:BatchGetItem",
-          "dynamodb:BatchWriteItem",
-          "dynamodb:TransactWriteItems",
-          "dynamodb:TransactGetItems"
+          "dynamodb:Query"
         ]
         Resource = [
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}",
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}/index/*"
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.notification_current.account_id}:table/${local.notification_dynamodb_table_name}",
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.notification_current.account_id}:table/${local.notification_dynamodb_table_name}/index/*"
         ]
       }
     ]
   })
 
-  tags = local.common_tags
+  tags = local.notification_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -226,12 +158,12 @@ data "archive_file" "notification_service_placeholder" {
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "notification_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.notification_lambda_functions_config
 
   name              = "/aws/lambda/${var.project_name}-${var.environment}-${each.key}"
   retention_in_days = 14
 
-  tags = local.common_tags
+  tags = local.notification_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -239,7 +171,7 @@ resource "aws_cloudwatch_log_group" "notification_service" {
 # ---------------------------------------------------------------------------
 
 resource "aws_lambda_function" "notification_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.notification_lambda_functions_config
 
   function_name = "${var.project_name}-${var.environment}-${each.key}"
   description   = each.value.description
@@ -258,11 +190,11 @@ resource "aws_lambda_function" "notification_service" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE_NAME = local.dynamodb_table_name
+      DYNAMODB_TABLE_NAME = local.notification_dynamodb_table_name
       AWS_REGION          = var.aws_region
       AWS_REGION_NAME     = var.aws_region
       ENVIRONMENT         = var.environment
-      JWT_SECRET          = local.effective_jwt_secret
+      JWT_SECRET          = local.notification_effective_jwt_secret
     }
   }
 
@@ -272,7 +204,7 @@ resource "aws_lambda_function" "notification_service" {
     aws_iam_role_policy_attachment.notification_service_dynamodb,
   ]
 
-  tags = merge(local.common_tags, {
+  tags = merge(local.notification_common_tags, {
     Name    = "${var.project_name}-${var.environment}-${each.key}"
     Timeout = tostring(each.value.timeout)
   })
@@ -294,7 +226,7 @@ resource "aws_apigatewayv2_api" "notification_service" {
     max_age       = 300
   }
 
-  tags = local.common_tags
+  tags = local.notification_common_tags
 }
 
 resource "aws_apigatewayv2_stage" "notification_service" {
@@ -318,14 +250,14 @@ resource "aws_apigatewayv2_stage" "notification_service" {
     })
   }
 
-  tags = local.common_tags
+  tags = local.notification_common_tags
 }
 
 resource "aws_cloudwatch_log_group" "notification_service_api_gateway" {
   name              = "/aws/apigateway/${var.project_name}-${var.environment}-notification-service"
   retention_in_days = 14
 
-  tags = local.common_tags
+  tags = local.notification_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -333,7 +265,7 @@ resource "aws_cloudwatch_log_group" "notification_service_api_gateway" {
 # ---------------------------------------------------------------------------
 
 resource "aws_apigatewayv2_integration" "notification_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.notification_lambda_functions_config
 
   api_id             = aws_apigatewayv2_api.notification_service.id
   integration_type   = "AWS_PROXY"
@@ -349,10 +281,10 @@ resource "aws_apigatewayv2_integration" "notification_service" {
 
 locals {
   notification_api_routes = {
-    "GET /api/admin/notifications"                      = "notification-service-list-notifications"
-    "PATCH /api/admin/notifications/{id}/read"          = "notification-service-mark-as-read"
-    "POST /api/admin/notifications/mark-all-read"       = "notification-service-mark-all-read"
-    "DELETE /api/admin/notifications/{id}"              = "notification-service-delete-notification"
+    "GET /api/admin/notifications"                = "notification-service-list-notifications"
+    "PATCH /api/admin/notifications/{id}/read"    = "notification-service-mark-as-read"
+    "POST /api/admin/notifications/mark-all-read" = "notification-service-mark-all-read"
+    "DELETE /api/admin/notifications/{id}"        = "notification-service-delete-notification"
   }
 }
 
@@ -369,7 +301,7 @@ resource "aws_apigatewayv2_route" "notification_service" {
 # ---------------------------------------------------------------------------
 
 resource "aws_lambda_permission" "notification_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.notification_lambda_functions_config
 
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
