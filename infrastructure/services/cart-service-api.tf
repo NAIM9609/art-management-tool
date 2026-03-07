@@ -17,10 +17,12 @@ resource "aws_apigatewayv2_api" "cart_service" {
   description   = "HTTP API for the Cart Service"
 
   cors_configuration {
-    allow_origins = var.allowed_origins
-    allow_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_headers = ["Content-Type", "Authorization", "X-Requested-With"]
-    max_age       = 300
+    allow_origins     = var.allowed_origins
+    allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    allow_headers     = ["Content-Type", "Authorization", "X-Requested-With", "X-Cart-Session", "X-Session-Id"]
+    expose_headers    = ["Set-Cookie"]
+    allow_credentials = true
+    max_age           = 300
   }
 
   tags = local.cart_common_tags
@@ -80,12 +82,13 @@ resource "aws_apigatewayv2_integration" "cart_service" {
 locals {
   cart_api_routes = {
     # Cart
-    "GET /api/cart"                  = "cart-service-get-cart"
-    "POST /api/cart/items"           = "cart-service-add-item"
-    "PATCH /api/cart/items/{id}"     = "cart-service-update-quantity"
-    "DELETE /api/cart/items/{id}"    = "cart-service-remove-item"
-    "DELETE /api/cart"               = "cart-service-clear-cart"
-    "POST /api/cart/discount"        = "cart-service-apply-discount"
+    "GET /api/cart"               = "cart-service-get-cart"
+    "POST /api/cart/items"        = "cart-service-add-item"
+    "PATCH /api/cart/items/{id}"  = "cart-service-update-quantity"
+    "DELETE /api/cart/items/{id}" = "cart-service-remove-item"
+    "DELETE /api/cart"            = "cart-service-clear-cart"
+    "POST /api/cart/discount"     = "cart-service-apply-discount"
+    "DELETE /api/cart/discount"   = "cart-service-remove-discount"
   }
 }
 

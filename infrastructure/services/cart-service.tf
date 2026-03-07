@@ -2,8 +2,8 @@
 # Cart Service – Lambda functions, IAM, CloudWatch, and placeholder package
 #
 # NOTE: This file is part of the same Terraform root module as
-# product-service.tf.  Variables (aws_region, project_name, environment,
-# dynamodb_table_name, allowed_origins, lambda_reserved_concurrency),
+# product-service.tf/common-variables.tf. Variables (aws_region, project_name,
+# environment, dynamodb_table_name, lambda_reserved_concurrency),
 # locals (dynamodb_table_name), and data sources (aws_caller_identity.current)
 # that are already declared in product-service.tf are intentionally reused
 # here without re-declaration.
@@ -56,6 +56,11 @@ locals {
       timeout     = 5
       handler     = "dist/handlers/cart.handler.applyDiscount"
       description = "Apply a discount code to the cart"
+    }
+    "cart-service-remove-discount" = {
+      timeout     = 5
+      handler     = "dist/handlers/cart.handler.removeDiscount"
+      description = "Remove a discount code from the cart"
     }
   }
 
@@ -177,6 +182,7 @@ data "archive_file" "cart_service_placeholder" {
       exports.removeItem = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'removeItem' }) });
       exports.clearCart = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'clearCart' }) });
       exports.applyDiscount = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'applyDiscount' }) });
+      exports.removeDiscount = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'removeDiscount' }) });
     JS
     filename = "dist/handlers/cart.handler.js"
   }
@@ -207,7 +213,7 @@ resource "aws_lambda_function" "cart_service" {
   role          = aws_iam_role.cart_service_lambda.arn
 
   # Runtime & handler
-  runtime = "nodejs18.x"
+  runtime = "nodejs20.x"
   handler = each.value.handler
 
   # Deployment package (placeholder – replaced by CI/CD pipeline)
