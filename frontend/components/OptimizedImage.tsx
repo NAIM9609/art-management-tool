@@ -7,6 +7,7 @@ interface OptimizedImageProps {
   src: string;
   alt: string;
   className?: string;
+  imgClassName?: string;
   width?: number;
   height?: number;
 }
@@ -22,6 +23,7 @@ export default function OptimizedImage({
   src,
   alt,
   className = '',
+  imgClassName = '',
   width,
   height,
 }: OptimizedImageProps) {
@@ -118,7 +120,7 @@ export default function OptimizedImage({
           alt={alt}
           width={width}
           height={height}
-          className={loading ? 'hidden' : ''}
+          className={`${loading ? 'hidden' : ''} ${imgClassName}`.trim()}
           onLoad={() => setLoading(false)}
           style={{ maxWidth: '100%' }}
         />

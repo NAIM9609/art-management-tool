@@ -2,6 +2,7 @@ import { Button } from 'primereact/button';
 import { InputNumber } from 'primereact/inputnumber';
 import { Card } from 'primereact/card';
 import type { CartResponse } from '@/services/ShopAPIService';
+import OptimizedImage from '@/components/OptimizedImage';
 
 interface CartItemProps {
   item: CartResponse['cart']['items'][0];
@@ -31,10 +32,12 @@ export default function CartItem({ item, updating, onUpdateQuantity, onRemove }:
       <div className="flex gap-4">
         <div className="w-24 h-24 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center">
           {product.images && product.images.length > 0 ? (
-            <img
+            <OptimizedImage
               src={product.images.find(img => img.is_primary)?.url || product.images[0].url}
               alt={product.title}
-              className="max-w-full max-h-full object-contain"
+              width={96}
+              height={96}
+              imgClassName="max-w-full max-h-full object-contain"
             />
           ) : (
             <div className="flex items-center justify-center h-full">

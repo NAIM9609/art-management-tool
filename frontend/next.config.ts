@@ -20,6 +20,7 @@ const nextConfig: NextConfig = {
   images: {
     // Static export cannot use Next.js image optimization
     ...(isExportMode ? { unoptimized: true } : {}),
+    formats: ['image/avif', 'image/webp'],
     remotePatterns: [
       {
         protocol: 'http',

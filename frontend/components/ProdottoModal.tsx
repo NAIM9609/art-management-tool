@@ -1,10 +1,10 @@
-/* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect } from 'react';
 import { Dialog } from 'primereact/dialog';
 import { useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import type { Product, ProductImage } from '@/services/ShopAPIService';
+import OptimizedImage from '@/components/OptimizedImage';
 
 interface ProdottoModalProps {
     visible: boolean;
@@ -109,10 +109,11 @@ export default function ProdottoModal({ visible, onHide, prodotto }: ProdottoMod
                             <div className="w-full flex flex-col">
                                 {/* Immagine principale */}
                                 <div className="relative w-full h-[400px] md:h-[500px] flex items-center justify-center">
-                                    <img 
+                                    <OptimizedImage 
                                         src={currentImage?.url || '/placeholder-art.png'} 
                                         alt={currentImage?.alt_text || prodotto?.title || 'Product'}
-                                        className="max-w-full max-h-full object-contain"
+                                        className="w-full h-full"
+                                        imgClassName="max-w-full max-h-full object-contain"
                                     />
                                     
                                     {/* Navigazione immagini (frecce) */}
@@ -173,10 +174,12 @@ export default function ProdottoModal({ visible, onHide, prodotto }: ProdottoMod
                                                     }`}
                                                     aria-label={`Anteprima ${index + 1}`}
                                                 >
-                                                    <img 
+                                                    <OptimizedImage 
                                                         src={img.url} 
                                                         alt={img.alt_text || prodotto?.title || `Thumbnail ${index + 1}`}
-                                                        className="w-full h-full object-cover rounded"
+                                                        width={64}
+                                                        height={64}
+                                                        imgClassName="w-full h-full object-cover rounded"
                                                     />
                                                     {index === currentImageIndex && (
                                                         <div className="absolute inset-0 bg-gray-800/10" />

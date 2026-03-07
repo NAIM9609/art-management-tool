@@ -1,9 +1,9 @@
-/* eslint-disable @next/next/no-img-element */
 'use client';
 
 import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
 import { PersonaggioDTO } from '@/services/PersonaggiAPIService';
+import OptimizedImage from '@/components/OptimizedImage';
 
 interface PersonaggioColumnsProps {
   onPreview: (personaggio: PersonaggioDTO) => void;
@@ -59,7 +59,13 @@ export const getActivePersonaggioColumns = ({ onPreview, onEdit, onDelete }: Per
 
   const iconBodyTemplate = (rowData: PersonaggioDTO) =>
     rowData.icon ? (
-      <img src={rowData.icon} alt={rowData.name} className="w-12 h-12 object-cover rounded" />
+      <OptimizedImage
+        src={rowData.icon}
+        alt={rowData.name}
+        width={48}
+        height={48}
+        imgClassName="object-cover rounded"
+      />
     ) : (
       <span className="text-gray-400">No icon</span>
     );
