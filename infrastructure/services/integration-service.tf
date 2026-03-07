@@ -8,76 +8,17 @@
 #   - EventBridge rule for daily scheduled sync
 # ---------------------------------------------------------------------------
 
-terraform {
-  required_version = ">= 1.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    archive = {
-      source  = "hashicorp/archive"
-      version = "~> 2.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-}
-
 # ---------------------------------------------------------------------------
-# Variables
+# Integration Service – Terraform Infrastructure
+#
+# NOTE: This file is part of the same Terraform root module as
+# product-service.tf. Shared provider/variable declarations are defined there
+# and reused here.
 # ---------------------------------------------------------------------------
 
-variable "aws_region" {
-  description = "AWS region to deploy resources"
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "project_name" {
-  description = "Project name used for resource naming"
-  type        = string
-  default     = "art-management-tool"
-}
-
-variable "environment" {
-  description = "Environment name (dev, staging, prod)"
-  type        = string
-  default     = "dev"
-}
-
-variable "dynamodb_table_name" {
-  description = "DynamoDB table name. Defaults to '{project_name}-{environment}-art-management' if empty."
-  type        = string
-  default     = ""
-}
-
-variable "allowed_origins" {
-  description = "List of origins allowed to call the Integration Service API (CORS)."
-  type        = list(string)
-  default     = ["http://localhost:3000"]
-}
-
-variable "lambda_reserved_concurrency" {
-  description = "Reserved concurrency per Lambda function. Set to null to leave unreserved."
-  type        = number
-  default     = 10
-  nullable    = true
-}
-
-variable "jwt_secret" {
-  description = "JWT secret for Integration Service auth. If empty, Terraform generates a strong random secret."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
+# ---------------------------------------------------------------------------
+# Variables (integration-service specific)
+# ---------------------------------------------------------------------------
 
 variable "etsy_client_id" {
   description = "Etsy OAuth application client ID."
@@ -129,11 +70,11 @@ variable "scheduled_sync_cron" {
 # ---------------------------------------------------------------------------
 
 locals {
-  dynamodb_table_name = var.dynamodb_table_name != "" ? var.dynamodb_table_name : "${var.project_name}-${var.environment}-art-management"
-  effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.integration_service_jwt_secret.result
+  integration_dynamodb_table_name  = var.dynamodb_table_name != "" ? var.dynamodb_table_name : "${var.project_name}-${var.environment}-art-management"
+  integration_effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.integration_service_jwt_secret.result
 
   # Handler functions config: key → { timeout, handler, description }
-  lambda_functions_config = {
+  integration_lambda_functions_config = {
     # OAuth
     "integration-service-etsy-initiate-oauth" = {
       timeout     = 5
@@ -178,7 +119,7 @@ locals {
     }
   }
 
-  common_tags = {
+  integration_common_tags = {
     Environment = var.environment
     Project     = var.project_name
     Service     = "integration-service"
@@ -186,7 +127,7 @@ locals {
   }
 }
 
-data "aws_caller_identity" "current" {}
+data "aws_caller_identity" "integration_current" {}
 
 resource "random_password" "integration_service_jwt_secret" {
   length           = 48
@@ -216,7 +157,7 @@ resource "aws_iam_role" "integration_service_lambda" {
     ]
   })
 
-  tags = local.common_tags
+  tags = local.integration_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -244,14 +185,14 @@ resource "aws_iam_policy" "integration_service_dynamodb" {
           "dynamodb:BatchWriteItem",
         ]
         Resource = [
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}",
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}/index/*"
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.integration_current.account_id}:table/${local.integration_dynamodb_table_name}",
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.integration_current.account_id}:table/${local.integration_dynamodb_table_name}/index/*"
         ]
       }
     ]
   })
 
-  tags = local.common_tags
+  tags = local.integration_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -283,7 +224,7 @@ data "archive_file" "integration_service_placeholder" {
   }
 
   source {
-    content = <<-JS
+    content  = <<-JS
       exports.initiateOAuth    = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder', function: 'initiateOAuth' }) });
       exports.handleCallback   = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder', function: 'handleCallback' }) });
       exports.syncProducts     = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder', function: 'syncProducts' }) });
@@ -301,12 +242,12 @@ data "archive_file" "integration_service_placeholder" {
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "integration_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.integration_lambda_functions_config
 
   name              = "/aws/lambda/${var.project_name}-${var.environment}-${each.key}"
   retention_in_days = 14
 
-  tags = local.common_tags
+  tags = local.integration_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -314,7 +255,7 @@ resource "aws_cloudwatch_log_group" "integration_service" {
 # ---------------------------------------------------------------------------
 
 resource "aws_lambda_function" "integration_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.integration_lambda_functions_config
 
   function_name = "${var.project_name}-${var.environment}-${each.key}"
   description   = each.value.description
@@ -333,15 +274,15 @@ resource "aws_lambda_function" "integration_service" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE_NAME  = local.dynamodb_table_name
-      AWS_REGION_NAME      = var.aws_region
-      ENVIRONMENT          = var.environment
-      JWT_SECRET           = local.effective_jwt_secret
-      ETSY_CLIENT_ID       = var.etsy_client_id
-      ETSY_CLIENT_SECRET   = var.etsy_client_secret
-      ETSY_REDIRECT_URI    = var.etsy_redirect_uri
-      ETSY_WEBHOOK_SECRET  = var.etsy_webhook_secret
-      ETSY_SHOP_IDS        = var.etsy_shop_ids
+      DYNAMODB_TABLE_NAME = local.integration_dynamodb_table_name
+      AWS_REGION_NAME     = var.aws_region
+      ENVIRONMENT         = var.environment
+      JWT_SECRET          = local.integration_effective_jwt_secret
+      ETSY_CLIENT_ID      = var.etsy_client_id
+      ETSY_CLIENT_SECRET  = var.etsy_client_secret
+      ETSY_REDIRECT_URI   = var.etsy_redirect_uri
+      ETSY_WEBHOOK_SECRET = var.etsy_webhook_secret
+      ETSY_SHOP_IDS       = var.etsy_shop_ids
     }
   }
 
@@ -351,7 +292,7 @@ resource "aws_lambda_function" "integration_service" {
     aws_iam_role_policy_attachment.integration_service_dynamodb,
   ]
 
-  tags = merge(local.common_tags, {
+  tags = merge(local.integration_common_tags, {
     Name    = "${var.project_name}-${var.environment}-${each.key}"
     Timeout = tostring(each.value.timeout)
   })
@@ -373,7 +314,7 @@ resource "aws_apigatewayv2_api" "integration_service" {
     max_age       = 300
   }
 
-  tags = local.common_tags
+  tags = local.integration_common_tags
 }
 
 resource "aws_apigatewayv2_stage" "integration_service" {
@@ -382,7 +323,7 @@ resource "aws_apigatewayv2_stage" "integration_service" {
   auto_deploy = true
 
   access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.api_gateway.arn
+    destination_arn = aws_cloudwatch_log_group.integration_api_gateway.arn
     format = jsonencode({
       requestId          = "$context.requestId"
       sourceIp           = "$context.http.sourceIp"
@@ -397,14 +338,14 @@ resource "aws_apigatewayv2_stage" "integration_service" {
     })
   }
 
-  tags = local.common_tags
+  tags = local.integration_common_tags
 }
 
-resource "aws_cloudwatch_log_group" "api_gateway" {
+resource "aws_cloudwatch_log_group" "integration_api_gateway" {
   name              = "/aws/apigateway/${var.project_name}-${var.environment}-integration-service"
   retention_in_days = 14
 
-  tags = local.common_tags
+  tags = local.integration_common_tags
 }
 
 # ---------------------------------------------------------------------------
@@ -412,7 +353,7 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
 # ---------------------------------------------------------------------------
 
 resource "aws_apigatewayv2_integration" "integration_service" {
-  for_each = local.lambda_functions_config
+  for_each = local.integration_lambda_functions_config
 
   api_id             = aws_apigatewayv2_api.integration_service.id
   integration_type   = "AWS_PROXY"
@@ -427,7 +368,7 @@ resource "aws_apigatewayv2_integration" "integration_service" {
 # ---------------------------------------------------------------------------
 
 locals {
-  api_routes = {
+  integration_api_routes = {
     # OAuth – public endpoints
     "GET /api/integrations/etsy/auth"     = "integration-service-etsy-initiate-oauth"
     "GET /api/integrations/etsy/callback" = "integration-service-etsy-handle-callback"
@@ -443,7 +384,7 @@ locals {
 }
 
 resource "aws_apigatewayv2_route" "integration_service" {
-  for_each = local.api_routes
+  for_each = local.integration_api_routes
 
   api_id    = aws_apigatewayv2_api.integration_service.id
   route_key = each.key
@@ -455,7 +396,10 @@ resource "aws_apigatewayv2_route" "integration_service" {
 # ---------------------------------------------------------------------------
 
 resource "aws_lambda_permission" "integration_service_apigw" {
-  for_each = local.lambda_functions_config
+  # Grant invoke permission only to Lambdas that are exposed via API Gateway routes.
+  for_each = {
+    for _, fn in local.integration_api_routes : fn => fn
+  }
 
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
@@ -475,7 +419,7 @@ resource "aws_cloudwatch_event_rule" "etsy_scheduled_sync" {
   description         = "Daily trigger for Etsy integration sync (products, inventory, orders)"
   schedule_expression = var.scheduled_sync_cron
 
-  tags = local.common_tags
+  tags = local.integration_common_tags
 }
 
 resource "aws_cloudwatch_event_target" "etsy_scheduled_sync" {

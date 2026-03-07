@@ -8,6 +8,7 @@ process.env.ETSY_CLIENT_ID = 'test-client-id';
 process.env.ETSY_CLIENT_SECRET = 'test-client-secret';
 process.env.ETSY_REDIRECT_URI = 'https://example.com/api/integrations/etsy/callback';
 process.env.ETSY_WEBHOOK_SECRET = 'test-webhook-secret';
+process.env.NODE_ENV = 'test';
 
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -19,10 +20,16 @@ import jwt from 'jsonwebtoken';
 // Mock saveToken and getToken so tests don't touch real DynamoDB
 const mockSaveToken = jest.fn().mockResolvedValue(undefined);
 const mockGetToken = jest.fn().mockResolvedValue(null);
+const mockSaveOAuthState = jest.fn().mockResolvedValue(undefined);
+const mockGetOAuthState = jest.fn().mockResolvedValue({ state: 'random-state', expiresAt: Date.now() + 60_000 });
+const mockDeleteOAuthState = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('../tokenStore', () => ({
   saveToken: (...args: unknown[]) => mockSaveToken(...args),
   getToken: (...args: unknown[]) => mockGetToken(...args),
+  saveOAuthState: (...args: unknown[]) => mockSaveOAuthState(...args),
+  getOAuthState: (...args: unknown[]) => mockGetOAuthState(...args),
+  deleteOAuthState: (...args: unknown[]) => mockDeleteOAuthState(...args),
 }));
 
 // Mock global fetch
@@ -110,6 +117,7 @@ describe('initiateOAuth', () => {
     const body = JSON.parse(result.body) as { state: string };
     expect(typeof body.state).toBe('string');
     expect(body.state.length).toBeGreaterThan(0);
+    expect(mockSaveOAuthState).toHaveBeenCalled();
   });
 });
 
@@ -120,7 +128,10 @@ describe('initiateOAuth', () => {
 describe('handleCallback', () => {
   beforeEach(() => {
     mockSaveToken.mockClear();
-    mockFetch.mockClear();
+    mockDeleteOAuthState.mockClear();
+    mockGetOAuthState.mockReset();
+    mockGetOAuthState.mockResolvedValue({ state: 'random-state', expiresAt: Date.now() + 60_000 });
+    mockFetch.mockReset();
   });
 
   it('returns 400 when OAuth error is present', async () => {
@@ -135,6 +146,20 @@ describe('handleCallback', () => {
     const result = await handleCallback(makeEvent({ queryStringParameters: {} }));
     expect(result.statusCode).toBe(400);
     expect(JSON.parse(result.body)).toMatchObject({ error: 'Missing authorization code' });
+  });
+
+  it('returns 400 when OAuth state is missing', async () => {
+    const result = await handleCallback(makeEvent({ queryStringParameters: { code: 'abc' } }));
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ error: 'Missing OAuth state' });
+  });
+
+  it('returns 400 for invalid OAuth state', async () => {
+    mockGetOAuthState.mockResolvedValueOnce(null);
+    const result = await handleCallback(
+      makeEvent({ queryStringParameters: { code: 'auth-code-abc', state: 'bad-state' } })
+    );
+    expect(result.statusCode).toBe(400);
   });
 
   it('exchanges code for tokens and saves them', async () => {
@@ -158,6 +183,7 @@ describe('handleCallback', () => {
     expect(mockSaveToken).toHaveBeenCalledWith(
       expect.objectContaining({ shopId: 'shop-789', accessToken: 'at-123' })
     );
+    expect(mockDeleteOAuthState).toHaveBeenCalledWith('random-state');
   });
 
   it('returns an error when token exchange fails', async () => {
@@ -168,7 +194,7 @@ describe('handleCallback', () => {
     });
 
     const result = await handleCallback(
-      makeEvent({ queryStringParameters: { code: 'bad-code' } })
+      makeEvent({ queryStringParameters: { code: 'bad-code', state: 'random-state' } })
     );
     expect(result.statusCode).toBeGreaterThanOrEqual(400);
   });
@@ -184,13 +210,31 @@ describe('handleCallback', () => {
     });
 
     const result = await handleCallback(
-      makeEvent({ queryStringParameters: { code: 'code-xyz', shop_id: 'shop-fallback' } })
+      makeEvent({ queryStringParameters: { code: 'code-xyz', state: 'random-state', shop_id: 'shop-fallback' } })
     );
 
     expect(result.statusCode).toBe(200);
     expect(mockSaveToken).toHaveBeenCalledWith(
       expect.objectContaining({ shopId: 'shop-fallback' })
     );
+  });
+
+  it('returns 400 when token response and query both lack shop_id', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        access_token: 'at-001',
+        refresh_token: 'rt-002',
+        expires_in: 3600,
+      }),
+    });
+
+    const result = await handleCallback(
+      makeEvent({ queryStringParameters: { code: 'code-xyz', state: 'random-state' } })
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ error: 'Missing Etsy shop_id' });
   });
 });
 
@@ -202,7 +246,7 @@ describe('refreshToken', () => {
   beforeEach(() => {
     mockGetToken.mockClear();
     mockSaveToken.mockClear();
-    mockFetch.mockClear();
+    mockFetch.mockReset();
   });
 
   it('throws when no token found for shopId', async () => {
@@ -240,7 +284,7 @@ describe('refreshToken', () => {
 describe('syncProducts', () => {
   beforeEach(() => {
     mockGetToken.mockClear();
-    mockFetch.mockClear();
+    mockFetch.mockReset();
   });
 
   it('returns 401 when not authenticated', async () => {
@@ -318,7 +362,7 @@ describe('syncProducts', () => {
 describe('syncInventory', () => {
   beforeEach(() => {
     mockGetToken.mockClear();
-    mockFetch.mockClear();
+    mockFetch.mockReset();
   });
 
   it('returns 401 when not authenticated', async () => {
@@ -365,7 +409,7 @@ describe('syncInventory', () => {
 describe('syncOrders', () => {
   beforeEach(() => {
     mockGetToken.mockClear();
-    mockFetch.mockClear();
+    mockFetch.mockReset();
   });
 
   it('returns 401 when not authenticated', async () => {
@@ -470,6 +514,24 @@ describe('handleWebhook', () => {
     expect(result.statusCode).toBe(200);
 
     process.env.ETSY_WEBHOOK_SECRET = original;
+  });
+
+  it('fails closed in non-dev environments when webhook secret is missing', async () => {
+    const originalSecret = process.env.ETSY_WEBHOOK_SECRET;
+    const originalEnv = process.env.NODE_ENV;
+    delete process.env.ETSY_WEBHOOK_SECRET;
+    process.env.NODE_ENV = 'production';
+
+    const result = await handleWebhook(
+      makeEvent({
+        httpMethod: 'POST',
+        body: JSON.stringify({ event_type: 'SHOP_UPDATED', shop_id: 'shop-x' }),
+      })
+    );
+    expect(result.statusCode).toBe(503);
+
+    process.env.ETSY_WEBHOOK_SECRET = originalSecret;
+    process.env.NODE_ENV = originalEnv;
   });
 });
 

@@ -25,7 +25,14 @@ import {
   successResponse,
   errorResponse,
 } from '../types';
-import { EtsyTokenRecord, saveToken, getToken } from '../tokenStore';
+import {
+  EtsyTokenRecord,
+  saveToken,
+  getToken,
+  saveOAuthState,
+  getOAuthState,
+  deleteOAuthState,
+} from '../tokenStore';
 
 // ---------------------------------------------------------------------------
 // Environment / config helpers
@@ -42,12 +49,25 @@ function getEtsyConfig() {
   };
 }
 
+class IntegrationError extends Error {
+  public readonly statusCode: number;
+
+  constructor(message: string, statusCode: number) {
+    super(message);
+    this.name = 'IntegrationError';
+    this.statusCode = statusCode;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shared error handler
 // ---------------------------------------------------------------------------
 
 function handleError(error: unknown): APIGatewayProxyResult {
   if (error instanceof AuthError) {
+    return errorResponse(error.message, error.statusCode);
+  }
+  if (error instanceof IntegrationError) {
     return errorResponse(error.message, error.statusCode);
   }
   if (error instanceof Error) {
@@ -82,7 +102,7 @@ function buildAuthorizationUrl(clientId: string, redirectUri: string, state: str
     'transactions_r',
     'inventory_r',
     'inventory_w',
-  ].join('%20');
+  ].join(' ');
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -107,6 +127,7 @@ async function exchangeCodeForTokens(
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       client_id: clientId,
+      client_secret: clientSecret,
       redirect_uri: redirectUri,
       code,
     }).toString(),
@@ -136,6 +157,7 @@ async function fetchNewAccessToken(
     body: new URLSearchParams({
       grant_type: 'refresh_token',
       client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: refreshTokenValue,
     }).toString(),
   });
@@ -191,6 +213,11 @@ export async function initiateOAuth(event: APIGatewayProxyEvent): Promise<APIGat
     }
 
     const state = generateState();
+    await saveOAuthState({
+      state,
+      // 10-minute validity window for callback state verification.
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
     const authUrl = buildAuthorizationUrl(config.clientId, config.redirectUri, state);
 
     return {
@@ -224,6 +251,15 @@ export async function handleCallback(event: APIGatewayProxyEvent): Promise<APIGa
       return errorResponse('Missing authorization code', 400);
     }
 
+    if (!state) {
+      return errorResponse('Missing OAuth state', 400);
+    }
+
+    const storedState = await getOAuthState(state);
+    if (!storedState || storedState.expiresAt < Date.now()) {
+      return errorResponse('Invalid or expired OAuth state', 400);
+    }
+
     const config = getEtsyConfig();
 
     if (!config.clientId || !config.clientSecret) {
@@ -237,7 +273,10 @@ export async function handleCallback(event: APIGatewayProxyEvent): Promise<APIGa
       config.clientSecret
     );
 
-    const shopId = tokens.shop_id || qs.shop_id || 'unknown';
+    const shopId = tokens.shop_id || qs.shop_id;
+    if (!shopId) {
+      return errorResponse('Missing Etsy shop_id', 400);
+    }
     const expiresAt = Date.now() + tokens.expires_in * 1000;
 
     await saveToken({
@@ -246,6 +285,9 @@ export async function handleCallback(event: APIGatewayProxyEvent): Promise<APIGa
       refreshToken: tokens.refresh_token,
       expiresAt,
     });
+
+    // One-time use callback state; remove after successful token persistence.
+    await deleteOAuthState(state);
 
     return successResponse({
       message: 'Etsy OAuth completed successfully',
@@ -301,7 +343,10 @@ async function getValidAccessToken(shopId: string): Promise<string> {
   let record = await getToken(shopId);
 
   if (!record) {
-    throw new Error(`No Etsy credentials found for shop ${shopId}. Complete OAuth first.`);
+    throw new IntegrationError(
+      `No Etsy credentials found for shop ${shopId}. Complete OAuth first.`,
+      404
+    );
   }
 
   // Refresh if the token expires within the next 60 seconds
@@ -329,6 +374,45 @@ function extractShopId(event: APIGatewayProxyEvent): string | undefined {
     }
   }
   return undefined;
+}
+
+function getInventorySyncConcurrency(): number {
+  const parsed = parseInt(process.env.ETSY_SYNC_CONCURRENCY || '5', 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 5;
+  }
+  return Math.min(parsed, 20);
+}
+
+async function syncInventoryListings(
+  listings: Array<{ listing_id: number }>,
+  accessToken: string,
+  concurrency: number
+): Promise<number> {
+  if (listings.length === 0) {
+    return 0;
+  }
+
+  let nextIndex = 0;
+  let syncedCount = 0;
+
+  const worker = async () => {
+    while (true) {
+      const current = nextIndex;
+      nextIndex += 1;
+      if (current >= listings.length) {
+        return;
+      }
+
+      const listing = listings[current];
+      await etsyGet(`/application/listings/${listing.listing_id}/inventory`, accessToken);
+      syncedCount += 1;
+    }
+  };
+
+  const workerCount = Math.min(concurrency, listings.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return syncedCount;
 }
 
 // ---------------------------------------------------------------------------
@@ -390,12 +474,11 @@ export async function syncInventory(event: APIGatewayProxyEvent): Promise<APIGat
     ) as { results?: Array<{ listing_id: number }> };
 
     const listings = listingsData?.results ?? [];
-    let syncedCount = 0;
-
-    for (const listing of listings) {
-      await etsyGet(`/application/listings/${listing.listing_id}/inventory`, accessToken);
-      syncedCount++;
-    }
+    const syncedCount = await syncInventoryListings(
+      listings,
+      accessToken,
+      getInventorySyncConcurrency()
+    );
 
     return successResponse({
       message: 'Etsy inventory sync completed',
@@ -485,6 +568,21 @@ export async function handleWebhook(event: APIGatewayProxyEvent): Promise<APIGat
 
     const rawBody = event.body || '';
 
+    const nodeEnv = (process.env.NODE_ENV || '').toLowerCase();
+    const isDevOrTestEnv = nodeEnv === 'development' || nodeEnv === 'dev' || nodeEnv === 'test';
+
+    if (!config.webhookSecret) {
+      if (!isDevOrTestEnv) {
+        console.error(
+          '[integration-service] ETSY_WEBHOOK_SECRET is missing; refusing webhooks in non-dev environment.'
+        );
+        return errorResponse('Etsy webhook configuration error', 503);
+      }
+      console.warn(
+        '[integration-service] ETSY_WEBHOOK_SECRET is unset; signature verification skipped in dev/test.'
+      );
+    }
+
     if (config.webhookSecret && !verifyWebhookSignature(rawBody, signature, config.webhookSecret)) {
       return errorResponse('Invalid webhook signature', 401);
     }
@@ -565,14 +663,16 @@ export async function scheduledSync(event: ScheduledEvent): Promise<void> {
       await etsyGet(`/application/shops/${shopId}/listings/active`, accessToken);
       console.log(`[integration-service] Products synced for shop ${shopId}`);
 
-      // Inventory (fetch listings then inventory per listing)
+      // Inventory (fetch listings then inventory per listing with bounded concurrency)
       const listingsData = await etsyGet(
         `/application/shops/${shopId}/listings/active?includes=inventory`,
         accessToken
       ) as { results?: Array<{ listing_id: number }> };
-      for (const listing of listingsData?.results ?? []) {
-        await etsyGet(`/application/listings/${listing.listing_id}/inventory`, accessToken);
-      }
+      await syncInventoryListings(
+        listingsData?.results ?? [],
+        accessToken,
+        getInventorySyncConcurrency()
+      );
       console.log(`[integration-service] Inventory synced for shop ${shopId}`);
 
       // Orders
