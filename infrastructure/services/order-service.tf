@@ -1,13 +1,6 @@
 # ---------------------------------------------------------------------------
-# Variables (order-service-specific – shared variables defined in product-service.tf)
+# Variables (order-service-specific – shared variables defined in common-variables.tf)
 # ---------------------------------------------------------------------------
-
-variable "stripe_api_key" {
-  description = "Stripe API key for payment processing. Leave empty to use the mock provider."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
 
 variable "payment_provider" {
   description = "Payment provider to use: 'mock' (default) or 'stripe'."
@@ -21,8 +14,20 @@ variable "ses_from_email" {
   default     = ""
 }
 
+variable "ses_identity_arn" {
+  description = "ARN of the SES verified identity allowed to send emails (optional)."
+  type        = string
+  default     = ""
+}
+
 variable "sns_order_topic_arn" {
   description = "ARN of an existing SNS topic for order event notifications (optional)."
+  type        = string
+  default     = ""
+}
+
+variable "stripe_api_key_ssm_parameter_arn" {
+  description = "ARN of SSM parameter containing Stripe API key (optional)."
   type        = string
   default     = ""
 }
@@ -32,6 +37,8 @@ variable "sns_order_topic_arn" {
 # ---------------------------------------------------------------------------
 
 locals {
+  order_dynamodb_table_name = var.dynamodb_table_name != "" ? var.dynamodb_table_name : "${var.project_name}-${var.environment}-art-management"
+
   order_lambda_functions_config = {
     "order-service-create-order" = {
       timeout     = 10
@@ -78,8 +85,18 @@ locals {
   }
 
   # Derived flags used to conditionally create optional IAM policies
-  order_ses_enabled = var.ses_from_email != ""
-  order_sns_enabled = var.sns_order_topic_arn != ""
+  order_ses_enabled          = var.ses_identity_arn != "" && var.ses_from_email != ""
+  order_sns_enabled          = var.sns_order_topic_arn != ""
+  order_stripe_ssm_enabled   = var.stripe_api_key_ssm_parameter_arn != ""
+  order_effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.order_service_jwt_secret.result
+}
+
+data "aws_caller_identity" "order_current" {}
+
+resource "random_password" "order_service_jwt_secret" {
+  length           = 48
+  special          = true
+  override_special = "!@#$%^&*()-_=+[]{}<>?"
 }
 
 # ---------------------------------------------------------------------------
@@ -134,8 +151,8 @@ resource "aws_iam_policy" "order_service_dynamodb" {
           "dynamodb:TransactGetItems"
         ]
         Resource = [
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}",
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}/index/*"
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.order_current.account_id}:table/${local.order_dynamodb_table_name}",
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.order_current.account_id}:table/${local.order_dynamodb_table_name}/index/*"
         ]
       }
     ]
@@ -164,7 +181,12 @@ resource "aws_iam_policy" "order_service_ses" {
           "ses:SendEmail",
           "ses:SendRawEmail"
         ]
-        Resource = "*"
+        Resource = var.ses_identity_arn
+        Condition = {
+          StringEquals = {
+            "ses:FromAddress" = var.ses_from_email
+          }
+        }
       }
     ]
   })
@@ -200,6 +222,33 @@ resource "aws_iam_policy" "order_service_sns" {
 }
 
 # ---------------------------------------------------------------------------
+# IAM – SSM Policy (optional – Stripe API key from Parameter Store)
+# ---------------------------------------------------------------------------
+
+resource "aws_iam_policy" "order_service_ssm" {
+  count = local.order_stripe_ssm_enabled ? 1 : 0
+
+  name        = "${var.project_name}-${var.environment}-order-service-ssm"
+  description = "Read access to Stripe API key SSM parameter for Order Service"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SSMGetStripeApiKey"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = var.stripe_api_key_ssm_parameter_arn
+      }
+    ]
+  })
+
+  tags = local.order_common_tags
+}
+
+# ---------------------------------------------------------------------------
 # IAM – Policy Attachments
 # ---------------------------------------------------------------------------
 
@@ -226,6 +275,13 @@ resource "aws_iam_role_policy_attachment" "order_service_sns" {
 
   role       = aws_iam_role.order_service_lambda.name
   policy_arn = aws_iam_policy.order_service_sns[0].arn
+}
+
+resource "aws_iam_role_policy_attachment" "order_service_ssm" {
+  count = local.order_stripe_ssm_enabled ? 1 : 0
+
+  role       = aws_iam_role.order_service_lambda.name
+  policy_arn = aws_iam_policy.order_service_ssm[0].arn
 }
 
 # ---------------------------------------------------------------------------
@@ -300,15 +356,15 @@ resource "aws_lambda_function" "order_service" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE_NAME = local.dynamodb_table_name
-      AWS_REGION          = var.aws_region
-      AWS_REGION_NAME     = var.aws_region
-      ENVIRONMENT         = var.environment
-      JWT_SECRET          = local.effective_jwt_secret
-      PAYMENT_PROVIDER    = var.payment_provider
-      STRIPE_API_KEY      = var.stripe_api_key
-      SES_FROM_EMAIL      = var.ses_from_email
-      SNS_ORDER_TOPIC_ARN = var.sns_order_topic_arn
+      DYNAMODB_TABLE_NAME              = local.order_dynamodb_table_name
+      AWS_REGION                       = var.aws_region
+      AWS_REGION_NAME                  = var.aws_region
+      ENVIRONMENT                      = var.environment
+      JWT_SECRET                       = local.order_effective_jwt_secret
+      PAYMENT_PROVIDER                 = var.payment_provider
+      STRIPE_API_KEY_SSM_PARAMETER_ARN = var.stripe_api_key_ssm_parameter_arn
+      SES_FROM_EMAIL                   = var.ses_from_email
+      SNS_ORDER_TOPIC_ARN              = var.sns_order_topic_arn
     }
   }
 

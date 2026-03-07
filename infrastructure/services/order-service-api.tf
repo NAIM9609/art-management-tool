@@ -77,8 +77,8 @@ locals {
     "POST /api/orders/{id}/payment" = "order-service-process-payment"
 
     # Admin order routes
-    "GET /api/admin/orders"                = "order-service-list-orders"
-    "PATCH /api/admin/orders/{id}/status"  = "order-service-update-status"
+    "GET /api/admin/orders"               = "order-service-list-orders"
+    "PATCH /api/admin/orders/{id}/status" = "order-service-update-status"
 
     # Payment webhook
     "POST /api/webhooks/payment" = "order-service-webhook"
