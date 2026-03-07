@@ -182,8 +182,8 @@ async function validateCounts(
   }> = [
     { entity: 'Categories',          pgRepo: pgDataSource.getRepository(Category),         pkPrefix: 'CATEGORY#',         skPrefix: 'METADATA' },
     { entity: 'Products',            pgRepo: pgDataSource.getRepository(EnhancedProduct),  pkPrefix: 'PRODUCT#',          skPrefix: 'METADATA' },
-    { entity: 'ProductVariants',     pgRepo: pgDataSource.getRepository(ProductVariant),   pkPrefix: 'PRODUCT_VARIANT#',  skPrefix: 'PRODUCT#' },
-    { entity: 'ProductImages',       pgRepo: pgDataSource.getRepository(ProductImage),     pkPrefix: 'PRODUCT_IMAGE#',    skPrefix: 'PRODUCT#' },
+    { entity: 'ProductVariants',     pgRepo: pgDataSource.getRepository(ProductVariant),   pkPrefix: 'PRODUCT#',          skPrefix: 'VARIANT#' },
+    { entity: 'ProductImages',       pgRepo: pgDataSource.getRepository(ProductImage),     pkPrefix: 'PRODUCT#',          skPrefix: 'IMAGE#' },
     { entity: 'Personaggi',          pgRepo: pgDataSource.getRepository(Personaggio),      pkPrefix: 'PERSONAGGIO#',      skPrefix: 'METADATA' },
     { entity: 'Fumetti',             pgRepo: pgDataSource.getRepository(Fumetto),          pkPrefix: 'FUMETTO#',          skPrefix: 'METADATA' },
     { entity: 'DiscountCodes',       pgRepo: pgDataSource.getRepository(DiscountCode),     pkPrefix: 'DISCOUNT#',         skPrefix: 'METADATA' },
@@ -192,7 +192,7 @@ async function validateCounts(
     { entity: 'Notifications',       pgRepo: pgDataSource.getRepository(Notification),     pkPrefix: 'NOTIFICATION#',     skPrefix: 'METADATA' },
     { entity: 'AuditLogs',           pgRepo: pgDataSource.getRepository(AuditLog),         pkPrefix: 'AUDIT#',            skPrefix: 'METADATA' },
     { entity: 'EtsyOAuthTokens',     pgRepo: pgDataSource.getRepository(EtsyOAuthToken),   pkPrefix: 'ETSY_TOKEN#',       skPrefix: 'METADATA' },
-    { entity: 'EtsyProducts',        pgRepo: pgDataSource.getRepository(EtsyProduct),      pkPrefix: 'ETSY_PRODUCT#',     skPrefix: 'ETSY#' },
+    { entity: 'EtsyProducts',        pgRepo: pgDataSource.getRepository(EtsyProduct),      pkPrefix: 'ETSY_PRODUCT#',     skPrefix: 'METADATA' },
     { entity: 'EtsyReceipts',        pgRepo: pgDataSource.getRepository(EtsyReceipt),      pkPrefix: 'ETSY_RECEIPT#',     skPrefix: 'METADATA' },
     { entity: 'EtsySyncConfigs',     pgRepo: pgDataSource.getRepository(EtsySyncConfig),   pkPrefix: 'ETSY_SYNC_CONFIG#', skPrefix: 'METADATA' },
   ];
@@ -608,7 +608,16 @@ async function runQueryChecks(
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const tableName  = process.env.DYNAMODB_TABLE_NAME || 'art-management';
+  // Require DYNAMODB_TABLE_NAME explicitly – this script runs expensive full-table
+  // scans and must not accidentally target the wrong environment.
+  const tableName = process.env.DYNAMODB_TABLE_NAME;
+  if (!tableName) {
+    console.error(
+      'Error: DYNAMODB_TABLE_NAME environment variable is required for validate-migration.\n' +
+      'Refusing to run without an explicit table name to avoid scanning the wrong environment.',
+    );
+    process.exit(1);
+  }
   const sampleSize = parseInt(process.env.SPOT_CHECK_SAMPLE_SIZE || '5', 10);
 
   console.log('='.repeat(70));

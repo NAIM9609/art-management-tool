@@ -20,16 +20,20 @@
  *   14. AuditLogs
  *   15. Etsy data  (tokens, products, receipts, sync-config)
  *
+ * Note: EtsyInventorySyncLog and ShopifyLink have no DynamoDB repository
+ * counterparts and remain in PostgreSQL only.
+ *
  * Usage:
  *   npx ts-node scripts/migrate-to-dynamodb.ts
  *
- * Environment variables (all optional – fall back to dev defaults):
+ * Environment variables (required unless connecting to a local endpoint):
+ *   DYNAMODB_TABLE_NAME        – DynamoDB table to write to (required)
  *   DATABASE_HOST / DATABASE_PORT / DATABASE_USER / DATABASE_PASSWORD / DATABASE_NAME
  *   AWS_REGION / AWS_ENDPOINT_URL (for LocalStack)
- *   DYNAMODB_TABLE_NAME
  */
 
 import 'reflect-metadata';
+import crypto from 'crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { DataSource } from 'typeorm';
@@ -45,7 +49,7 @@ import { Fumetto }                from '../src/entities/Fumetto';
 import { DiscountCode }           from '../src/entities/DiscountCode';
 import { Cart }                   from '../src/entities/Cart';
 import { CartItem }               from '../src/entities/CartItem';
-import { Order }                  from '../src/entities/Order';
+import { Order, PaymentStatus, FulfillmentStatus } from '../src/entities/Order';
 import { OrderItem }              from '../src/entities/OrderItem';
 import { Notification }           from '../src/entities/Notification';
 import { AuditLog }               from '../src/entities/AuditLog';
@@ -53,6 +57,7 @@ import { EtsyOAuthToken }         from '../src/entities/EtsyOAuthToken';
 import { EtsyProduct }            from '../src/entities/EtsyProduct';
 import { EtsyReceipt }            from '../src/entities/EtsyReceipt';
 import { EtsySyncConfig }         from '../src/entities/EtsySyncConfig';
+// Imported only for the DataSource entities list; not migrated to DynamoDB:
 import { EtsyInventorySyncLog }   from '../src/entities/EtsyInventorySyncLog';
 import { ShopifyLink }            from '../src/entities/ShopifyLink';
 
@@ -78,15 +83,66 @@ function toNumber(v: any): number {
   return typeof v === 'string' ? parseFloat(v) : Number(v);
 }
 
-/** TTL: 30 days from now, as a Unix timestamp (seconds). */
-function cartTTL(): number {
-  return Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+/** TTL: 30 days from a given Date (or now if undefined), as a Unix timestamp (seconds). */
+function cartTTL(from?: Date): number {
+  const base = from ? from.getTime() : Date.now();
+  return Math.floor(base / 1000) + 30 * 24 * 60 * 60;
 }
 
 /** TTL: `days` days from the given ISO string, as a Unix timestamp. */
 function ttlFromISO(iso: string, days: number): number {
   const base = new Date(iso).getTime();
   return Math.floor(base / 1000) + days * 24 * 60 * 60;
+}
+
+/**
+ * Map PostgreSQL payment_status + fulfillment_status to a DynamoDB OrderStatus value.
+ *
+ * DynamoDB OrderStatus: pending | processing | shipped | delivered | cancelled | refunded
+ * PostgreSQL PaymentStatus: pending | paid | failed | refunded
+ * PostgreSQL FulfillmentStatus: unfulfilled | fulfilled | partially_fulfilled
+ */
+function mapOrderStatus(
+  paymentStatus: string | undefined,
+  fulfillmentStatus: string | undefined,
+): string {
+  if (paymentStatus === PaymentStatus.REFUNDED)  return 'refunded';
+  if (paymentStatus === PaymentStatus.FAILED)    return 'cancelled';
+  if (paymentStatus === PaymentStatus.PAID) {
+    if (fulfillmentStatus === FulfillmentStatus.FULFILLED) return 'delivered';
+    return 'processing'; // unfulfilled or partially_fulfilled
+  }
+  return 'pending'; // PaymentStatus.PENDING or unknown
+}
+
+/**
+ * Generate deterministic CartItem ID matching CartItemRepository.generateItemId().
+ * Uses SHA-256 hash of `${cartId}:${productId}:${variantId ?? 'null'}`.
+ */
+function generateCartItemId(
+  cartId: string,
+  productId: number,
+  variantId: string | undefined,
+): string {
+  const key = `${cartId}:${productId}:${variantId ?? 'null'}`;
+  return crypto.createHash('sha256').update(key).digest('hex').substring(0, 32);
+}
+
+/**
+ * Extract the S3 key from a URL (strips the hostname so only the path/key remains).
+ * If the value is already a relative key, returns it unchanged.
+ */
+function extractS3Key(url: string): string {
+  if (!url) return url;
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    try {
+      const parsed = new URL(url);
+      return parsed.pathname.startsWith('/') ? parsed.pathname.substring(1) : parsed.pathname;
+    } catch {
+      return url;
+    }
+  }
+  return url;
 }
 
 // ── DynamoDB client ───────────────────────────────────────────────────────────
@@ -237,46 +293,84 @@ function transformProduct(row: EnhancedProduct): Record<string, any> {
   return item;
 }
 
-function transformProductVariant(row: ProductVariant): Record<string, any> {
+/**
+ * Transform a ProductVariant row to its DynamoDB item.
+ * Returns the new DynamoDB UUID id so the caller can build a legacy-id map.
+ *
+ * DynamoDB schema (matches ProductVariantRepository):
+ *   PK: "PRODUCT#${product_id}"
+ *   SK: "VARIANT#${uuid}"
+ *   entity_type: "ProductVariant"
+ *   GSI1PK: "VARIANT_SKU#${sku}"
+ *   GSI1SK: "${product_id}"
+ */
+function transformProductVariant(
+  row: ProductVariant,
+): { item: Record<string, any>; dynamoId: string } {
+  const dynamoId  = uuidv4();
+  const createdAt = toISORequired(row.created_at);
+  const updatedAt = toISORequired(row.updated_at);
+
   const item: Record<string, any> = {
-    PK:               `PRODUCT_VARIANT#${row.id}`,
-    SK:               `PRODUCT#${row.product_id}`,
-    id:               String(row.id),
+    PK:               `PRODUCT#${row.product_id}`,
+    SK:               `VARIANT#${dynamoId}`,
+    entity_type:      'ProductVariant',
+    id:               dynamoId,
+    legacy_id:        row.id, // preserve original integer id
     product_id:       row.product_id,
     sku:              row.sku,
     name:             row.name,
     price_adjustment: toNumber(row.price_adjustment),
     stock:            row.stock,
-    created_at:       toISORequired(row.created_at),
-    updated_at:       toISORequired(row.updated_at),
-    // GSI1 – variants by product
-    GSI1PK: `PRODUCT#${row.product_id}`,
-    GSI1SK: `VARIANT#${row.id}`,
+    created_at:       createdAt,
+    updated_at:       updatedAt,
+    // GSI1 – lookup by SKU
+    GSI1PK: `VARIANT_SKU#${row.sku}`,
+    GSI1SK: `${row.product_id}`,
   };
 
   if (row.attributes) item.attributes = row.attributes;
   if (row.deleted_at) item.deleted_at = toISO(row.deleted_at);
 
-  return item;
+  return { item, dynamoId };
 }
 
-function transformProductImage(row: ProductImage): Record<string, any> {
-  const item: Record<string, any> = {
-    PK:         `PRODUCT_IMAGE#${row.id}`,
-    SK:         `PRODUCT#${row.product_id}`,
-    id:         String(row.id),
-    product_id: row.product_id,
-    url:        row.url,
-    position:   row.position,
-    created_at: toISORequired(row.created_at),
-    // GSI1 – images by product
-    GSI1PK: `PRODUCT#${row.product_id}`,
-    GSI1SK: `IMAGE#${row.position}#${row.id}`,
+/**
+ * Transform a ProductImage row to main image item + pointer item.
+ * Returns two DynamoDB items matching ProductImageRepository's schema:
+ *   • Main: PK="PRODUCT#<id>" SK="IMAGE#<padded_position>"
+ *   • Pointer: PK="PRODUCT#<id>" SK="IMAGE_ID#<uuid>"
+ */
+function transformProductImage(row: ProductImage): Record<string, any>[] {
+  const imageId     = uuidv4();
+  const paddedPos   = String(row.position).padStart(10, '0');
+  const s3Key       = extractS3Key(row.url);
+  const createdAt   = toISORequired(row.created_at);
+
+  const mainItem: Record<string, any> = {
+    PK:          `PRODUCT#${row.product_id}`,
+    SK:          `IMAGE#${paddedPos}`,
+    entity_type: 'ProductImage',
+    id:          imageId,
+    legacy_id:   row.id,
+    product_id:  row.product_id,
+    url:         s3Key,
+    position:    row.position,
+    created_at:  createdAt,
+    // ProductImage entity has no updated_at column; use created_at as the initial value.
+    updated_at:  createdAt,
+  };
+  if (row.alt_text) mainItem.alt_text = row.alt_text;
+
+  const pointerItem: Record<string, any> = {
+    PK:              `PRODUCT#${row.product_id}`,
+    SK:              `IMAGE_ID#${imageId}`,
+    entity_type:     'ProductImagePointer',
+    position:        row.position,
+    image_sort_key:  `IMAGE#${paddedPos}`,
   };
 
-  if (row.alt_text) item.alt_text = row.alt_text;
-
-  return item;
+  return [mainItem, pointerItem];
 }
 
 /** Product-Category many-to-many link items (bidirectional). */
@@ -387,8 +481,9 @@ function transformDiscountCode(row: DiscountCode): Record<string, any> {
 }
 
 function transformCart(row: Cart): Record<string, any> {
-  const id = uuidv4(); // DynamoDB carts use UUID; preserve original as legacy_id
-  const now = new Date().toISOString();
+  const id        = uuidv4(); // DynamoDB carts use UUID; preserve original as legacy_id
+  const createdAt = toISORequired(row.created_at);
+  const updatedAt = toISORequired(row.updated_at);
   const item: Record<string, any> = {
     PK:         `CART#${id}`,
     SK:         'METADATA',
@@ -396,9 +491,10 @@ function transformCart(row: Cart): Record<string, any> {
     // Preserve the original PostgreSQL integer ID for cross-reference
     legacy_id:  row.id,
     session_id: row.session_id,
-    created_at: now,
-    updated_at: now,
-    expires_at: cartTTL(),
+    created_at: createdAt,
+    updated_at: updatedAt,
+    // TTL: 30 days from the original cart creation time
+    expires_at: cartTTL(row.created_at),
     // GSI1 – by session
     GSI1PK: `CART_SESSION#${row.session_id}`,
   };
@@ -414,11 +510,26 @@ function transformCart(row: Cart): Record<string, any> {
 }
 
 function transformCartItem(
-  row:         CartItem,
-  dynamoCartId: string,
+  row:           CartItem,
+  dynamoCartId:  string,
+  variantIdMap:  Map<number, string>,
 ): Record<string, any> {
-  const id  = uuidv4();
-  const now = new Date().toISOString();
+  // Resolve variant UUID from the migration map; log a warning for orphaned references.
+  let variantId: string | undefined;
+  if (row.variant_id != null) {
+    const mappedId = variantIdMap.get(row.variant_id);
+    if (!mappedId) {
+      console.warn(
+        `  [CartItem] variant_id ${row.variant_id} (cart item ${row.id}) not found in variant migration map – falling back to string id`,
+      );
+    }
+    variantId = mappedId ?? String(row.variant_id);
+  }
+
+  // Use the same deterministic ID strategy as CartItemRepository.generateItemId()
+  // so that future addItem() calls can upsert rather than create duplicates.
+  const id = generateCartItemId(dynamoCartId, row.product_id, variantId);
+
   return {
     PK:         `CART#${dynamoCartId}`,
     SK:         `ITEM#${id}`,
@@ -426,16 +537,20 @@ function transformCartItem(
     legacy_id:  row.id,
     cart_id:    dynamoCartId,
     product_id: row.product_id,
-    variant_id: row.variant_id != null ? String(row.variant_id) : undefined,
+    variant_id: variantId,
     quantity:   row.quantity,
-    created_at: now,
-    updated_at: now,
+    created_at: toISORequired(row.created_at),
+    updated_at: toISORequired(row.updated_at),
   };
 }
 
 function transformOrder(row: Order): Record<string, any> {
-  const id        = uuidv4();
+  const id      = uuidv4();
   const createdAt = toISORequired(row.created_at);
+
+  // Map PG payment_status + fulfillment_status → DynamoDB OrderStatus
+  const dynStatus = mapOrderStatus(row.payment_status, row.fulfillment_status);
+
   const item: Record<string, any> = {
     PK:          `ORDER#${id}`,
     SK:          'METADATA',
@@ -449,9 +564,8 @@ function transformOrder(row: Order): Record<string, any> {
     discount: toNumber(row.discount),
     total:    toNumber(row.total),
     currency: row.currency,
-    // Map PostgreSQL payment_status → DynamoDB status (closest equivalent)
-    status:           row.payment_status ?? 'pending',
-    payment_status:   row.payment_status,
+    status:             dynStatus,
+    payment_status:     row.payment_status,
     fulfillment_status: row.fulfillment_status,
     created_at: createdAt,
     updated_at: toISORequired(row.updated_at),
@@ -459,7 +573,7 @@ function transformOrder(row: Order): Record<string, any> {
     GSI1PK: `ORDER_NUMBER#${row.order_number}`,
     GSI2PK: `ORDER_EMAIL#${row.customer_email}`,
     GSI2SK: createdAt,
-    GSI3PK: `ORDER_STATUS#${row.payment_status ?? 'pending'}`,
+    GSI3PK: `ORDER_STATUS#${dynStatus}`,
     GSI3SK: createdAt,
   };
 
@@ -477,8 +591,21 @@ function transformOrder(row: Order): Record<string, any> {
 function transformOrderItem(
   row:           OrderItem,
   dynamoOrderId: string,
+  variantIdMap:  Map<number, string>,
 ): Record<string, any> {
   const id = uuidv4();
+  // Resolve variant UUID from the migration map; log a warning for orphaned references.
+  let variantId: string | undefined;
+  if (row.variant_id != null) {
+    const mappedId = variantIdMap.get(row.variant_id);
+    if (!mappedId) {
+      console.warn(
+        `  [OrderItem] variant_id ${row.variant_id} (order item ${row.id}) not found in variant migration map – falling back to string id`,
+      );
+    }
+    variantId = mappedId ?? String(row.variant_id);
+  }
+
   return {
     PK:           `ORDER#${dynamoOrderId}`,
     SK:           `ITEM#${id}`,
@@ -487,7 +614,7 @@ function transformOrderItem(
     legacy_id:    row.id,
     order_id:     dynamoOrderId,
     product_id:   row.product_id,
-    variant_id:   row.variant_id != null ? String(row.variant_id) : undefined,
+    variant_id:   variantId,
     product_name: row.product_name,
     variant_name: row.variant_name,
     sku:          row.sku,
@@ -565,30 +692,45 @@ function transformEtsyOAuthToken(row: EtsyOAuthToken): Record<string, any> {
   return item;
 }
 
+/**
+ * Transform EtsyProduct to DynamoDB item matching EtsyProductRepository schema:
+ *   PK: "ETSY_PRODUCT#${local_product_id}"
+ *   SK: "METADATA"
+ *   GSI1PK: "ETSY_LISTING#${etsy_listing_id}"
+ *   GSI1SK: "METADATA"
+ */
 function transformEtsyProduct(row: EtsyProduct): Record<string, any> {
+  const localId = row.local_product_id ?? row.id;
   const item: Record<string, any> = {
-    PK:              `ETSY_PRODUCT#${row.local_product_id ?? row.id}`,
-    SK:              `ETSY#${row.etsy_listing_id}`,
-    local_product_id: row.local_product_id ?? row.id,
+    PK:              `ETSY_PRODUCT#${localId}`,
+    SK:              'METADATA',
+    local_product_id: localId,
     etsy_listing_id: row.etsy_listing_id,
     title:           row.title,
     quantity:        row.quantity,
     sync_status:     row.sync_status,
     created_at:      toISORequired(row.created_at),
     updated_at:      toISORequired(row.updated_at),
+    // GSI1 – lookup by Etsy listing ID
+    GSI1PK: `ETSY_LISTING#${row.etsy_listing_id}`,
+    GSI1SK: 'METADATA',
   };
 
-  if (row.description)   item.description   = row.description;
-  if (row.price != null) item.price         = toNumber(row.price);
-  if (row.sku)           item.sku           = row.sku;
-  if (row.state)         item.state         = row.state;
-  if (row.url)           item.url           = row.url;
+  if (row.description)    item.description    = row.description;
+  if (row.price != null)  item.price          = toNumber(row.price);
+  if (row.sku)            item.sku            = row.sku;
+  if (row.state)          item.state          = row.state;
+  if (row.url)            item.url            = row.url;
   if (row.last_synced_at) item.last_synced_at = toISO(row.last_synced_at);
-  if (row.deleted_at)    item.deleted_at    = toISO(row.deleted_at);
+  if (row.deleted_at)     item.deleted_at     = toISO(row.deleted_at);
 
   return item;
 }
 
+/**
+ * Transform EtsyReceipt to DynamoDB item matching EtsyReceiptRepository schema.
+ * Populates sparse GSI1 (ETSY_ORDER#<local_order_id>) when local_order_id is present.
+ */
 function transformEtsyReceipt(row: EtsyReceipt): Record<string, any> {
   const item: Record<string, any> = {
     PK:              `ETSY_RECEIPT#${row.etsy_receipt_id}`,
@@ -604,20 +746,26 @@ function transformEtsyReceipt(row: EtsyReceipt): Record<string, any> {
     updated_at:      toISORequired(row.updated_at),
   };
 
-  if (row.local_order_id != null) item.local_order_id     = row.local_order_id;
-  if (row.buyer_email)            item.buyer_email        = row.buyer_email;
-  if (row.buyer_name)             item.buyer_name         = row.buyer_name;
-  if (row.status)                 item.status             = row.status;
-  if (row.grand_total != null)    item.grand_total        = toNumber(row.grand_total);
-  if (row.subtotal != null)       item.subtotal           = toNumber(row.subtotal);
-  if (row.total_shipping_cost != null) item.total_shipping_cost = toNumber(row.total_shipping_cost);
-  if (row.total_tax_cost != null) item.total_tax_cost     = toNumber(row.total_tax_cost);
-  if (row.currency)               item.currency           = row.currency;
-  if (row.payment_method)         item.payment_method     = row.payment_method;
-  if (row.shipping_address)       item.shipping_address   = row.shipping_address;
-  if (row.message_from_buyer)     item.message_from_buyer = row.message_from_buyer;
-  if (row.last_synced_at)         item.last_synced_at     = toISO(row.last_synced_at);
-  if (row.deleted_at)             item.deleted_at         = toISO(row.deleted_at);
+  // Sparse GSI1 – find receipts by local order ID
+  if (row.local_order_id != null) {
+    item.local_order_id = row.local_order_id;
+    item.GSI1PK         = `ETSY_ORDER#${row.local_order_id}`;
+    item.GSI1SK         = 'METADATA';
+  }
+
+  if (row.buyer_email)                  item.buyer_email        = row.buyer_email;
+  if (row.buyer_name)                   item.buyer_name         = row.buyer_name;
+  if (row.status)                       item.status             = row.status;
+  if (row.grand_total != null)          item.grand_total        = toNumber(row.grand_total);
+  if (row.subtotal != null)             item.subtotal           = toNumber(row.subtotal);
+  if (row.total_shipping_cost != null)  item.total_shipping_cost = toNumber(row.total_shipping_cost);
+  if (row.total_tax_cost != null)       item.total_tax_cost     = toNumber(row.total_tax_cost);
+  if (row.currency)                     item.currency           = row.currency;
+  if (row.payment_method)               item.payment_method     = row.payment_method;
+  if (row.shipping_address)             item.shipping_address   = row.shipping_address;
+  if (row.message_from_buyer)           item.message_from_buyer = row.message_from_buyer;
+  if (row.last_synced_at)              item.last_synced_at     = toISO(row.last_synced_at);
+  if (row.deleted_at)                   item.deleted_at         = toISO(row.deleted_at);
 
   return item;
 }
@@ -680,7 +828,18 @@ async function seedCounter(
 // ── Main migration ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const tableName = process.env.DYNAMODB_TABLE_NAME || 'art-management';
+  // Require DYNAMODB_TABLE_NAME to be set explicitly to prevent accidentally
+  // writing to the wrong table in production.
+  const tableName = process.env.DYNAMODB_TABLE_NAME;
+  if (!tableName) {
+    console.error(
+      'Error: DYNAMODB_TABLE_NAME environment variable is required.\n' +
+      'Set it explicitly to avoid writing to the wrong DynamoDB table.\n' +
+      'Example: DYNAMODB_TABLE_NAME=art-management ts-node scripts/migrate-to-dynamodb.ts',
+    );
+    process.exit(1);
+  }
+
   console.log('='.repeat(70));
   console.log('PostgreSQL → DynamoDB Migration');
   console.log(`Target table: ${tableName}`);
@@ -746,15 +905,26 @@ async function main(): Promise<void> {
     await seedCounter(dynamo, tableName, 'COUNTER', 'PRODUCT_ID', maxProductId);
 
     // ── Step 3: ProductVariants ────────────────────────────────────────────
+    // Build a legacy-id → DynamoDB UUID map so CartItems/OrderItems can
+    // reference the correct UUID after migration.
     console.log('\n[3/15] Migrating ProductVariants…');
     const variants = await pgDataSource
       .getRepository(ProductVariant)
       .createQueryBuilder('v')
       .withDeleted()
       .getMany();
-    const variantItems = variants.map(transformProductVariant);
-    await batchWrite(dynamo, tableName, variantItems, 'ProductVariants');
-    stats['productVariants'] = variantItems.length;
+
+    const variantLegacyToNew = new Map<number, string>(); // pgId (int) → DynamoDB UUID
+    const variantDynamoItems: Record<string, any>[] = [];
+
+    for (const v of variants) {
+      const { item, dynamoId } = transformProductVariant(v);
+      variantLegacyToNew.set(v.id, dynamoId);
+      variantDynamoItems.push(item);
+    }
+
+    await batchWrite(dynamo, tableName, variantDynamoItems, 'ProductVariants');
+    stats['productVariants'] = variantDynamoItems.length;
 
     // ── Step 4: ProductImages ──────────────────────────────────────────────
     console.log('\n[4/15] Migrating ProductImages…');
@@ -762,9 +932,10 @@ async function main(): Promise<void> {
       .getRepository(ProductImage)
       .createQueryBuilder('i')
       .getMany();
-    const imageItems = images.map(transformProductImage);
+    // Each PG row produces two DynamoDB items (main + pointer); flatten them.
+    const imageItems = images.flatMap(transformProductImage);
     await batchWrite(dynamo, tableName, imageItems, 'ProductImages');
-    stats['productImages'] = imageItems.length;
+    stats['productImages'] = images.length; // count original PG rows
 
     // ── Step 5: Product-Category links ─────────────────────────────────────
     console.log('\n[5/15] Migrating Product-Category links…');
@@ -863,7 +1034,7 @@ async function main(): Promise<void> {
         console.warn(`  [CartItems] Cart ${ci.cart_id} not found in migration map – skipping item ${ci.id}`);
         continue;
       }
-      cartItemDynamoItems.push(transformCartItem(ci, dynamoCartId));
+      cartItemDynamoItems.push(transformCartItem(ci, dynamoCartId, variantLegacyToNew));
     }
 
     await batchWrite(dynamo, tableName, cartItemDynamoItems, 'CartItems');
@@ -905,7 +1076,7 @@ async function main(): Promise<void> {
         console.warn(`  [OrderItems] Order ${oi.order_id} not found in migration map – skipping item ${oi.id}`);
         continue;
       }
-      orderItemDynamoItems.push(transformOrderItem(oi, dynamoOrderId));
+      orderItemDynamoItems.push(transformOrderItem(oi, dynamoOrderId, variantLegacyToNew));
     }
 
     await batchWrite(dynamo, tableName, orderItemDynamoItems, 'OrderItems');
@@ -992,3 +1163,4 @@ main().catch(err => {
   console.error('Migration failed:', err);
   process.exit(1);
 });
+

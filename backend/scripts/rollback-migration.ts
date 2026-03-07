@@ -139,15 +139,20 @@ async function runBackup(backupFile: string): Promise<void> {
       console.log(`    → ${rows.length} rows`);
     }
 
-    // Write backup to disk
+    // Write backup to disk with owner-read/write only permissions (mode 0o600)
+    // to protect sensitive data such as OAuth tokens and payment information.
     const dir = path.dirname(backupFile);
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     }
-    fs.writeFileSync(backupFile, JSON.stringify(backup, null, 2), 'utf8');
+    fs.writeFileSync(backupFile, JSON.stringify(backup, null, 2), { encoding: 'utf8', mode: 0o600 });
 
     const sizeMB = (fs.statSync(backupFile).size / 1024 / 1024).toFixed(2);
-    console.log(`\nBackup written to ${backupFile} (${sizeMB} MB)`);
+    console.log(`\nBackup written to ${backupFile} (${sizeMB} MB) [permissions: 600]`);
+    console.log(
+      '\nSECURITY WARNING: The backup file contains sensitive data including OAuth tokens ' +
+      'and payment information. Ensure the file is stored securely and excluded from version control.',
+    );
   } finally {
     await pgDataSource.destroy();
   }
@@ -338,7 +343,25 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const tableName = process.env.DYNAMODB_TABLE_NAME || 'art-management';
+  // Require DYNAMODB_TABLE_NAME explicitly to prevent accidentally targeting the wrong table.
+  // For 'clear' mode, also require explicit confirmation when targeting a real AWS endpoint.
+  const tableName = process.env.DYNAMODB_TABLE_NAME;
+  if (!tableName) {
+    console.error(
+      'Error: DYNAMODB_TABLE_NAME must be set; refusing to use a default table name for destructive operations.',
+    );
+    process.exit(1);
+  }
+
+  const awsEndpoint = process.env.AWS_ENDPOINT_URL;
+  if (mode === 'clear' && !awsEndpoint && process.env.ROLLBACK_CONFIRM_CLEAR !== 'true') {
+    console.error(
+      'Error: Refusing to run clear mode against a real AWS endpoint.\n' +
+      'Either set AWS_ENDPOINT_URL for a local endpoint (e.g., LocalStack) ' +
+      'or set ROLLBACK_CONFIRM_CLEAR=true to override.',
+    );
+    process.exit(1);
+  }
 
   // Resolve the project root as two directories above this script's directory
   // (i.e. <repo-root>/backups when the script is at <repo-root>/backend/scripts/).
