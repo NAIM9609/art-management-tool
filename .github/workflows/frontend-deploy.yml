@@ -3,6 +3,11 @@ name: Frontend Build and Deploy
 # Trigger the workflow on pushes to the specified branch
 # Also allow manual triggering from the Actions tab
 on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-tests.yml'
   push:
     branches:
       - main
