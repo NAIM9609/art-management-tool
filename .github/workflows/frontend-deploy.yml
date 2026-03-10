@@ -7,10 +7,13 @@ on:
     branches: [ main ]
     paths:
       - 'frontend/**'
-      - '.github/workflows/frontend-tests.yml'
+      - '.github/workflows/frontend-deploy.yml'
   push:
     branches:
       - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-deploy.yml'
   workflow_dispatch:  # Allows manual trigger from GitHub UI
 
 # Define environment variables that can be used across all jobs
