@@ -3,8 +3,8 @@
  * Handles public shop API interactions (products, cart, checkout)
  */
 
-// Use relative paths - Next.js rewrites will proxy to backend
-// Empty string means use relative paths through Next.js proxy
+import { getCached, setCached, CACHE_TTL, fetchWithRetry, parseErrorResponse } from './apiUtils';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 // ==================== Types ====================
@@ -60,6 +60,8 @@ export interface ProductListResponse {
   total: number;
   page: number;
   per_page: number;
+  /** DynamoDB pagination cursor for the next page */
+  lastEvaluatedKey?: string | null;
 }
 
 export interface Cart {
@@ -187,62 +189,47 @@ class ShopAPIService {
   }
 
   /**
-   * Make API request with proper error handling
+   * Make API request with retry logic (max 3 attempts, exponential backoff on 5xx),
+   * development logging, and Lambda/API Gateway error handling.
    */
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+    const method = (options.method || 'GET').toUpperCase();
+
     // Get session token for header fallback
     const sessionToken = this.getSessionToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
-    
-    // Add session token to header as fallback
+
     if (sessionToken) {
       headers['X-Cart-Session'] = sessionToken;
-      console.log(`🍪 Frontend: Adding session token to header: ${sessionToken.substring(0, 20)}...`);
     }
-    
-    console.log(`🌐 Frontend: Making ${options.method || 'GET'} request to ${url}`);
-    console.log(`🌐 Frontend: Headers:`, headers);
-    if (options.body) {
-      console.log(`🌐 Frontend: Body:`, options.body);
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[ShopAPI] ${method} ${url}`);
     }
-    
-    const response = await fetch(url, {
+
+    const response = await fetchWithRetry(url, {
       ...options,
+      method,
       headers,
-      credentials: 'include', // Include cookies for cart session
+      credentials: 'include',
     });
 
-    console.log(`🌐 Frontend: Response status: ${response.status} ${response.statusText}`);
-    console.log(`🌐 Frontend: Response headers:`, Object.fromEntries(response.headers.entries()));
-
     if (!response.ok) {
-      let errorDetails;
-      try {
-        errorDetails = await response.json();
-        console.error(`🌐 Frontend: Error response body:`, errorDetails);
-      } catch {
-        errorDetails = { error: `HTTP ${response.status}: ${response.statusText}` };
-        console.error(`🌐 Frontend: Could not parse error response, status: ${response.status}`);
-      }
-      
-      const errorMessage = errorDetails.error || errorDetails.message || `HTTP ${response.status}`;
+      const errorMessage = await parseErrorResponse(response);
       throw new Error(errorMessage);
     }
 
     const data = await response.json();
-    console.log(`🌐 Frontend: Response data:`, data);
-    
-    // Check if response contains a cart with session_token and save it
+
+    // Persist cart session token when returned by the backend
     if (data && typeof data === 'object' && data.cart && data.cart.session_token) {
-      console.log(`🍪 Frontend: Response contains session token: ${data.cart.session_token.substring(0, 20)}...`);
       this.setSessionToken(data.cart.session_token);
     }
 
@@ -256,25 +243,82 @@ class ShopAPIService {
    */
   async healthCheck(): Promise<{ status: string; message?: string }> {
     try {
-      const response = await fetch(`${this.baseUrl}/health`, {
-        method: 'GET',
-        credentials: 'include',
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Health check failed: ${response.status}`);
-      }
-      
-      return await response.json();
+      return await this.request<{ status: string; message?: string }>('/health');
     } catch (error) {
-      throw new Error(`Backend not responding: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Backend not responding: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
   // ==================== Products ====================
 
   /**
-   * List products with filters and pagination
+   * Get all products with optional filters and DynamoDB cursor-based pagination.
+   * This is the primary method for listing products with the Lambda backend.
+   */
+  async getAllProducts(params?: {
+    status?: string;
+    limit?: number;
+    lastKey?: string;
+  }): Promise<ProductListResponse> {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.limit) queryParams.append('limit', String(params.limit));
+    if (params?.lastKey) queryParams.append('last_key', params.lastKey);
+
+    const cacheKey = `products:${queryParams.toString()}`;
+    const cached = getCached<ProductListResponse>(cacheKey);
+    if (cached) return cached;
+
+    const query = queryParams.toString();
+    const data = await this.request<ProductListResponse>(
+      `/products${query ? `?${query}` : ''}`
+    );
+
+    setCached(cacheKey, data, CACHE_TTL.PRODUCTS);
+    return data;
+  }
+
+  /**
+   * Get a single product by slug (cached for 5 minutes)
+   */
+  async getProductBySlug(slug: string): Promise<Product> {
+    const cacheKey = `product:${slug}`;
+    const cached = getCached<Product>(cacheKey);
+    if (cached) return cached;
+
+    const data = await this.request<Product>(`/products/${slug}`);
+    setCached(cacheKey, data, CACHE_TTL.PRODUCTS);
+    return data;
+  }
+
+  /**
+   * Search products by term with cursor-based pagination
+   */
+  async searchProducts(
+    term: string,
+    params?: { limit?: number; lastKey?: string }
+  ): Promise<ProductListResponse> {
+    const queryParams = new URLSearchParams({ search: term });
+    if (params?.limit) queryParams.append('limit', String(params.limit));
+    if (params?.lastKey) queryParams.append('last_key', params.lastKey);
+
+    const cacheKey = `products:search:${queryParams.toString()}`;
+    const cached = getCached<ProductListResponse>(cacheKey);
+    if (cached) return cached;
+
+    const data = await this.request<ProductListResponse>(
+      `/products?${queryParams.toString()}`
+    );
+
+    setCached(cacheKey, data, CACHE_TTL.PRODUCTS);
+    return data;
+  }
+
+  /**
+   * List products with extended filters and pagination.
+   * Supports both legacy page-based and new lastKey cursor pagination.
    */
   async listProducts(params?: {
     status?: string;
@@ -289,15 +333,19 @@ class ShopAPIService {
     per_page?: number;
     sort_by?: string;
     sort_order?: string;
+    /** DynamoDB cursor for next page (replaces page when provided) */
+    lastKey?: string;
   }): Promise<ProductListResponse> {
     const queryParams = new URLSearchParams();
-    
+
     if (params) {
-      Object.entries(params).forEach(([key, value]) => {
+      const { lastKey, ...rest } = params;
+      Object.entries(rest).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           queryParams.append(key, String(value));
         }
       });
+      if (lastKey) queryParams.append('last_key', lastKey);
     }
 
     const query = queryParams.toString();
@@ -307,10 +355,10 @@ class ShopAPIService {
   }
 
   /**
-   * Get product by slug
+   * Get product by slug (legacy alias – prefer getProductBySlug)
    */
   async getProduct(slug: string): Promise<Product> {
-    return this.request<Product>(`/products/${slug}`);
+    return this.getProductBySlug(slug);
   }
 
   // ==================== Cart ====================
@@ -319,10 +367,7 @@ class ShopAPIService {
    * Get current cart
    */
   async getCart(): Promise<CartResponse> {
-    console.log(`🛒 Frontend: Getting cart...`);
-    const result = await this.request<CartResponse>('/cart');
-    console.log(`🛒 Frontend: Cart response:`, result);
-    return result;
+    return this.request<CartResponse>('/cart');
   }
 
   /**
@@ -333,58 +378,42 @@ class ShopAPIService {
     variant_id?: number;
     quantity: number;
   }): Promise<CartResponse> {
-    console.log(`🛒 Frontend: Adding to cart:`, data);
-    const result = await this.request<CartResponse>('/cart/items', {
+    return this.request<CartResponse>('/cart/items', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    console.log(`🛒 Frontend: Add to cart response:`, result);
-    return result;
   }
 
   /**
    * Update cart item quantity
    */
   async updateCartItem(itemId: number, quantity: number): Promise<CartResponse> {
-    console.log(`🛒 Frontend: Updating cart item ${itemId} to quantity ${quantity}`);
-    
     if (quantity < 1) {
       throw new Error('Quantity must be at least 1');
     }
-    
-    const result = await this.request<CartResponse>(`/cart/items/${itemId}`, {
+
+    return this.request<CartResponse>(`/cart/items/${itemId}`, {
       method: 'PATCH',
       body: JSON.stringify({ quantity }),
     });
-    
-    console.log(`🛒 Frontend: Update cart item response:`, result);
-    return result;
   }
 
   /**
    * Remove item from cart
    */
   async removeCartItem(itemId: number): Promise<void> {
-    console.log(`🛒 Frontend: Removing cart item ${itemId}`);
-    
     await this.request(`/cart/items/${itemId}`, {
       method: 'DELETE',
     });
-    
-    console.log(`🛒 Frontend: Cart item ${itemId} removed successfully`);
   }
 
   /**
    * Clear entire cart
    */
   async clearCart(): Promise<void> {
-    console.log(`🛒 Frontend: Clearing entire cart`);
-    
     await this.request('/cart', {
       method: 'DELETE',
     });
-    
-    console.log(`🛒 Frontend: Cart cleared successfully`);
   }
 
   // ==================== Checkout ====================

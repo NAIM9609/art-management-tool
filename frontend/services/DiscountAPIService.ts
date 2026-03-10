@@ -1,6 +1,8 @@
 // API Service for managing discount codes
 // Handles all HTTP calls to backend for discount CRUD operations
 
+import { fetchWithAuth } from './apiUtils';
+
 export interface DiscountDTO {
   id?: number;
   code: string;
@@ -36,38 +38,14 @@ export interface DiscountStatsResponse {
   days_until_expiry: number | null;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+export interface DiscountValidationResponse {
+  valid: boolean;
+  discount: DiscountDTO | null;
+  message?: string;
+  discount_amount?: number;
+}
 
 export class DiscountAPIService {
-  private static getAuthHeaders(): HeadersInit {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null;
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
-  }
-
-  private static async fetchJSON<T>(url: string, options?: RequestInit, useAuth = false): Promise<T> {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    };
-
-    if (useAuth) {
-      const authHeaders = this.getAuthHeaders();
-      Object.assign(headers, authHeaders);
-    }
-
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    return response.json();
-  }
-
   // GET /api/admin/discounts - Get all discounts
   static async getAllDiscounts(
     page = 1,
@@ -81,28 +59,31 @@ export class DiscountAPIService {
     const params = new URLSearchParams();
     params.append('page', page.toString());
     params.append('per_page', perPage.toString());
-    
+
     if (filters?.active !== undefined) params.append('active', filters.active.toString());
     if (filters?.valid !== undefined) params.append('valid', filters.valid.toString());
     if (filters?.type) params.append('type', filters.type);
-    
-    const url = `/api/admin/discounts?${params.toString()}`;
-    return this.fetchJSON<DiscountListResponse>(url, {}, true);
+
+    return fetchWithAuth<DiscountListResponse>(
+      `/api/admin/discounts?${params.toString()}`,
+      {},
+      true
+    );
   }
 
   // GET /api/admin/discounts/{id} - Get specific discount
   static async getDiscount(id: number): Promise<DiscountWithValidityResponse> {
-    return this.fetchJSON<DiscountWithValidityResponse>(`/api/admin/discounts/${id}`, {}, true);
+    return fetchWithAuth<DiscountWithValidityResponse>(`/api/admin/discounts/${id}`, {}, true);
   }
 
   // GET /api/admin/discounts/{id}/stats - Get discount statistics
   static async getDiscountStats(id: number): Promise<DiscountStatsResponse> {
-    return this.fetchJSON<DiscountStatsResponse>(`/api/admin/discounts/${id}/stats`, {}, true);
+    return fetchWithAuth<DiscountStatsResponse>(`/api/admin/discounts/${id}/stats`, {}, true);
   }
 
   // POST /api/admin/discounts - Create new discount
   static async createDiscount(discount: Partial<DiscountDTO>): Promise<DiscountWithValidityResponse> {
-    return this.fetchJSON<DiscountWithValidityResponse>('/api/admin/discounts', {
+    return fetchWithAuth<DiscountWithValidityResponse>('/api/admin/discounts', {
       method: 'POST',
       body: JSON.stringify(discount),
     }, true);
@@ -110,7 +91,7 @@ export class DiscountAPIService {
 
   // PATCH /api/admin/discounts/{id} - Update discount
   static async updateDiscount(id: number, discount: Partial<DiscountDTO>): Promise<DiscountWithValidityResponse> {
-    return this.fetchJSON<DiscountWithValidityResponse>(`/api/admin/discounts/${id}`, {
+    return fetchWithAuth<DiscountWithValidityResponse>(`/api/admin/discounts/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(discount),
     }, true);
@@ -118,8 +99,24 @@ export class DiscountAPIService {
 
   // DELETE /api/admin/discounts/{id} - Delete discount
   static async deleteDiscount(id: number): Promise<{ message: string; id: number; discount?: DiscountDTO }> {
-    return this.fetchJSON<{ message: string; id: number; discount?: DiscountDTO }>(`/api/admin/discounts/${id}`, {
-      method: 'DELETE',
-    }, true);
+    return fetchWithAuth<{ message: string; id: number; discount?: DiscountDTO }>(
+      `/api/admin/discounts/${id}`,
+      { method: 'DELETE' },
+      true
+    );
+  }
+
+  /**
+   * Validate a discount code against a given cart total without applying it to the cart.
+   * POST /api/shop/discounts/validate
+   */
+  static async validateDiscount(
+    code: string,
+    cartTotal: number
+  ): Promise<DiscountValidationResponse> {
+    return fetchWithAuth<DiscountValidationResponse>('/api/shop/discounts/validate', {
+      method: 'POST',
+      body: JSON.stringify({ code, cart_total: cartTotal }),
+    });
   }
 }
