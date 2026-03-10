@@ -1,0 +1,26 @@
+{
+  "name": "Giorgio Privitera Lab",
+  "short_name": "Art Lab",
+  "description": "Art gallery management system with customer and admin interfaces",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1A233A",
+  "theme_color": "#1A233A",
+  "orientation": "portrait-primary",
+  "lang": "it",
+  "categories": ["art", "shopping", "entertainment"],
+  "icons": [
+    {
+      "src": "/assets/Logo_skull.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/AnimantraLogo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
