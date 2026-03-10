@@ -1,10 +1,10 @@
-/* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect } from 'react';
 import { Dialog } from 'primereact/dialog';
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import type { PersonaggioDTO } from '@/services/PersonaggiAPIService';
+import OptimizedImage from '@/components/OptimizedImage';
 
 interface PersonaggioModalProps {
     visible: boolean;
@@ -98,10 +98,12 @@ export default function PersonaggioModal({ visible, onHide, personaggio }: Perso
                             <div className="w-full h-full flex flex-col justify-center">
                                 {/* Immagine principale */}
                                 <div className="relative w-full h-[400px] md:h-[500px] flex items-center justify-center">
-                                    <img 
+                                    <OptimizedImage 
                                         src={images[currentImageIndex]} 
                                         alt={`${personaggio?.name} - Image ${currentImageIndex + 1}`}
-                                        className="max-w-full max-h-full object-contain"
+                                        className="w-full h-full"
+                                        imgClassName="max-w-full max-h-full object-contain"
+                                        height={500}
                                     />
                                     
                                     {/* Navigazione immagini (frecce) */}
@@ -162,10 +164,12 @@ export default function PersonaggioModal({ visible, onHide, personaggio }: Perso
                                                     }`}
                                                     aria-label={`Anteprima ${index + 1}`}
                                                 >
-                                                    <img 
+                                                    <OptimizedImage 
                                                         src={img} 
                                                         alt={`Thumbnail ${index + 1}`}
-                                                        className="w-full h-full object-cover rounded"
+                                                        width={64}
+                                                        height={64}
+                                                        imgClassName="w-full h-full object-cover rounded"
                                                     />
                                                     {index === currentImageIndex && (
                                                         <div className="absolute inset-0 bg-gray-800/10" />

@@ -1,6 +1,7 @@
 import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
 import { FumettoDTO } from '@/services/FumettiAPIService';
+import OptimizedImage from '@/components/OptimizedImage';
 
 interface FumettoColumnsProps {
   onEdit: (fumetto: FumettoDTO) => void;
@@ -19,10 +20,12 @@ export default function FumettoColumns({
 }: FumettoColumnsProps) {
   const coverImageBodyTemplate = (rowData: FumettoDTO) => {
     return rowData.coverImage ? (
-      <img
+      <OptimizedImage
         src={rowData.coverImage}
         alt={rowData.title}
-        style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+        width={80}
+        height={80}
+        imgClassName="object-cover"
       />
     ) : (
       <span className="text-500">No image</span>

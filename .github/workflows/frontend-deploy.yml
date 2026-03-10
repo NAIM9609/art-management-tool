@@ -3,9 +3,17 @@ name: Frontend Build and Deploy
 # Trigger the workflow on pushes to the specified branch
 # Also allow manual triggering from the Actions tab
 on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-deploy.yml'
   push:
     branches:
       - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-deploy.yml'
   workflow_dispatch:  # Allows manual trigger from GitHub UI
 
 # Define environment variables that can be used across all jobs

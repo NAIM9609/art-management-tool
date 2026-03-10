@@ -1,9 +1,9 @@
-/* eslint-disable @next/next/no-img-element */
 'use client';
 
 import { PersonaggioDTO } from '@/services/PersonaggiAPIService';
 import { Galleria } from 'primereact/galleria';
 import { useState, useEffect } from 'react';
+import OptimizedImage from '@/components/OptimizedImage';
 
 interface PersonaggioPreviewProps {
   personaggio: Partial<PersonaggioDTO>;
@@ -63,10 +63,11 @@ export default function PersonaggioPreview({ personaggio }: PersonaggioPreviewPr
       return <div className="w-full h-96 bg-gray-200 flex items-center justify-center">No Image</div>;
     }
     return (
-      <img 
-        src={item.itemImageSrc} 
-        alt={item.alt || 'Image'} 
-        style={{ width: '100%', height: '300px', objectFit: 'contain', display: 'block' }} 
+      <OptimizedImage
+        src={item.itemImageSrc}
+        alt={item.alt || 'Image'}
+        imgClassName="w-full object-contain"
+        className="w-full"
       />
     );
   };
@@ -76,10 +77,12 @@ export default function PersonaggioPreview({ personaggio }: PersonaggioPreviewPr
       return <div className="w-15 h-15 bg-gray-200"></div>;
     }
     return (
-      <img 
-        src={item.thumbnailImageSrc} 
-        alt={item.alt || 'Thumbnail'} 
-        style={{ width: '60px', height: '60px', objectFit: 'cover', display: 'block' }} 
+      <OptimizedImage
+        src={item.thumbnailImageSrc}
+        alt={item.alt || 'Thumbnail'}
+        width={60}
+        height={60}
+        imgClassName="object-cover"
       />
     );
   };
@@ -98,16 +101,18 @@ export default function PersonaggioPreview({ personaggio }: PersonaggioPreviewPr
           >
             <div className="relative w-full aspect-square mb-4">
               {personaggio.icon ? (
-                <img
+                <OptimizedImage
                   src={getImageUrl(personaggio.icon)}
                   alt={`${personaggio.name} Icon`}
-                  className="w-full h-full object-contain rounded-lg"
+                  className="w-full h-full"
+                  imgClassName="w-full h-full object-contain rounded-lg"
                 />
               ) : personaggio.images && personaggio.images[0] ? (
-                <img
+                <OptimizedImage
                   src={getImageUrl(personaggio.images[0])}
                   alt={personaggio.name}
-                  className="w-full h-full object-contain rounded-lg"
+                  className="w-full h-full"
+                  imgClassName="w-full h-full object-contain rounded-lg"
                 />
               ) : (
                 <div className="w-full h-full bg-gray-200 rounded-lg flex items-center justify-center">

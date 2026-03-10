@@ -1,9 +1,9 @@
-/* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect } from 'react';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { useTranslations } from 'next-intl';
 import type { FumettoDTO } from '@/services/FumettiAPIService';
+import OptimizedImage from '@/components/OptimizedImage';
 
 interface FumettiModalProps {
     visible: boolean;
@@ -65,10 +65,11 @@ export default function FumettiModal({ visible, onHide, fumetto }: FumettiModalP
                 <div className="relative bg-gray-100 rounded-lg overflow-hidden">
                     {pages && pages.length > 0 ? (
                         <div className="relative">
-                            <img 
+                            <OptimizedImage 
                                 src={pages[currentPageIndex]} 
                                 alt={`${fumetto.title} - Pagina ${currentPageIndex + 1}`} 
-                                className="w-full h-auto max-h-[70vh] object-contain mx-auto"
+                                className="w-full"
+                                imgClassName="w-full max-h-[70vh] object-contain mx-auto"
                             />
                             
                             {/* Navigazione Pagine - Frecce sui lati */}
@@ -117,10 +118,12 @@ export default function FumettiModal({ visible, onHide, fumetto }: FumettiModalP
                                 }`}
                                 style={{ width: '80px', height: '100px' }}
                             >
-                                <img 
+                                <OptimizedImage 
                                     src={page} 
                                     alt={`Pagina ${index + 1}`} 
-                                    className="w-full h-full object-cover"
+                                    width={80}
+                                    height={100}
+                                    imgClassName="w-full h-full object-cover"
                                 />
                             </div>
                         ))}

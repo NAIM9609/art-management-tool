@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from 'primereact/button';
+import OptimizedImage from '@/components/OptimizedImage';
 
 interface ProductImage {
   url: string;
@@ -42,10 +43,13 @@ export default function ImageGallery({ images, productTitle = 'Product' }: Image
     <div className="space-y-4">
       {/* Main Image */}
       <div className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
-        <img
+        <OptimizedImage
           src={currentImage.url}
           alt={currentImage.alt_text || productTitle}
-          className="w-full h-full object-contain"
+          className="w-full h-full"
+          imgClassName="w-full h-full object-contain"
+          width="100%"
+          height="100%"
         />
         
         {displayImages.length > 1 && (
@@ -79,10 +83,12 @@ export default function ImageGallery({ images, productTitle = 'Product' }: Image
                 idx === currentIndex ? 'border-blue-600' : 'border-gray-200'
               }`}
             >
-              <img
+              <OptimizedImage
                 src={img.url}
                 alt={img.alt_text || `${productTitle} ${idx + 1}`}
-                className="w-full h-full object-cover"
+                width={80}
+                height={80}
+                imgClassName="w-full h-full object-cover"
               />
             </button>
           ))}

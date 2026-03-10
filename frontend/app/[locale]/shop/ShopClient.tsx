@@ -13,6 +13,7 @@ import { Card } from 'primereact/card';
 import { Toast } from 'primereact/toast';
 import { IconField } from 'primereact/iconfield';
 import { InputIcon } from 'primereact/inputicon';
+import OptimizedImage from '@/components/OptimizedImage';
 import ProdottoModal from '@/components/ProdottoModal';
 
 function ShopContent() {
@@ -243,16 +244,18 @@ function ShopContent() {
                       {product.images && product.images.length > 0 ? (
                         <>
                           {product.images.length > 1 && (
-                            <img
+                            <OptimizedImage
                               src={product.images[1].url}
                               alt={product.title}
-                              className="w-full h-full object-cover absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                              imgClassName="w-full h-full object-cover"
                             />
                           )}
-                          <img
+                          <OptimizedImage
                             src={product.images[0].url}
                             alt={product.title}
-                            className="w-full h-full object-cover absolute inset-0 group-hover:opacity-0 transition-opacity duration-300"
+                            className="absolute inset-0 group-hover:opacity-0 transition-opacity duration-300"
+                            imgClassName="w-full h-full object-cover"
                           />
                         </>
                       ) : (
