@@ -1,7 +1,7 @@
 // API Service per la gestione dei personaggi
 // Gestisce tutte le chiamate HTTP al backend per le operazioni CRUD
 
-import { fetchWithAuth, uploadFile } from './apiUtils';
+import { fetchWithAuth, uploadFile, getCached, setCached, invalidateCache, CACHE_TTL } from './apiUtils';
 
 export interface PersonaggioDTO {
   id?: number;
@@ -25,27 +25,53 @@ export interface PersonaggiListResponse {
   count: number;
 }
 
+const CACHE_PREFIX = 'personaggi:';
+
 export class PersonaggiAPIService {
   // GET /api/personaggi - Ottieni tutti i personaggi attivi (public)
   static async getAllPersonaggi(): Promise<PersonaggioDTO[]> {
+    const cacheKey = `${CACHE_PREFIX}all`;
+    const cached = getCached<PersonaggioDTO[]>(cacheKey);
+    if (cached) return cached;
+
     const response = await fetchWithAuth<PersonaggiListResponse>('/api/personaggi');
-    return response.personaggi || (Array.isArray(response) ? response as PersonaggioDTO[] : []);
+    const data = response.personaggi || (Array.isArray(response) ? response as PersonaggioDTO[] : []);
+    setCached(cacheKey, data, CACHE_TTL.CONTENT);
+    return data;
   }
 
   // GET /api/personaggi - Ottieni tutti i personaggi attivi (admin)
   static async getAllPersonaggiAdmin(): Promise<PersonaggioDTO[]> {
+    const cacheKey = `${CACHE_PREFIX}all:admin`;
+    const cached = getCached<PersonaggioDTO[]>(cacheKey);
+    if (cached) return cached;
+
     const response = await fetchWithAuth<PersonaggiListResponse>('/api/personaggi', {}, true);
-    return response.personaggi || (Array.isArray(response) ? response as PersonaggioDTO[] : []);
+    const data = response.personaggi || (Array.isArray(response) ? response as PersonaggioDTO[] : []);
+    setCached(cacheKey, data, CACHE_TTL.CONTENT);
+    return data;
   }
 
   // GET /api/personaggi/{id} - Ottieni un personaggio specifico (public)
   static async getPersonaggio(id: number): Promise<PersonaggioDTO> {
-    return fetchWithAuth<PersonaggioDTO>(`/api/personaggi/${id}`);
+    const cacheKey = `${CACHE_PREFIX}${id}`;
+    const cached = getCached<PersonaggioDTO>(cacheKey);
+    if (cached) return cached;
+
+    const data = await fetchWithAuth<PersonaggioDTO>(`/api/personaggi/${id}`);
+    setCached(cacheKey, data, CACHE_TTL.CONTENT);
+    return data;
   }
 
   // GET /api/personaggi/{id} - Ottieni un personaggio specifico (admin)
   static async getPersonaggioAdmin(id: number): Promise<PersonaggioDTO> {
-    return fetchWithAuth<PersonaggioDTO>(`/api/personaggi/${id}`, {}, true);
+    const cacheKey = `${CACHE_PREFIX}${id}:admin`;
+    const cached = getCached<PersonaggioDTO>(cacheKey);
+    if (cached) return cached;
+
+    const data = await fetchWithAuth<PersonaggioDTO>(`/api/personaggi/${id}`, {}, true);
+    setCached(cacheKey, data, CACHE_TTL.CONTENT);
+    return data;
   }
 
   // POST /api/personaggi - Crea un nuovo personaggio
@@ -55,11 +81,14 @@ export class PersonaggiAPIService {
     if (validation.hasErrors()) {
       throw new Error(`Validation failed: ${validation.getErrorMessage()}`);
     }
-    
-    return fetchWithAuth<PersonaggioDTO>('/api/personaggi', {
+
+    const result = await fetchWithAuth<PersonaggioDTO>('/api/personaggi', {
       method: 'POST',
       body: JSON.stringify(data),
     }, true);
+
+    invalidateCache(CACHE_PREFIX);
+    return result;
   }
 
   // PUT /api/personaggi/{id} - Aggiorna un personaggio esistente
@@ -82,25 +111,34 @@ export class PersonaggiAPIService {
         throw new Error(`Validation failed: ${validation.getErrorMessage()}`);
       }
     }
-    
-    return fetchWithAuth<PersonaggioDTO>(`/api/personaggi/${id}`, {
+
+    const result = await fetchWithAuth<PersonaggioDTO>(`/api/personaggi/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }, true);
+
+    invalidateCache(CACHE_PREFIX);
+    return result;
   }
 
   // DELETE /api/personaggi/{id} - Soft delete di un personaggio
   static async deletePersonaggio(id: number): Promise<{ message: string; id: string }> {
-    return fetchWithAuth<{ message: string; id: string }>(`/api/personaggi/${id}`, {
+    const result = await fetchWithAuth<{ message: string; id: string }>(`/api/personaggi/${id}`, {
       method: 'DELETE',
     }, true);
+
+    invalidateCache(CACHE_PREFIX);
+    return result;
   }
 
   // POST /api/personaggi/{id}/restore - Ripristina un personaggio cancellato
   static async restorePersonaggio(id: number): Promise<PersonaggioDTO> {
-    return fetchWithAuth<PersonaggioDTO>(`/api/personaggi/${id}/restore`, {
+    const result = await fetchWithAuth<PersonaggioDTO>(`/api/personaggi/${id}/restore`, {
       method: 'POST',
     }, true);
+
+    invalidateCache(CACHE_PREFIX);
+    return result;
   }
 
   // GET /api/personaggi/deleted - Ottieni tutti i personaggi cancellati
@@ -116,6 +154,7 @@ export class PersonaggiAPIService {
     formData.append('type', type);
 
     const response = await uploadFile(`/api/personaggi/${id}/upload`, formData);
+    invalidateCache(CACHE_PREFIX);
     return response.json();
   }
 
@@ -126,9 +165,12 @@ export class PersonaggiAPIService {
 
   // DELETE /api/personaggi/{id}/images - Elimina un'immagine da un personaggio
   static async deleteImage(id: number, imageUrl: string, type: 'icon' | 'gallery' | 'background'): Promise<{ message: string }> {
-    return fetchWithAuth<{ message: string }>(`/api/personaggi/${id}/images`, {
+    const result = await fetchWithAuth<{ message: string }>(`/api/personaggi/${id}/images`, {
       method: 'DELETE',
       body: JSON.stringify({ imageUrl, type }),
     }, true);
+
+    invalidateCache(CACHE_PREFIX);
+    return result;
   }
 }
