@@ -3,6 +3,7 @@ import {getMessages} from 'next-intl/server';
 import { PrimeReactProvider } from 'primereact/api';
 import HeaderComponent from "@/components/headerComponent";
 import FooterComponent from "@/components/footerComponent";
+import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import localFont from 'next/font/local';
 import type { Metadata } from 'next';
 
@@ -56,9 +57,16 @@ export default async function LocaleLayout({
  
   return (
     <html lang={locale} className={`${jungleFever.variable} ${kranji.variable}`}>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#1A233A" />
+      </head>
       <body className="antialiased min-h-screen flex flex-col overflow-x-hidden">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <PrimeReactProvider>
+            {/* Register service worker for offline support */}
+            <ServiceWorkerRegistrar />
+
             {/* Header sempre in alto e sticky - FUORI dal container principale */}
             <HeaderComponent />
             
