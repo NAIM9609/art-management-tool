@@ -8,9 +8,10 @@ const CART_QUEUE_CACHE = 'art-cart-queue';
 
 const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_CACHE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
+const MAX_CACHE_ENTRIES = 500;
 
-const OFFLINE_URL_IT = '/it/offline';
-const OFFLINE_URL_EN = '/en/offline';
+const OFFLINE_URL_IT = '/it/offline/';
+const OFFLINE_URL_EN = '/en/offline/';
 
 /** Assets to precache on install (app shell) */
 const PRECACHE_URLS = [
@@ -19,6 +20,8 @@ const PRECACHE_URLS = [
   '/en/',
   OFFLINE_URL_IT,
   OFFLINE_URL_EN,
+  '/it/offline',
+  '/en/offline',
   '/manifest.json',
   '/assets/LOGO_SITO-02 1.svg',
   '/assets/AnimantraLogo.svg',
@@ -33,6 +36,7 @@ function isStaticAsset(pathname) {
 
 async function putInCache(cacheName, request, response) {
   if (!response || !response.ok) return;
+  if (request.method !== 'GET' && request.method !== 'HEAD') return;
   const cache = await caches.open(cacheName);
   const headers = new Headers(response.headers);
   headers.set('sw-cached-at', String(Date.now()));
@@ -50,15 +54,31 @@ async function putInCache(cacheName, request, response) {
 async function enforceMaxCacheSize(cacheName) {
   const cache = await caches.open(cacheName);
   const keys = await cache.keys();
+
+  if (keys.length > MAX_CACHE_ENTRIES) {
+    const entries = [];
+    for (const key of keys) {
+      const resp = await cache.match(key);
+      const cachedAt = Number((resp && resp.headers.get('sw-cached-at')) || 0);
+      entries.push({ key, cachedAt });
+    }
+    entries.sort((a, b) => a.cachedAt - b.cachedAt);
+    const removeCount = keys.length - MAX_CACHE_ENTRIES;
+    for (let i = 0; i < removeCount; i++) {
+      await cache.delete(entries[i].key);
+    }
+    return;
+  }
+
   let totalSize = 0;
   const entries = [];
   for (const key of keys) {
     const resp = await cache.match(key);
     if (resp) {
-      const buf = await resp.arrayBuffer();
       const cachedAt = Number(resp.headers.get('sw-cached-at') || 0);
-      entries.push({ key, size: buf.byteLength, cachedAt });
-      totalSize += buf.byteLength;
+      const estimatedSize = Number(resp.headers.get('content-length') || 0);
+      entries.push({ key, size: estimatedSize, cachedAt });
+      totalSize += estimatedSize;
     }
   }
   if (totalSize <= MAX_CACHE_SIZE_BYTES) return;
@@ -74,7 +94,8 @@ async function enforceMaxCacheSize(cacheName) {
 // ===================== Cache strategies =====================
 
 async function cacheFirst(request, cacheName) {
-  const cached = await caches.match(request);
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
   if (cached) {
     const cachedAt = Number(cached.headers.get('sw-cached-at') || 0);
     if (cachedAt && Date.now() - cachedAt > MAX_CACHE_AGE_MS) {
@@ -95,28 +116,33 @@ async function cacheFirst(request, cacheName) {
 }
 
 async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request);
     await putInCache(cacheName, request, response.clone());
     return response;
   } catch {
-    const cached = await caches.match(request);
+    const cached = await cache.match(request);
     return cached || Response.error();
   }
 }
 
 async function networkFirstWithOfflineFallback(request) {
+  const pageCache = await caches.open(PAGES_CACHE);
   try {
     const response = await fetch(request);
     await putInCache(PAGES_CACHE, request, response.clone());
     return response;
   } catch {
-    const cached = await caches.match(request);
+    const cached = await pageCache.match(request);
     if (cached) return cached;
     // Serve locale-appropriate offline page
     const url = new URL(request.url);
     const offlineUrl = url.pathname.startsWith('/en') ? OFFLINE_URL_EN : OFFLINE_URL_IT;
-    const offlinePage = await caches.match(offlineUrl);
+    const staticCache = await caches.open(STATIC_CACHE);
+    const offlinePage =
+      (await staticCache.match(offlineUrl)) ||
+      (await staticCache.match(offlineUrl.replace(/\/$/, '')));
     return offlinePage || Response.error();
   }
 }
@@ -150,11 +176,14 @@ async function syncCartUpdates() {
   const remaining = [];
   for (const item of queue) {
     try {
-      await fetch(item.url, {
+      const response = await fetch(item.url, {
         method: item.method,
         headers: item.headers,
         body: item.body,
       });
+      if (!response.ok) {
+        remaining.push(item);
+      }
     } catch {
       remaining.push(item);
     }
@@ -166,36 +195,44 @@ async function syncCartUpdates() {
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(STATIC_CACHE)
-      .then((cache) =>
-        cache.addAll(
-          PRECACHE_URLS.map((url) => new Request(url, { cache: 'reload' }))
-        )
-      )
-      .catch(() => {
-        // Precache failures are non-fatal; continue install
-      })
+    (async () => {
+      const cache = await caches.open(STATIC_CACHE);
+      const requests = PRECACHE_URLS.map((url) => new Request(url, { cache: 'reload' }));
+
+      const results = await Promise.allSettled(
+        requests.map(async (request) => {
+          const response = await fetch(request);
+          if (!response || !response.ok) {
+            throw new Error(`Precache failed for ${request.url} with status ${response && response.status}`);
+          }
+          await cache.put(request, response);
+        })
+      );
+
+      const failed = results.filter((result) => result.status === 'rejected');
+      if (failed.length > 0) {
+        // Partial precache is acceptable; keep install successful.
+        console.warn(`[SW] Precache: ${failed.length} resource(s) failed to cache.`, failed);
+      }
+
+      await self.skipWaiting();
+    })()
   );
-  // Activate immediately without waiting for existing tabs to close
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   const currentCaches = new Set([STATIC_CACHE, API_CACHE, PAGES_CACHE, CART_QUEUE_CACHE]);
   event.waitUntil(
-    caches
-      .keys()
-      .then((cacheNames) =>
-        Promise.all(
-          cacheNames
-            .filter((name) => !currentCaches.has(name))
-            .map((name) => caches.delete(name))
-        )
-      )
+    (async () => {
+      const cacheNames = await caches.keys();
+      await Promise.all(
+        cacheNames
+          .filter((name) => !currentCaches.has(name))
+          .map((name) => caches.delete(name))
+      );
+      await self.clients.claim();
+    })()
   );
-  // Take control of all open clients immediately
-  self.clients.claim();
 });
 
 // ===================== Fetch handler =====================
@@ -252,20 +289,22 @@ self.addEventListener('message', (event) => {
 
   if (event.data.type === 'QUEUE_CART_UPDATE') {
     const { url, method, headers, body } = event.data.payload;
-    getCartSyncQueue()
-      .then((queue) => {
-        queue.push({ url, method, headers, body, timestamp: Date.now() });
-        return saveCartSyncQueue(queue);
-      })
-      .then(() => {
-        // Use Background Sync if available, otherwise attempt immediate sync
-        if ('sync' in self.registration) {
-          return self.registration.sync.register('cart-sync');
-        }
-        return syncCartUpdates();
-      })
-      .catch((err) => {
-        console.warn('[SW] Failed to register cart sync:', err);
-      });
+    event.waitUntil(
+      getCartSyncQueue()
+        .then((queue) => {
+          queue.push({ url, method, headers, body, timestamp: Date.now() });
+          return saveCartSyncQueue(queue);
+        })
+        .then(() => {
+          // Use Background Sync if available, otherwise attempt immediate sync
+          if ('sync' in self.registration) {
+            return self.registration.sync.register('cart-sync');
+          }
+          return syncCartUpdates();
+        })
+        .catch((err) => {
+          console.warn('[SW] Failed to register cart sync:', err);
+        })
+    );
   }
 });

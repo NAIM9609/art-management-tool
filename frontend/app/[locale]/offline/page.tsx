@@ -2,10 +2,30 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useLocale } from 'next-intl';
 
 export default function OfflinePage() {
   const router = useRouter();
+  const locale = useLocale();
   const [isOnline, setIsOnline] = useState<boolean>(false);
+
+  const copy = locale === 'it'
+    ? {
+        title: 'Sei Offline',
+        description:
+          'Sembra che la connessione internet sia assente. Controlla la rete e riprova.',
+        restored: 'Connessione ripristinata! Reindirizzamento…',
+        waiting: 'In attesa di connessione…',
+        tryAgain: 'Riprova',
+      }
+    : {
+        title: "You're Offline",
+        description:
+          "It looks like you've lost your internet connection. Please check your network and try again.",
+        restored: 'Connection restored! Redirecting…',
+        waiting: 'Waiting for connection…',
+        tryAgain: 'Try Again',
+      };
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -47,21 +67,18 @@ export default function OfflinePage() {
           fontFamily: 'var(--font-junglefever)',
         }}
       >
-        You&apos;re Offline
+        {copy.title}
       </h1>
 
       <p style={{ fontSize: '1.1rem', marginBottom: '2rem', opacity: 0.8, maxWidth: '400px' }}>
-        It looks like you&apos;ve lost your internet connection. Please check your network and try
-        again.
+        {copy.description}
       </p>
 
       {isOnline ? (
-        <p style={{ color: '#4ade80', marginBottom: '1rem' }}>
-          ✓ Connection restored! Redirecting…
-        </p>
+        <p style={{ color: '#4ade80', marginBottom: '1rem' }}>{`✓ ${copy.restored}`}</p>
       ) : (
         <p style={{ color: '#facc15', marginBottom: '1rem', fontSize: '0.9rem' }}>
-          Waiting for connection…
+          {copy.waiting}
         </p>
       )}
 
@@ -78,7 +95,7 @@ export default function OfflinePage() {
           marginTop: '0.5rem',
         }}
       >
-        Try Again
+        {copy.tryAgain}
       </button>
     </div>
   );
