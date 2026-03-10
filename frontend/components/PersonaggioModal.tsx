@@ -103,6 +103,7 @@ export default function PersonaggioModal({ visible, onHide, personaggio }: Perso
                                         alt={`${personaggio?.name} - Image ${currentImageIndex + 1}`}
                                         className="w-full h-full"
                                         imgClassName="max-w-full max-h-full object-contain"
+                                        height={500}
                                     />
                                     
                                     {/* Navigazione immagini (frecce) */}

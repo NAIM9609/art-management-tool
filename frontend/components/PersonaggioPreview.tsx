@@ -66,8 +66,6 @@ export default function PersonaggioPreview({ personaggio }: PersonaggioPreviewPr
       <OptimizedImage
         src={item.itemImageSrc}
         alt={item.alt || 'Image'}
-        width={300}
-        height={300}
         imgClassName="w-full object-contain"
         className="w-full"
       />

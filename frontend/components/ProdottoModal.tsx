@@ -114,6 +114,7 @@ export default function ProdottoModal({ visible, onHide, prodotto }: ProdottoMod
                                         alt={currentImage?.alt_text || prodotto?.title || 'Product'}
                                         className="w-full h-full"
                                         imgClassName="max-w-full max-h-full object-contain"
+                                        height={500}
                                     />
                                     
                                     {/* Navigazione immagini (frecce) */}

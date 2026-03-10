@@ -48,6 +48,8 @@ export default function ImageGallery({ images, productTitle = 'Product' }: Image
           alt={currentImage.alt_text || productTitle}
           className="w-full h-full"
           imgClassName="w-full h-full object-contain"
+          width="100%"
+          height="100%"
         />
         
         {displayImages.length > 1 && (
