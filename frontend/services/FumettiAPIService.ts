@@ -24,6 +24,13 @@ export interface FumettiListResponse {
 
 const CACHE_PREFIX = 'fumetti:';
 
+function getAdminCacheTokenKey(): string | null {
+  if (typeof window === 'undefined') return null;
+  const token = localStorage.getItem('adminToken');
+  if (!token) return null;
+  return token.slice(-12);
+}
+
 export class FumettiAPIService {
 
   // GET /api/fumetti - Ottieni tutti i fumetti attivi (public)
@@ -40,7 +47,12 @@ export class FumettiAPIService {
 
   // GET /api/fumetti - Ottieni tutti i fumetti attivi (admin)
   static async getAllFumettiAdmin(): Promise<FumettoDTO[]> {
-    const cacheKey = `${CACHE_PREFIX}all:admin`;
+    const tokenKey = getAdminCacheTokenKey();
+    if (!tokenKey) {
+      throw new Error('Authentication required');
+    }
+
+    const cacheKey = `${CACHE_PREFIX}all:admin:${tokenKey}`;
     const cached = getCached<FumettoDTO[]>(cacheKey);
     if (cached) return cached;
 
@@ -63,7 +75,12 @@ export class FumettiAPIService {
 
   // GET /api/fumetti/{id} - Ottieni un fumetto specifico (admin)
   static async getFumettoAdmin(id: number): Promise<FumettoDTO> {
-    const cacheKey = `${CACHE_PREFIX}${id}:admin`;
+    const tokenKey = getAdminCacheTokenKey();
+    if (!tokenKey) {
+      throw new Error('Authentication required');
+    }
+
+    const cacheKey = `${CACHE_PREFIX}${id}:admin:${tokenKey}`;
     const cached = getCached<FumettoDTO>(cacheKey);
     if (cached) return cached;
 

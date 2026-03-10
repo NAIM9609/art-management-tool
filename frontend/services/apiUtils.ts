@@ -8,6 +8,29 @@ interface CacheEntry<T> {
 }
 
 const apiCache = new Map<string, CacheEntry<unknown>>();
+const CACHE_MAX_ENTRIES = 500;
+
+function pruneExpiredCacheEntries(): void {
+  const now = Date.now();
+  for (const [key, entry] of apiCache.entries()) {
+    if (now > entry.expiresAt) {
+      apiCache.delete(key);
+    }
+  }
+}
+
+function enforceCacheSizeLimit(): void {
+  if (apiCache.size <= CACHE_MAX_ENTRIES) return;
+
+  // Remove oldest entries first (Map preserves insertion order).
+  const overflow = apiCache.size - CACHE_MAX_ENTRIES;
+  let removed = 0;
+  for (const key of apiCache.keys()) {
+    apiCache.delete(key);
+    removed += 1;
+    if (removed >= overflow) break;
+  }
+}
 
 /** TTL constants (milliseconds) */
 export const CACHE_TTL = {
@@ -26,7 +49,9 @@ export function getCached<T>(key: string): T | null {
 }
 
 export function setCached<T>(key: string, data: T, ttlMs: number): void {
+  pruneExpiredCacheEntries();
   apiCache.set(key, { data, expiresAt: Date.now() + ttlMs });
+  enforceCacheSizeLimit();
 }
 
 /** Removes all cache entries whose key starts with the given prefix. */
@@ -52,7 +77,7 @@ function logDev(message: string, data?: unknown): void {
 
 // ==================== Error Handling ====================
 
-async function parseErrorResponse(response: Response): Promise<string> {
+export async function parseErrorResponse(response: Response): Promise<string> {
   try {
     const data = await response.json();
     // Handle Lambda/API Gateway error formats
@@ -81,25 +106,33 @@ function backoffMs(attempt: number): number {
   return Math.pow(2, attempt - 1) * 1000;
 }
 
-async function fetchWithRetry(
+export async function fetchWithRetry(
   url: string,
   options: RequestInit,
   retries = MAX_RETRIES
 ): Promise<Response> {
+  const method = (options.method || 'GET').toUpperCase();
+  const isIdempotent = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     const startTime = Date.now();
     try {
       logDev(
-        `${options.method || 'GET'} ${url}${attempt > 1 ? ` (attempt ${attempt}/${retries})` : ''}`
+        `${method} ${url}${attempt > 1 ? ` (attempt ${attempt}/${retries})` : ''}`
       );
 
       const response = await fetch(url, options);
       const elapsed = Date.now() - startTime;
 
-      logDev(`${options.method || 'GET'} ${url} → ${response.status} (${elapsed}ms)`);
+      logDev(`${method} ${url} → ${response.status} (${elapsed}ms)`);
 
-      // Don't retry on client errors (4xx) or when retries are exhausted
-      if (response.status < 500 || attempt === retries) {
+      // Don't retry on client errors (4xx)
+      if (response.status < 500) {
+        return response;
+      }
+
+      // Avoid retries for non-idempotent methods to prevent duplicate side effects.
+      if (!isIdempotent || attempt === retries) {
         return response;
       }
 
@@ -109,7 +142,11 @@ async function fetchWithRetry(
       await new Promise((resolve) => setTimeout(resolve, delay));
     } catch (error) {
       const elapsed = Date.now() - startTime;
-      logDev(`${options.method || 'GET'} ${url} → network error (${elapsed}ms)`, error);
+      logDev(`${method} ${url} → network error (${elapsed}ms)`, error);
+
+      if (!isIdempotent) {
+        throw error;
+      }
 
       if (attempt === retries) throw error;
 

@@ -3,7 +3,7 @@
  * Handles public shop API interactions (products, cart, checkout)
  */
 
-import { getCached, setCached, CACHE_TTL } from './apiUtils';
+import { getCached, setCached, CACHE_TTL, fetchWithRetry, parseErrorResponse } from './apiUtils';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -197,7 +197,7 @@ class ShopAPIService {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    const method = options.method || 'GET';
+    const method = (options.method || 'GET').toUpperCase();
 
     // Get session token for header fallback
     const sessionToken = this.getSessionToken();
@@ -210,77 +210,30 @@ class ShopAPIService {
       headers['X-Cart-Session'] = sessionToken;
     }
 
-    /** Compute exponential back-off delay: 1 s, 2 s, 4 s … */
-    const backoffMs = (attempt: number) => Math.pow(2, attempt - 1) * 1000;
-
-    const maxRetries = 3;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      const startTime = Date.now();
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(
-          `[ShopAPI] ${method} ${url}${attempt > 1 ? ` (attempt ${attempt}/${maxRetries})` : ''}`
-        );
-      }
-
-      let response: Response;
-      try {
-        response = await fetch(url, {
-          ...options,
-          headers,
-          credentials: 'include',
-        });
-      } catch (networkError) {
-        const elapsed = Date.now() - startTime;
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`[ShopAPI] ${method} ${url} → network error (${elapsed}ms)`);
-        }
-        if (attempt === maxRetries) throw networkError;
-        await new Promise((resolve) => setTimeout(resolve, backoffMs(attempt)));
-        continue;
-      }
-
-      const elapsed = Date.now() - startTime;
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`[ShopAPI] ${method} ${url} → ${response.status} (${elapsed}ms)`);
-      }
-
-      // Retry on 5xx unless retries are exhausted
-      if (response.status >= 500 && attempt < maxRetries) {
-        const delay = backoffMs(attempt);
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`[ShopAPI] Retrying in ${delay}ms (status ${response.status})`);
-        }
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        continue;
-      }
-
-      if (!response.ok) {
-        let errorMessage: string;
-        try {
-          const errorDetails = await response.json();
-          // Handle Lambda/API Gateway error formats
-          errorMessage =
-            errorDetails.error ||
-            errorDetails.message ||
-            errorDetails.errorMessage ||
-            `HTTP ${response.status}`;
-        } catch {
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-
-      // Persist cart session token when returned by the backend
-      if (data && typeof data === 'object' && data.cart && data.cart.session_token) {
-        this.setSessionToken(data.cart.session_token);
-      }
-
-      return data;
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[ShopAPI] ${method} ${url}`);
     }
 
-    throw new Error('Max retries exceeded');
+    const response = await fetchWithRetry(url, {
+      ...options,
+      method,
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorMessage = await parseErrorResponse(response);
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+
+    // Persist cart session token when returned by the backend
+    if (data && typeof data === 'object' && data.cart && data.cart.session_token) {
+      this.setSessionToken(data.cart.session_token);
+    }
+
+    return data;
   }
 
   // ==================== Health Check ====================

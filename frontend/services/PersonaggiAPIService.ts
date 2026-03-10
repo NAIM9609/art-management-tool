@@ -27,6 +27,13 @@ export interface PersonaggiListResponse {
 
 const CACHE_PREFIX = 'personaggi:';
 
+function getAdminCacheTokenKey(): string | null {
+  if (typeof window === 'undefined') return null;
+  const token = localStorage.getItem('adminToken');
+  if (!token) return null;
+  return token.slice(-12);
+}
+
 export class PersonaggiAPIService {
   // GET /api/personaggi - Ottieni tutti i personaggi attivi (public)
   static async getAllPersonaggi(): Promise<PersonaggioDTO[]> {
@@ -42,7 +49,12 @@ export class PersonaggiAPIService {
 
   // GET /api/personaggi - Ottieni tutti i personaggi attivi (admin)
   static async getAllPersonaggiAdmin(): Promise<PersonaggioDTO[]> {
-    const cacheKey = `${CACHE_PREFIX}all:admin`;
+    const tokenKey = getAdminCacheTokenKey();
+    if (!tokenKey) {
+      throw new Error('Authentication required');
+    }
+
+    const cacheKey = `${CACHE_PREFIX}all:admin:${tokenKey}`;
     const cached = getCached<PersonaggioDTO[]>(cacheKey);
     if (cached) return cached;
 
@@ -65,7 +77,12 @@ export class PersonaggiAPIService {
 
   // GET /api/personaggi/{id} - Ottieni un personaggio specifico (admin)
   static async getPersonaggioAdmin(id: number): Promise<PersonaggioDTO> {
-    const cacheKey = `${CACHE_PREFIX}${id}:admin`;
+    const tokenKey = getAdminCacheTokenKey();
+    if (!tokenKey) {
+      throw new Error('Authentication required');
+    }
+
+    const cacheKey = `${CACHE_PREFIX}${id}:admin:${tokenKey}`;
     const cached = getCached<PersonaggioDTO>(cacheKey);
     if (cached) return cached;
 
