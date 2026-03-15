@@ -372,7 +372,7 @@ describe('Input Validation: Oversized and special-character inputs', () => {
     expect(mockListProducts).toHaveBeenCalledWith(expect.anything(), 1, 100);
   });
 
-  it('negative per_page query parameter is normalised and does not crash', async () => {
+  it('negative per_page query parameter is normalized and does not crash', async () => {
     mockListProducts.mockResolvedValueOnce({ products: [], total: 0 });
 
     const result = await listProducts(

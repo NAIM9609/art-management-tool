@@ -174,7 +174,7 @@ describe('Authentication: Admin endpoints require valid JWT', () => {
       expect(result.statusCode).toBe(201);
     });
 
-    it('accepts lowercase "authorization" header (API Gateway normalisation)', async () => {
+    it('accepts lowercase "authorization" header (API Gateway normalization)', async () => {
       mockCreateProduct.mockResolvedValueOnce({
         id: 1,
         title: 'Art',
