@@ -16,7 +16,7 @@ export type MetricRating = 'good' | 'needs-improvement' | 'poor';
 export interface WebVitalMetric {
   name: WebVitalName;
   value: number;
-  rating: MetricRating;
+  rating?: MetricRating;
   navigationType?: string;
   id?: string;
 }
@@ -79,6 +79,8 @@ class PerformanceMonitor {
   private cacheMisses = 0;
   private errorTracking = false;
   private originalConsoleError?: typeof console.error;
+  private windowErrorHandler?: (event: ErrorEvent) => void;
+  private unhandledRejectionHandler?: (event: PromiseRejectionEvent) => void;
 
   // ---------------------------------------------------------------------------
   // Configuration
@@ -173,7 +175,7 @@ class PerformanceMonitor {
       kind: 'custom_metric',
       metric: {
         name: 'cache_hit_rate',
-        value: this.getCacheHitRate(),
+        value: this.getCacheHitRate() * 100,
         unit: 'percent',
         timestamp: Date.now(),
       },
@@ -198,7 +200,7 @@ class PerformanceMonitor {
     if (typeof window === 'undefined' || this.errorTracking) return;
     this.errorTracking = true;
 
-    window.addEventListener('error', (event: ErrorEvent) => {
+    this.windowErrorHandler = (event: ErrorEvent) => {
       this.trackError({
         type: 'uncaught',
         message: event.message || 'Unknown error',
@@ -206,9 +208,10 @@ class PerformanceMonitor {
         url: event.filename,
         timestamp: Date.now(),
       });
-    });
+    };
+    window.addEventListener('error', this.windowErrorHandler);
 
-    window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
+    this.unhandledRejectionHandler = (event: PromiseRejectionEvent) => {
       const reason = event.reason;
       this.trackError({
         type: 'uncaught',
@@ -216,7 +219,8 @@ class PerformanceMonitor {
         stack: reason instanceof Error ? reason.stack : undefined,
         timestamp: Date.now(),
       });
-    });
+    };
+    window.addEventListener('unhandledrejection', this.unhandledRejectionHandler);
 
     // Wrap console.error to capture errors logged this way.
     // The arrow function captures `this` from the enclosing method scope.
@@ -238,6 +242,16 @@ class PerformanceMonitor {
   teardownErrorTracking(): void {
     if (!this.errorTracking) return;
     this.errorTracking = false;
+    if (typeof window !== 'undefined') {
+      if (this.windowErrorHandler) {
+        window.removeEventListener('error', this.windowErrorHandler);
+        this.windowErrorHandler = undefined;
+      }
+      if (this.unhandledRejectionHandler) {
+        window.removeEventListener('unhandledrejection', this.unhandledRejectionHandler);
+        this.unhandledRejectionHandler = undefined;
+      }
+    }
     if (this.originalConsoleError) {
       console.error = this.originalConsoleError;
       this.originalConsoleError = undefined;

@@ -63,7 +63,7 @@ function makeMonitor() {
 describe('PerformanceMonitor.reportWebVital', () => {
   it('sends a web_vital payload with an enriched rating', () => {
     const { monitor, payloads } = makeMonitor();
-    const metric: WebVitalMetric = { name: 'LCP', value: 5000, rating: 'good' };
+    const metric: WebVitalMetric = { name: 'LCP', value: 5000 };
     monitor.reportWebVital(metric);
 
     expect(payloads).toHaveLength(1);
@@ -135,7 +135,7 @@ describe('PerformanceMonitor cache hit rate', () => {
     expect(p.kind).toBe('custom_metric');
     if (p.kind === 'custom_metric') {
       expect(p.metric.name).toBe('cache_hit_rate');
-      expect(p.metric.value).toBeCloseTo(0.5);
+      expect(p.metric.value).toBeCloseTo(50);
       expect(p.metric.unit).toBe('percent');
     }
   });
@@ -209,5 +209,25 @@ describe('PerformanceMonitor.setupErrorTracking / teardownErrorTracking', () => 
     expect(console.error).toBe(wrappedError);
 
     monitor.teardownErrorTracking();
+  });
+
+  it('removes window listeners during teardown', () => {
+    const monitor = new PerformanceMonitor();
+    const addEventListenerSpy = jest.spyOn(window, 'addEventListener');
+    const removeEventListenerSpy = jest.spyOn(window, 'removeEventListener');
+
+    monitor.setupErrorTracking();
+    monitor.teardownErrorTracking();
+
+    expect(addEventListenerSpy).toHaveBeenCalledWith('error', expect.any(Function));
+    expect(addEventListenerSpy).toHaveBeenCalledWith('unhandledrejection', expect.any(Function));
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      'error',
+      addEventListenerSpy.mock.calls.find(([eventName]) => eventName === 'error')?.[1] as EventListener
+    );
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      'unhandledrejection',
+      addEventListenerSpy.mock.calls.find(([eventName]) => eventName === 'unhandledrejection')?.[1] as EventListener
+    );
   });
 });

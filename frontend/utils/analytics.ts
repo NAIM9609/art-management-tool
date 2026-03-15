@@ -63,8 +63,6 @@ export type AnalyticsEvent =
 export interface AnalyticsConfig {
   /** Google Analytics 4 Measurement ID (e.g. "G-XXXXXXXXXX"). Optional. */
   ga4MeasurementId?: string;
-  /** CloudWatch RUM application monitor ID. Optional. */
-  cloudwatchRumAppId?: string;
   /** URL of a custom aggregation endpoint that accepts POST requests. Optional. */
   customEndpointUrl?: string;
 }
