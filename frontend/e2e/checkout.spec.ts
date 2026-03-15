@@ -25,48 +25,22 @@ test.describe('Checkout Flow', () => {
 
   test('back to cart link is visible', async ({ page }) => {
     await page.goto(CHECKOUT_PATH);
-    const backLink = page.locator('a[href*="/cart"]');
+    const backLink = page.getByRole('link', { name: /back to cart/i }).first();
     await expect(backLink).toBeVisible({ timeout: 10000 });
   });
 
   test('enter contact / shipping info', async ({ page }) => {
     await page.goto(CHECKOUT_PATH);
 
-    // Fill in the name field
-    const nameInput = page.locator('input[placeholder*="Nome"], input[name="name"], input[id*="name"]').first();
-    if (await nameInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await nameInput.fill('Mario Rossi');
-    }
+    const nameInput = page.getByPlaceholder(/john doe/i).first();
+    await expect(nameInput).toBeVisible({ timeout: 5000 });
+    await nameInput.fill('Mario Rossi');
+    await expect(nameInput).toHaveValue('Mario Rossi');
 
-    // Fill in the email field
-    const emailInput = page.locator('input[type="email"], input[placeholder*="email"], input[name="email"]').first();
-    if (await emailInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await emailInput.fill('mario.rossi@example.com');
-    }
-
-    // Fill in street address if present
-    const addressInput = page
-      .locator('input[placeholder*="indirizzo"], input[placeholder*="address"], input[name="address"]')
-      .first();
-    if (await addressInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await addressInput.fill('Via Roma 1');
-    }
-
-    // Fill in city if present
-    const cityInput = page
-      .locator('input[placeholder*="città"], input[placeholder*="city"], input[name="city"]')
-      .first();
-    if (await cityInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await cityInput.fill('Milano');
-    }
-
-    // Fill in postal code if present
-    const zipInput = page
-      .locator('input[placeholder*="cap"], input[placeholder*="zip"], input[name="zip"]')
-      .first();
-    if (await zipInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await zipInput.fill('20121');
-    }
+    const emailInput = page.getByPlaceholder(/your@email\.com/i).first();
+    await expect(emailInput).toBeVisible({ timeout: 5000 });
+    await emailInput.fill('mario.rossi@example.com');
+    await expect(emailInput).toHaveValue('mario.rossi@example.com');
   });
 
   test('enter billing info', async ({ page }) => {
@@ -88,27 +62,16 @@ test.describe('Checkout Flow', () => {
     await expect(page).toHaveURL(/checkout/);
   });
 
-  test('select payment method', async ({ page }) => {
+  test('payment options are visible with expected links', async ({ page }) => {
     await page.goto(CHECKOUT_PATH);
 
-    // Look for payment method radio buttons or dropdowns
-    const paymentRadio = page
-      .locator('input[type="radio"][name*="payment"], input[type="radio"][value*="card"]')
-      .first();
+    const etsyLink = page.getByRole('link', { name: /pay with etsy/i });
+    const paypalLink = page.getByRole('link', { name: /pay with paypal/i });
 
-    if (await paymentRadio.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await paymentRadio.check();
-      await expect(paymentRadio).toBeChecked();
-    }
-
-    const paymentDropdown = page.locator('.p-dropdown').first();
-    if (await paymentDropdown.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await paymentDropdown.click();
-      const option = page.locator('.p-dropdown-item').first();
-      if (await option.isVisible()) {
-        await option.click();
-      }
-    }
+    await expect(etsyLink).toBeVisible({ timeout: 5000 });
+    await expect(etsyLink).toHaveAttribute('href', /etsy\.com/);
+    await expect(paypalLink).toBeVisible({ timeout: 5000 });
+    await expect(paypalLink).toHaveAttribute('href', /paypal\.com/);
   });
 
   test('submit checkout form – contact info validation fires', async ({ page }) => {
@@ -137,28 +100,21 @@ test.describe('Checkout Flow', () => {
   test('complete order – form submission with valid data', async ({ page }) => {
     await page.goto(CHECKOUT_PATH);
 
-    // Fill required fields
-    const nameInput = page.locator('input[placeholder*="Nome"], input[name="name"]').first();
-    if (await nameInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await nameInput.fill('Mario Rossi');
-    }
-    const emailInput = page.locator('input[type="email"], input[name="email"]').first();
-    if (await emailInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await emailInput.fill('mario.rossi@example.com');
-    }
+    const nameInput = page.getByPlaceholder(/john doe/i).first();
+    await nameInput.fill('Mario Rossi');
+    const emailInput = page.getByPlaceholder(/your@email\.com/i).first();
+    await emailInput.fill('mario.rossi@example.com');
 
     const submitBtn = page
       .locator('button[type="submit"], button:has-text("Continua"), button:has-text("Procedi"), button:has-text("Conferma")')
       .first();
 
-    if (await submitBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await submitBtn.click();
-      // Either a toast appears or user is navigated to a confirmation page
-      await page.waitForTimeout(1000);
-      await expect(page).toHaveURL(/checkout|conferma|confirmation/, { timeout: 5000 }).catch(() => {
-        // Stayed on checkout – acceptable if backend is not available
-      });
-    }
+    await expect(submitBtn).toBeVisible({ timeout: 5000 });
+    await submitBtn.click();
+
+    const infoToast = page.locator('.p-toast-message-info');
+    await expect(infoToast).toBeVisible({ timeout: 5000 });
+    await expect(infoToast).toContainText(/contact information saved/i);
   });
 
   test('view order confirmation page', async ({ page }) => {

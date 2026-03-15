@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mockShopEntities } from './fixtures/shopCartMocks';
 
 /**
  * E2E tests for the Shop flow.
@@ -9,6 +10,10 @@ import { test, expect } from '@playwright/test';
 const SHOP_PATH = '/it/shop';
 
 test.describe('Shop Flow', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockShopEntities(page);
+  });
+
   test('page loads within 3 seconds', async ({ page }) => {
     const start = Date.now();
     await page.goto(SHOP_PATH);
@@ -19,17 +24,16 @@ test.describe('Shop Flow', () => {
 
   test('browse products – product cards are visible', async ({ page }) => {
     await page.goto(SHOP_PATH);
-    // Wait for loading spinner to disappear
-    await page.waitForSelector('.p-card', { timeout: 10000 });
-    const cards = page.locator('.p-card');
+    await page.waitForLoadState('domcontentloaded');
+
+    const cards = page.locator('main .grid > div.cursor-pointer');
     await expect(cards.first()).toBeVisible();
   });
 
   test('search products', async ({ page }) => {
     await page.goto(SHOP_PATH);
-    // Wait for the search input to appear
-    const searchInput = page.locator('input[placeholder*="cerca"], input[placeholder*="search"], input[type="search"]').first();
-    await searchInput.waitFor({ timeout: 10000 });
+    const searchInput = page.getByPlaceholder(/cerca|search/i).first();
+    await expect(searchInput).toBeVisible({ timeout: 10000 });
     await searchInput.fill('test');
     // Allow the debounce / re-fetch to happen
     await page.waitForTimeout(600);
@@ -39,9 +43,8 @@ test.describe('Shop Flow', () => {
 
   test('filter by category (character)', async ({ page }) => {
     await page.goto(SHOP_PATH);
-    // Wait for the dropdown filter to be available
     const dropdown = page.locator('.p-dropdown').first();
-    await dropdown.waitFor({ timeout: 10000 });
+    await expect(dropdown).toBeVisible({ timeout: 10000 });
     await dropdown.click();
     // Select the first available option in the panel
     const option = page.locator('.p-dropdown-item').first();
@@ -70,19 +73,12 @@ test.describe('Shop Flow', () => {
 
   test('view product details – clicking a product opens detail', async ({ page }) => {
     await page.goto(SHOP_PATH);
-    // Wait for at least one product card
-    const card = page.locator('.p-card').first();
-    await card.waitFor({ timeout: 10000 });
+    const card = page.locator('main .grid > div.cursor-pointer').first();
+    await expect(card).toBeVisible({ timeout: 10000 });
     await card.click();
-    // A modal or detail page should appear
+    // A modal should appear.
     const modal = page.locator('.p-dialog, [role="dialog"]');
-    const isModalVisible = await modal.isVisible().catch(() => false);
-    if (isModalVisible) {
-      await expect(modal).toBeVisible();
-    } else {
-      // May navigate to a detail page instead
-      await expect(page).not.toHaveURL(SHOP_PATH);
-    }
+    await expect(modal).toBeVisible({ timeout: 5000 });
   });
 
   test('navigation between pages is fast', async ({ page }) => {

@@ -8,8 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "jest --runInBand",
-    "test:e2e": "playwright test --config=../playwright.config.ts",
-    "test:e2e:ui": "playwright test --config=../playwright.config.ts --ui"
+    "test:e2e": "playwright test --config=./playwright.config.ts",
+    "test:e2e:ui": "playwright test --config=./playwright.config.ts --ui"
   },
   "dependencies": {
     "chart.js": "^4.5.1",

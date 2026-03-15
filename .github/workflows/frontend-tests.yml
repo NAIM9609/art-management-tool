@@ -5,13 +5,13 @@ on:
     branches: [ main ]
     paths:
       - 'frontend/**'
-      - 'playwright.config.ts'
+      - 'frontend/playwright.config.ts'
       - '.github/workflows/frontend-tests.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'frontend/**'
-      - 'playwright.config.ts'
+      - 'frontend/playwright.config.ts'
       - '.github/workflows/frontend-tests.yml'
 
 env:
@@ -135,14 +135,14 @@ jobs:
         env:
           BASE_URL: http://localhost:3000
           CI: true
-        run: npx playwright test --config=../playwright.config.ts
+        run: npx playwright test --config=./playwright.config.ts
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report/
+          path: frontend/playwright-report/
           retention-days: 7
 
       - name: Upload screenshots and videos on failure
@@ -150,5 +150,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-artifacts
-          path: test-results/
+          path: frontend/test-results/
           retention-days: 7
