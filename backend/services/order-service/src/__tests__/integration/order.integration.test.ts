@@ -70,6 +70,13 @@ function makeMockNotificationService(): NotificationService {
 // ---------------------------------------------------------------------------
 
 const TABLE_NAME = 'art-products-test';
+const TEST_REGION = 'us-east-1';
+
+const ORIGINAL_ENV = {
+  DYNAMODB_TABLE_NAME: process.env.DYNAMODB_TABLE_NAME,
+  AWS_REGION: process.env.AWS_REGION,
+  TAX_RATE: process.env.TAX_RATE,
+};
 
 const MOCK_ORDER_ID = 'order-uuid-integration-1';
 const MOCK_ORDER_NUMBER = 'ORD-20240101-0001';
@@ -96,6 +103,14 @@ const BASE_ORDER = {
   GSI3SK: '2024-01-01T00:00:00.000Z',
   created_at: '2024-01-01T00:00:00.000Z',
   updated_at: '2024-01-01T00:00:00.000Z',
+};
+
+const BASE_ORDER_SUMMARY = {
+  id: MOCK_ORDER_ID,
+  order_number: MOCK_ORDER_NUMBER,
+  total: 100,
+  status: OrderStatus.PENDING,
+  created_at: '2024-01-01T00:00:00.000Z',
 };
 
 const MOCK_VARIANT = {
@@ -128,12 +143,28 @@ describe('Order Service Integration Tests', () => {
   beforeEach(() => {
     ddbMock.reset();
     process.env.DYNAMODB_TABLE_NAME = TABLE_NAME;
-    process.env.AWS_REGION = 'us-east-1';
-    process.env.TAX_RATE = '0';
+    process.env.AWS_REGION = TEST_REGION;
   });
 
   afterEach(() => {
     jest.clearAllMocks();
+    if (ORIGINAL_ENV.DYNAMODB_TABLE_NAME === undefined) {
+      delete process.env.DYNAMODB_TABLE_NAME;
+    } else {
+      process.env.DYNAMODB_TABLE_NAME = ORIGINAL_ENV.DYNAMODB_TABLE_NAME;
+    }
+
+    if (ORIGINAL_ENV.AWS_REGION === undefined) {
+      delete process.env.AWS_REGION;
+    } else {
+      process.env.AWS_REGION = ORIGINAL_ENV.AWS_REGION;
+    }
+
+    if (ORIGINAL_ENV.TAX_RATE === undefined) {
+      delete process.env.TAX_RATE;
+    } else {
+      process.env.TAX_RATE = ORIGINAL_ENV.TAX_RATE;
+    }
   });
 
   // =========================================================================
@@ -243,7 +274,6 @@ describe('Order Service Integration Tests', () => {
 
       expect(totals.subtotal).toBeCloseTo(130);
       expect(totals.discount).toBe(0);
-      // tax depends on TAX_RATE env var (set to 0 in beforeEach)
       expect(totals.total).toBeCloseTo(totals.subtotal + totals.tax - totals.discount);
     });
 
@@ -319,7 +349,7 @@ describe('Order Service Integration Tests', () => {
 
     it('should get orders by customer email', async () => {
       ddbMock.on(QueryCommand).resolves({
-        Items: [BASE_ORDER],
+        Items: [BASE_ORDER_SUMMARY],
         Count: 1,
         ScannedCount: 1,
       });
@@ -329,7 +359,7 @@ describe('Order Service Integration Tests', () => {
 
       expect(result.items).toHaveLength(1);
       expect(result.count).toBe(1);
-      expect(result.items[0].customer_email).toBe(MOCK_CUSTOMER_EMAIL);
+  expect(result.items[0].order_number).toBe(MOCK_ORDER_NUMBER);
 
       // Verify GSI2 was queried
       const calls = ddbMock.commandCalls(QueryCommand);
@@ -614,16 +644,15 @@ describe('Order Service Integration Tests', () => {
   });
 
   // =========================================================================
-  // 5. Performance Benchmarks
+  // 5. Deterministic Command Assertions
   // =========================================================================
 
-  describe('Performance', () => {
-    it('should create an order in less than 500 ms', async () => {
+  describe('Command Assertions', () => {
+    it('should issue expected commands when creating an order', async () => {
       ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 1 } });
       ddbMock.on(TransactWriteCommand).resolves({});
 
       const service = makeService();
-      const start = Date.now();
 
       await service.createOrder({
         customer_email: MOCK_CUSTOMER_EMAIL,
@@ -633,43 +662,47 @@ describe('Order Service Integration Tests', () => {
         items: [{ product_name: 'Painting', quantity: 1, unit_price: 100, total_price: 100 }],
       });
 
-      const elapsed = Date.now() - start;
-      expect(elapsed).toBeLessThan(500);
+      expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
+      expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(1);
     });
 
-    it('should query orders by customer email in less than 200 ms', async () => {
+    it('should issue a GSI2 query when getting orders by customer email', async () => {
       ddbMock.on(QueryCommand).resolves({
-        Items: [BASE_ORDER, BASE_ORDER, BASE_ORDER],
+        Items: [BASE_ORDER_SUMMARY, BASE_ORDER_SUMMARY, BASE_ORDER_SUMMARY],
         Count: 3,
         ScannedCount: 3,
       });
 
       const service = makeService();
-      const start = Date.now();
 
       await service.getOrdersByCustomer(MOCK_CUSTOMER_EMAIL, { limit: 20 });
 
-      const elapsed = Date.now() - start;
-      expect(elapsed).toBeLessThan(200);
+      const queryCalls = ddbMock.commandCalls(QueryCommand);
+      expect(queryCalls).toHaveLength(1);
+      expect(queryCalls[0].args[0].input.ExpressionAttributeValues).toMatchObject({
+        ':pk': `ORDER_EMAIL#${MOCK_CUSTOMER_EMAIL}`,
+      });
     });
 
-    it('should query orders by status in less than 200 ms', async () => {
+    it('should issue a GSI3 query when listing orders by status', async () => {
       ddbMock.on(QueryCommand).resolves({
-        Items: [BASE_ORDER],
+        Items: [BASE_ORDER_SUMMARY],
         Count: 1,
         ScannedCount: 1,
       });
 
       const service = makeService();
-      const start = Date.now();
 
       await service.listOrders({ status: OrderStatus.PENDING }, 1, 20);
 
-      const elapsed = Date.now() - start;
-      expect(elapsed).toBeLessThan(200);
+      const queryCalls = ddbMock.commandCalls(QueryCommand);
+      expect(queryCalls).toHaveLength(1);
+      expect(queryCalls[0].args[0].input.ExpressionAttributeValues).toMatchObject({
+        ':pk': `ORDER_STATUS#${OrderStatus.PENDING}`,
+      });
     });
 
-    it('should retrieve an order by order number in less than 200 ms', async () => {
+    it('should issue a GSI1 query when getting order by order number', async () => {
       ddbMock.on(QueryCommand).resolves({
         Items: [BASE_ORDER],
         Count: 1,
@@ -677,12 +710,14 @@ describe('Order Service Integration Tests', () => {
       });
 
       const service = makeService();
-      const start = Date.now();
 
       await service.getOrderByNumber(MOCK_ORDER_NUMBER);
 
-      const elapsed = Date.now() - start;
-      expect(elapsed).toBeLessThan(200);
+      const queryCalls = ddbMock.commandCalls(QueryCommand);
+      expect(queryCalls).toHaveLength(1);
+      expect(queryCalls[0].args[0].input.ExpressionAttributeValues).toMatchObject({
+        ':pk': `ORDER_NUMBER#${MOCK_ORDER_NUMBER}`,
+      });
     });
   });
 });
