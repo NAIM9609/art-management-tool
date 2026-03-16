@@ -15,9 +15,9 @@ on:
         default: 'staging'
         type: choice
         options:
-          - development
+          - dev
           - staging
-          - production
+          - prod
 
 env:
   NODE_VERSION: '20'
@@ -31,12 +31,12 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy Integration Service (${{ github.event_name == 'push' && 'development' || inputs.environment }})
+    name: Deploy Integration Service (${{ github.event_name == 'push' && 'dev' || inputs.environment }})
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'push' && 'development' || inputs.environment }}
+    environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
 
     env:
-      DEPLOY_ENV: ${{ github.event_name == 'push' && 'development' || inputs.environment }}
+      DEPLOY_ENV: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
 
     steps:
       - name: Checkout code
@@ -94,15 +94,25 @@ jobs:
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-webhook"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-scheduled-sync"
           )
+          set +e
+          FAILED=0
+          ANY_UPDATED=false
           for FN in "${FUNCTIONS[@]}"; do
             echo "Updating ${FN}..."
-            aws lambda update-function-code \
+            if aws lambda update-function-code \
               --function-name "$FN" \
               --s3-bucket "${{ secrets.LAMBDA_BUCKET }}" \
               --s3-key "${{ env.S3_KEY }}" \
-              --no-cli-pager
-            aws lambda wait function-updated --function-name "$FN"
+              --no-cli-pager; then
+              aws lambda wait function-updated --function-name "$FN"
+              ANY_UPDATED=true
+            else
+              echo "::error::Failed to update ${FN}"
+              FAILED=1
+            fi
           done
+          echo "any_updated=${ANY_UPDATED}" >> $GITHUB_OUTPUT
+          exit $FAILED
 
       - name: Run smoke tests
         id: smoke_test
@@ -115,14 +125,15 @@ jobs:
           echo "Running smoke tests against ${API_URL}..."
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             "${API_URL}/api/integrations/etsy/auth" || echo "000")
-          if [ "${HTTP_STATUS:0:1}" = "5" ] || [ "$HTTP_STATUS" = "000" ]; then
+          FIRST_DIGIT="${HTTP_STATUS:0:1}"
+          if [ "$HTTP_STATUS" = "000" ] || ([ "$FIRST_DIGIT" != "2" ] && [ "$FIRST_DIGIT" != "3" ]); then
             echo "Smoke test failed: HTTP ${HTTP_STATUS}"
             exit 1
           fi
           echo "Smoke test passed: HTTP ${HTTP_STATUS}"
 
       - name: Rollback on failure
-        if: failure() && steps.update_lambda.outcome == 'success'
+        if: failure() && steps.update_lambda.outputs.any_updated == 'true'
         run: |
           echo "Rolling back due to failure..."
           PREV_S3_KEY="${{ env.SERVICE_NAME }}/${{ env.DEPLOY_ENV }}/previous.zip"

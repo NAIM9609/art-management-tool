@@ -9,9 +9,9 @@ on:
         default: 'staging'
         type: choice
         options:
-          - development
+          - dev
           - staging
-          - production
+          - prod
       action:
         description: 'Terraform action'
         required: true
