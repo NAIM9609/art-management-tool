@@ -287,6 +287,40 @@ describe('CartRepository', () => {
 
       expect(cart).toBeNull();
     });
+
+    it('should remove persisted discount fields when explicitly cleared', async () => {
+      const mockUpdatedCart = {
+        PK: 'CART#test-id',
+        SK: 'METADATA',
+        id: 'test-id',
+        session_id: 'test-session',
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-02T00:00:00.000Z',
+        expires_at: 1704153600,
+      };
+
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: mockUpdatedCart,
+      });
+
+      const cart = await repository.update('test-id', {
+        discount_code: undefined,
+        discount_amount: undefined,
+      });
+
+      expect(cart?.discount_code).toBeUndefined();
+      expect(cart?.discount_amount).toBeUndefined();
+      expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
+
+      const updateInput = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+      expect(updateInput.UpdateExpression).toContain('REMOVE');
+      expect(updateInput.ExpressionAttributeNames).toEqual(
+        expect.objectContaining({
+          '#upd2': 'discount_code',
+          '#upd3': 'discount_amount',
+        })
+      );
+    });
   });
 
   describe('delete', () => {
