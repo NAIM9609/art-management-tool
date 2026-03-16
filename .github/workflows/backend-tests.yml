@@ -60,6 +60,7 @@ jobs:
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
         if: always()
+        continue-on-error: true
         with:
           directory: backend/coverage
           flags: backend-unit

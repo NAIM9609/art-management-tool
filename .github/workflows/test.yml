@@ -106,6 +106,7 @@ jobs:
           directory: backend/coverage
           flags: unit
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-tests:
     name: Integration Tests

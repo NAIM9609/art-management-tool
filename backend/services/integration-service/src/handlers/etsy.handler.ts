@@ -49,6 +49,21 @@ function getEtsyConfig() {
   };
 }
 
+function getRuntimeEnvironment(): string {
+  return (process.env.NODE_ENV || process.env.ENVIRONMENT || '').toLowerCase();
+}
+
+function isDevelopmentLikeEnvironment(): boolean {
+  const runtimeEnvironment = getRuntimeEnvironment();
+  return runtimeEnvironment === 'development'
+    || runtimeEnvironment === 'dev'
+    || runtimeEnvironment === 'test';
+}
+
+function isMissingEtsyCredentialsError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('No Etsy credentials found for shop');
+}
+
 class IntegrationError extends Error {
   public readonly statusCode: number;
 
@@ -567,9 +582,7 @@ export async function handleWebhook(event: APIGatewayProxyEvent): Promise<APIGat
       '';
 
     const rawBody = event.body || '';
-
-    const nodeEnv = (process.env.NODE_ENV || '').toLowerCase();
-    const isDevOrTestEnv = nodeEnv === 'development' || nodeEnv === 'dev' || nodeEnv === 'test';
+    const isDevOrTestEnv = isDevelopmentLikeEnvironment();
 
     if (!config.webhookSecret) {
       if (!isDevOrTestEnv) {
@@ -682,6 +695,13 @@ export async function scheduledSync(event: ScheduledEvent): Promise<void> {
       );
       console.log(`[integration-service] Orders synced for shop ${shopId}`);
     } catch (err) {
+      if (isMissingEtsyCredentialsError(err)) {
+        console.warn(
+          `[integration-service] Skipping scheduled sync for shop ${shopId}: OAuth is not connected.`
+        );
+        continue;
+      }
+
       // Log but continue with remaining shops
       console.error(`[integration-service] Scheduled sync failed for shop ${shopId}:`, err);
     }
