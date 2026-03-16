@@ -42,12 +42,14 @@ const getOrderLatency = new Trend('order_get_latency', true);
 const createOrderLatency = new Trend('order_create_latency', true);
 const errorRate = new Rate('order_error_rate');
 const totalRequests = new Counter('order_total_requests');
+const createdOrders = new Counter('order_created_total');
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
-const API_PREFIX = `${BASE_URL}/api/orders`;
+const CUSTOMER_API_PREFIX = `${BASE_URL}/api/orders`;
+const ADMIN_API_PREFIX = `${BASE_URL}/api/admin/orders`;
 
 // An authenticated JWT is required for order operations.
 // Use the demo token in local/staging environments.
@@ -63,9 +65,6 @@ const authParams = defaultParams({ Authorization: `Bearer ${AUTH_TOKEN}` });
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
-
-/** Order statuses used when filtering list requests. */
-const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
 
 /** Minimal payload for creating a test order. */
 function buildOrderPayload() {
@@ -97,17 +96,20 @@ function buildOrderPayload() {
 // Per-VU state (k6 VUs run in isolated JS contexts, so module-level variables
 // are not shared between VUs – only within a single VU across its iterations).
 // ---------------------------------------------------------------------------
-let createdOrderIds = [];
+let createdOrderNumbers = [];
 
 // ---------------------------------------------------------------------------
 // Setup – confirm API is reachable before the test begins
 // ---------------------------------------------------------------------------
 export function setup() {
-  const res = http.get(`${API_PREFIX}?limit=1`, authParams);
+  const res = http.get(`${ADMIN_API_PREFIX}?per_page=1&page=1`, authParams);
   if (res.status !== 200 && res.status !== 403) {
     console.warn(`[setup] Order API returned status ${res.status}. Proceeding anyway.`);
   }
-  return { baseUrl: API_PREFIX };
+  return {
+    customerBaseUrl: CUSTOMER_API_PREFIX,
+    adminBaseUrl: ADMIN_API_PREFIX,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -117,10 +119,10 @@ export default function (data) {
   group('Order Service – Read operations', () => {
 
     // ── 1. List orders ────────────────────────────────────────────────────
-    group('GET /api/orders', () => {
-      const status = pick(ORDER_STATUSES);
+    group('GET /api/admin/orders', () => {
+      const page = Math.floor(Math.random() * 5) + 1;
       const res = http.get(
-        `${data.baseUrl}?limit=10&status=${status}`,
+        `${data.adminBaseUrl}?per_page=10&page=${page}`,
         { ...authParams, tags: ORDER_TAGS },
       );
 
@@ -138,13 +140,13 @@ export default function (data) {
     sleep(0.5);
 
     // ── 2. Get specific order (may 404 – that is fine for load testing) ───
-    group('GET /api/orders/{id}', () => {
-      const orderId = createdOrderIds.length > 0
-        ? pick(createdOrderIds)
-        : 'nonexistent-order-id';
+    group('GET /api/orders/{orderNumber}', () => {
+      const orderNumber = createdOrderNumbers.length > 0
+        ? pick(createdOrderNumbers)
+        : 'ORD-20990101-9999';
 
       const res = http.get(
-        `${data.baseUrl}/${orderId}`,
+        `${data.customerBaseUrl}/${orderNumber}`,
         { ...authParams, tags: ORDER_TAGS },
       );
 
@@ -169,7 +171,7 @@ export default function (data) {
       group('POST /api/orders', () => {
         const payload = buildOrderPayload();
         const res = http.post(
-          data.baseUrl,
+          data.customerBaseUrl,
           JSON.stringify(payload),
           { ...authParams, tags: ORDER_TAGS },
         );
@@ -185,16 +187,17 @@ export default function (data) {
 
         errorRate.add(!ok);
 
-        // Track created order IDs so subsequent GET iterations are realistic.
+        // Track created order numbers so subsequent GET iterations are realistic.
         if (res.status === 201) {
           try {
             const body = JSON.parse(res.body);
-            const orderId = body.id || (body.data && body.data.id);
-            if (orderId) {
-              createdOrderIds.push(orderId);
+            const orderNumber = body.order && body.order.order_number;
+            if (orderNumber) {
+              createdOrderNumbers.push(orderNumber);
+              createdOrders.add(1);
               // Cap the list to avoid unbounded memory growth.
-              if (createdOrderIds.length > 100) {
-                createdOrderIds = createdOrderIds.slice(-100);
+              if (createdOrderNumbers.length > 100) {
+                createdOrderNumbers = createdOrderNumbers.slice(-100);
               }
             }
           } catch {
@@ -212,9 +215,7 @@ export default function (data) {
 // Teardown – log a summary
 // ---------------------------------------------------------------------------
 export function teardown(data) {
-  console.log(
-    `[teardown] Order load test complete. Created ${createdOrderIds.length} orders during the run.`,
-  );
+  console.log(`[teardown] Order load test complete. Base URL: ${data.customerBaseUrl}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -227,12 +228,15 @@ export function handleSummary(summary) {
     summary.metrics['order_error_rate'].values['rate'];
   const reqs = summary.metrics['order_total_requests'] &&
     summary.metrics['order_total_requests'].values['count'];
+  const created = summary.metrics['order_created_total'] &&
+    summary.metrics['order_created_total'].values['count'];
 
   console.log('');
   console.log('════════════════════════════════════════');
   console.log('  ORDER SERVICE – LOAD TEST SUMMARY     ');
   console.log('════════════════════════════════════════');
   console.log(`  Total requests  : ${reqs || 'n/a'}`);
+  console.log(`  Orders created  : ${created || 0}`);
   console.log(`  p(95) latency   : ${p95 ? p95.toFixed(1) + ' ms' : 'n/a'}`);
   console.log(`  Error rate      : ${errRate !== undefined ? (errRate * 100).toFixed(2) + ' %' : 'n/a'}`);
   console.log('');

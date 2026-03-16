@@ -30,7 +30,7 @@ export const FREE_TIER = {
 // ---------------------------------------------------------------------------
 
 /**
- * Build the four canonical test scenarios for a given service.
+ * Build the three canonical test scenarios for a given service.
  *
  * @param {object} params
  * @param {number} params.maxVUs          - Maximum virtual-user count.
@@ -47,6 +47,14 @@ export function makeScenarios({
   soakVUs = Math.ceil(maxVUs / 2),
   soakSeconds = 3600,
 }) {
+  const rampDownSeconds = 30;
+  const spikeRampUpSeconds = 1;
+  const spikeHoldSeconds = 60;
+  const spikeRampDownSeconds = 30;
+
+  const rampScenarioDuration = rampUpSeconds + sustainSeconds + rampDownSeconds;
+  const spikeScenarioDuration = spikeRampUpSeconds + spikeHoldSeconds + spikeRampDownSeconds;
+
   return {
     /**
      * Gradual ramp-up: 0 → maxVUs over rampUpSeconds, then hold for sustainSeconds.
@@ -57,7 +65,7 @@ export function makeScenarios({
       stages: [
         { duration: `${rampUpSeconds}s`, target: maxVUs },
         { duration: `${sustainSeconds}s`, target: maxVUs },
-        { duration: '30s', target: 0 },
+        { duration: `${rampDownSeconds}s`, target: 0 },
       ],
       gracefulRampDown: '10s',
       tags: { scenario: 'ramp_up' },
@@ -70,12 +78,12 @@ export function makeScenarios({
       executor: 'ramping-vus',
       startVUs: 0,
       stages: [
-        { duration: '10s', target: maxVUs * 5 },
-        { duration: '60s', target: maxVUs * 5 },
-        { duration: '30s', target: 0 },
+        { duration: `${spikeRampUpSeconds}s`, target: maxVUs * 5 },
+        { duration: `${spikeHoldSeconds}s`, target: maxVUs * 5 },
+        { duration: `${spikeRampDownSeconds}s`, target: 0 },
       ],
       gracefulRampDown: '10s',
-      startTime: `${rampUpSeconds + sustainSeconds + 60}s`,
+      startTime: `${rampScenarioDuration}s`,
       tags: { scenario: 'spike' },
     },
 
@@ -90,7 +98,7 @@ export function makeScenarios({
         { duration: '60s', target: 0 },
       ],
       gracefulRampDown: '30s',
-      startTime: `${rampUpSeconds + sustainSeconds + 200}s`,
+      startTime: `${rampScenarioDuration + spikeScenarioDuration}s`,
       tags: { scenario: 'soak' },
     },
   };
@@ -103,7 +111,7 @@ export function makeScenarios({
 /**
  * Product Service k6 options.
  *  - 100 VUs, ~1 000 req/min
- *  - p(95) < 500 ms, 0 % errors
+ *  - p(95) < 500 ms, < 1 % errors
  */
 export const productOptions = {
   scenarios: makeScenarios({ maxVUs: 100 }),
@@ -117,7 +125,7 @@ export const productOptions = {
 /**
  * Order Service k6 options.
  *  - 50 VUs, ~500 req/min
- *  - p(95) < 1 000 ms, 0 % errors
+ *  - p(95) < 1 000 ms, < 1 % errors
  */
 export const orderOptions = {
   scenarios: makeScenarios({ maxVUs: 50 }),
@@ -131,7 +139,7 @@ export const orderOptions = {
 /**
  * Cart Service k6 options.
  *  - 200 VUs, ~2 000 req/min
- *  - p(95) < 300 ms, 0 % errors
+ *  - p(95) < 300 ms, < 1 % errors
  */
 export const cartOptions = {
   scenarios: makeScenarios({ maxVUs: 200 }),

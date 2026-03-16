@@ -63,13 +63,11 @@ const AUTH_TOKEN = __ENV.AUTH_TOKEN || '';
 // ---------------------------------------------------------------------------
 
 /**
- * Generate a unique session ID for each virtual user iteration.
- * k6 evaluates this once per call site – calling it at the start of a VU
- * iteration and reusing the result ensures the same session ID is used for
- * all requests within that iteration.
+ * Generate a stable session ID per virtual user.
+ * This keeps one cart session tied to each VU across iterations.
  */
 function newSessionId() {
-  return `load-test-vu${__VU}-iter${__ITER}`;
+  return `load-test-vu${__VU}`;
 }
 
 /** Build request params with a session header (and optional auth token). */

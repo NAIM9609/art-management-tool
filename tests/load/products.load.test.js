@@ -75,7 +75,7 @@ function pick(arr) {
 // Setup – confirm API is reachable before the test begins
 // ---------------------------------------------------------------------------
 export function setup() {
-  const res = http.get(`${API_PREFIX}?limit=1`, params);
+  const res = http.get(`${API_PREFIX}?per_page=1&page=1`, params);
   if (res.status !== 200) {
     console.warn(`[setup] Product API returned status ${res.status}. Proceeding anyway.`);
   }
@@ -91,7 +91,7 @@ export default function (data) {
     // ── 1. List products (public, cacheable) ──────────────────────────────
     group('GET /api/products', () => {
       const res = http.get(
-        `${data.baseUrl}?limit=20&status=active`,
+        `${data.baseUrl}?per_page=20&status=active`,
         { ...params, tags: PRODUCT_TAGS },
       );
 
@@ -141,7 +141,7 @@ export default function (data) {
     group('GET /api/products – paginated', () => {
       const page = Math.floor(Math.random() * 5) + 1;
       const res = http.get(
-        `${data.baseUrl}?limit=10&page=${page}`,
+        `${data.baseUrl}?per_page=10&page=${page}`,
         { ...params, tags: PRODUCT_TAGS },
       );
 
