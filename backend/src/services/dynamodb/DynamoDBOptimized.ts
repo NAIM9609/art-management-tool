@@ -454,12 +454,16 @@ export class DynamoDBOptimized {
    */
   async update<T = any>(params: UpdateParams): Promise<DynamoDBResponse<T | null>> {
     // Validate updates are provided
-    if (!params.updates || Object.keys(params.updates).length === 0) {
+    const hasUpdates = Boolean(params.updates && Object.keys(params.updates).length > 0);
+    const hasRemovals = Boolean(params.removeAttributes && params.removeAttributes.length > 0);
+
+    if (!hasUpdates && !hasRemovals) {
       throw new Error('Update operation requires at least one attribute to update.');
     }
 
     // Build update expression
     const updateParts: string[] = [];
+    const removeParts: string[] = [];
     const expressionAttributeNames: Record<string, string> = { 
       ...params.expressionAttributeNames 
     };
@@ -473,21 +477,40 @@ export class DynamoDBOptimized {
       attrIndex++;
     }
 
-    Object.entries(params.updates).forEach(([key, value]) => {
-      const nameKey = `#upd${attrIndex}`;
-      const valueKey = `:upd${attrIndex}`;
-      expressionAttributeNames[nameKey] = key;
-      expressionAttributeValues[valueKey] = value;
-      updateParts.push(`${nameKey} = ${valueKey}`);
-      attrIndex++;
-    });
+    if (hasUpdates) {
+      Object.entries(params.updates).forEach(([key, value]) => {
+        const nameKey = `#upd${attrIndex}`;
+        const valueKey = `:upd${attrIndex}`;
+        expressionAttributeNames[nameKey] = key;
+        expressionAttributeValues[valueKey] = value;
+        updateParts.push(`${nameKey} = ${valueKey}`);
+        attrIndex++;
+      });
+    }
+
+    if (hasRemovals) {
+      params.removeAttributes!.forEach((attribute) => {
+        const nameKey = `#upd${attrIndex}`;
+        expressionAttributeNames[nameKey] = attribute;
+        removeParts.push(nameKey);
+        attrIndex++;
+      });
+    }
+
+    const expressionParts: string[] = [];
+    if (updateParts.length > 0) {
+      expressionParts.push(`SET ${updateParts.join(', ')}`);
+    }
+    if (removeParts.length > 0) {
+      expressionParts.push(`REMOVE ${removeParts.join(', ')}`);
+    }
 
     const input: UpdateCommandInput = {
       TableName: this.tableName,
       Key: params.key,
-      UpdateExpression: `SET ${updateParts.join(', ')}`,
+      UpdateExpression: expressionParts.join(' '),
       ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: expressionAttributeValues,
+      ExpressionAttributeValues: Object.keys(expressionAttributeValues).length > 0 ? expressionAttributeValues : undefined,
       ConditionExpression: params.conditionExpression,
       ReturnValues: params.returnValues || 'ALL_NEW',
       ReturnConsumedCapacity: this.returnConsumedCapacity,
@@ -599,10 +622,10 @@ export class DynamoDBOptimized {
       ReturnConsumedCapacity: this.returnConsumedCapacity,
     };
 
-    const result = await this.executeWithRetry(
+    const result = (await this.executeWithRetry(
       async () => this.client.send(new PutCommand(input)),
       'put'
-    );
+    )) ?? {};
 
     // Log consumed capacity
     CapacityLogger.logConsumedCapacity('Put', result.ConsumedCapacity);
