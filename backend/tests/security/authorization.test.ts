@@ -281,7 +281,7 @@ describe('Authorization: Cart endpoint session ownership', () => {
   it('GET /api/cart is accessible to guests (auto-generates a session)', async () => {
     mockGetOrCreateCart.mockResolvedValueOnce(MOCK_CART);
     mockGetCartItems.mockResolvedValueOnce([]);
-    mockCalculateTotals.mockResolvedValueOnce({ subtotal: 0, tax: 0, total: 0, discount_amount: 0 });
+    mockCalculateTotals.mockResolvedValueOnce({ subtotal: 0, tax: 0, total: 0, discount: 0 });
 
     const result = await getCart(makeEvent({ headers: {} }));
 
@@ -292,7 +292,7 @@ describe('Authorization: Cart endpoint session ownership', () => {
   it('GET /api/cart succeeds with a valid session header', async () => {
     mockGetOrCreateCart.mockResolvedValueOnce(MOCK_CART);
     mockGetCartItems.mockResolvedValueOnce([]);
-    mockCalculateTotals.mockResolvedValueOnce({ subtotal: 0, tax: 0, total: 0, discount_amount: 0 });
+    mockCalculateTotals.mockResolvedValueOnce({ subtotal: 0, tax: 0, total: 0, discount: 0 });
 
     const result = await getCart(
       makeEvent({ headers: { 'x-cart-session': 'sess-abc' } })
@@ -311,7 +311,7 @@ describe('Authorization: Cart endpoint session ownership', () => {
       .mockResolvedValueOnce(userCart)   // user cart
       .mockResolvedValueOnce(userCart);  // session cart (same id → no merge)
     mockGetCartItems.mockResolvedValueOnce([]);
-    mockCalculateTotals.mockResolvedValueOnce({ subtotal: 0, tax: 0, total: 0, discount_amount: 0 });
+    mockCalculateTotals.mockResolvedValueOnce({ subtotal: 0, tax: 0, total: 0, discount: 0 });
 
     const result = await getCart(
       makeEvent({ headers: { Authorization: `Bearer ${makeUserToken(42)}` } })
