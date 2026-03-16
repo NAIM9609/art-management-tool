@@ -23,7 +23,6 @@ import {
   GetCommand,
   PutCommand,
   UpdateCommand,
-  BatchWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import jwt from 'jsonwebtoken';
 
@@ -482,12 +481,11 @@ describe('Variant Integration Tests', () => {
     });
   });
 
-  // ── Batch Create Variants ──────────────────────────────────────────────────
+  // ── Parallel Variant Operations ────────────────────────────────────────────
 
-  describe('Batch create variants (via createProduct flow)', () => {
-    it('batch-creates multiple variants in a single request', async () => {
+  describe('Parallel variant operations', () => {
+    it('creates multiple variants via parallel createVariant requests', async () => {
       ddbMock.on(PutCommand).resolves({});
-      ddbMock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
       ddbMock.on(QueryCommand).resolves({ Items: [], Count: 0, ScannedCount: 0 });
 
       const variants = Array.from({ length: 5 }, (_, i) => ({
@@ -497,8 +495,6 @@ describe('Variant Integration Tests', () => {
         price_adjustment: 0,
       }));
 
-      // Use ProductService.addVariant via the createVariant handler to simulate
-      // individual batch-like creates in parallel
       ddbMock.on(PutCommand).resolves({});
 
       const results = await Promise.all(
@@ -518,34 +514,47 @@ describe('Variant Integration Tests', () => {
       expect(created).toHaveLength(5);
     });
 
-    it('handles concurrent stock updates safely', async () => {
-      // Each stock update is independent; they should all succeed
-      let callCount = 0;
+    it('returns 200 for every concurrent stock update and echoes the requested quantity', async () => {
       ddbMock.on(QueryCommand).callsFake(() => {
-        callCount++;
         return Promise.resolve({ Items: [VARIANT_ITEM], Count: 1, ScannedCount: 1 });
       });
-      ddbMock.on(UpdateCommand).callsFake((_input) => {
-        const updatedStock = Math.floor(Math.random() * 100);
+
+      const requestedQuantities = Array.from({ length: 10 }, (_, i) => i * 5);
+      ddbMock.on(UpdateCommand).callsFake((input: { ExpressionAttributeValues?: Record<string, unknown> }) => {
+        const stock = input.ExpressionAttributeValues?.[':upd1'];
+
         return Promise.resolve({
-          Attributes: { ...VARIANT_ITEM, stock: updatedStock, updated_at: new Date().toISOString() },
+          Attributes: {
+            ...VARIANT_ITEM,
+            stock: typeof stock === 'number' ? stock : VARIANT_ITEM.stock,
+            updated_at: new Date().toISOString(),
+          },
         });
       });
 
-      const updates = Array.from({ length: 10 }, (_, i) =>
+      const updates = requestedQuantities.map(quantity =>
         updateStock(
           makeEvent({
             httpMethod: 'PATCH',
             headers: ADMIN_HEADERS,
             pathParameters: { id: 'variant-uuid-001' },
-            body: JSON.stringify({ quantity: i * 5 }),
+            body: JSON.stringify({ quantity }),
           })
         )
       );
 
       const results = await Promise.all(updates);
-      const successes = results.filter(r => r.statusCode === 200);
-      expect(successes.length).toBeGreaterThan(0);
+      expect(results).toHaveLength(requestedQuantities.length);
+
+      results.forEach(result => {
+        expect(result.statusCode).toBe(200);
+      });
+
+      const returnedStocks = results
+        .map(result => JSON.parse(result.body).stock)
+        .sort((left: number, right: number) => left - right);
+
+      expect(returnedStocks).toEqual([...requestedQuantities].sort((left, right) => left - right));
     });
 
     it('batch creates 25 variants within performance budget', async () => {

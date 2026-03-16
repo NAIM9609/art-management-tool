@@ -829,8 +829,9 @@ describe('Category Integration Tests', () => {
 
       const result = await createCategory(event);
 
-      // The counter returns id=5, and parent_id=5 → circular
-      expect([400, 201]).toContain(result.statusCode);
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toMatch(/circular/i);
+      expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
     });
 
     it('handles paginated category listing via last_key', async () => {

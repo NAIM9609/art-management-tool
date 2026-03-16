@@ -687,9 +687,9 @@ describe('Product Integration Tests', () => {
       });
 
       const result = await createProduct(event);
-      // ProductService.mapError turns this into a 400-equivalent message; the
-      // handler maps any error containing "condition" as a 500 (no match in handleError)
-      expect([400, 500]).toContain(result.statusCode);
+
+      // Conditional check failures currently fall through product.handler handleError.
+      expect(result.statusCode).toBe(500);
     });
 
     it('returns 400 when product id is not a positive integer on update', async () => {

@@ -599,10 +599,10 @@ export class DynamoDBOptimized {
       ReturnConsumedCapacity: this.returnConsumedCapacity,
     };
 
-    const result = await this.executeWithRetry(
+    const result = (await this.executeWithRetry(
       async () => this.client.send(new PutCommand(input)),
       'put'
-    );
+    )) ?? {};
 
     // Log consumed capacity
     CapacityLogger.logConsumedCapacity('Put', result.ConsumedCapacity);
