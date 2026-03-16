@@ -619,6 +619,19 @@ describe('DynamoDBOptimized', () => {
       expect(result.consumedCapacity?.capacityUnits).toBe(1.0);
     });
 
+    it('should tolerate empty put responses', async () => {
+      ddbMock.on(PutCommand).callsFake(() => Promise.resolve(undefined as any));
+
+      const params: PutParams = {
+        item: { id: '1', name: 'Item 1' },
+      };
+
+      const result = await dynamoDB.put(params);
+
+      expect(result.data).toBeNull();
+      expect(result.consumedCapacity).toBeUndefined();
+    });
+
     it('should return old attributes when requested', async () => {
       const oldItem = { id: '1', name: 'Old Item' };
 
