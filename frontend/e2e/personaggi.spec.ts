@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mockPersonaggiEntities } from './fixtures/shopCartMocks';
 
 /**
  * E2E tests for the Personaggi flow.
@@ -9,6 +10,10 @@ import { test, expect } from '@playwright/test';
 const PERSONAGGI_PATH = '/it/personaggi';
 
 test.describe('Personaggi Flow', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockPersonaggiEntities(page);
+  });
+
   test('page loads within 3 seconds', async ({ page }) => {
     const start = Date.now();
     await page.goto(PERSONAGGI_PATH);
@@ -19,11 +24,14 @@ test.describe('Personaggi Flow', () => {
 
   test('view all personaggi – grid is rendered', async ({ page }) => {
     await page.goto(PERSONAGGI_PATH);
-    // Wait for the loading spinner to disappear
-    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 15000 }).catch(() => {});
-    // The page should render either personaggio cards or an empty-state message
-    const grid = page.locator('.grid').first();
-    await expect(grid).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Caricamento personaggi...')).not.toBeVisible({ timeout: 15000 });
+
+    const personaggioName = page.getByText('Luffy').first();
+    const emptyMsg = page.locator('p:has-text("Nessun personaggio")').first();
+    const hasPersonaggio = await personaggioName.isVisible({ timeout: 3000 }).catch(() => false);
+    const hasEmptyState = await emptyMsg.isVisible({ timeout: 3000 }).catch(() => false);
+
+    expect(hasPersonaggio || hasEmptyState).toBe(true);
   });
 
   test('page title / header is visible', async ({ page }) => {
@@ -35,11 +43,10 @@ test.describe('Personaggi Flow', () => {
 
   test('view personaggio details – clicking a card opens modal', async ({ page }) => {
     await page.goto(PERSONAGGI_PATH);
-    // Wait for loading to complete
-    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 15000 }).catch(() => {});
+    await expect(page.getByText('Caricamento personaggi...')).not.toBeVisible({ timeout: 15000 });
 
     // Find any personaggio card
-    const card = page.locator('.grid .cursor-pointer, .grid > div, .grid [role="button"]').first();
+    const card = page.locator('.cursor-pointer, [role="button"]').filter({ hasText: 'Luffy' }).first();
 
     if (await card.isVisible({ timeout: 5000 }).catch(() => false)) {
       await card.click();
@@ -51,9 +58,9 @@ test.describe('Personaggi Flow', () => {
 
   test('image gallery navigation in modal', async ({ page }) => {
     await page.goto(PERSONAGGI_PATH);
-    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 15000 }).catch(() => {});
+    await expect(page.getByText('Caricamento personaggi...')).not.toBeVisible({ timeout: 15000 });
 
-    const card = page.locator('.grid .cursor-pointer, .grid > div, .grid [role="button"]').first();
+    const card = page.locator('.cursor-pointer, [role="button"]').filter({ hasText: 'Luffy' }).first();
 
     if (await card.isVisible({ timeout: 5000 }).catch(() => false)) {
       await card.click();
@@ -94,20 +101,19 @@ test.describe('Personaggi Flow', () => {
 
   test('images load within 2 seconds', async ({ page }) => {
     await page.goto(PERSONAGGI_PATH);
-    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 15000 }).catch(() => {});
+    await expect(page.getByText('Caricamento personaggi...')).not.toBeVisible({ timeout: 15000 });
 
     const start = Date.now();
-    // Wait for at least one image to be loaded in the grid
-    await page.waitForSelector('.grid img', { timeout: 10000 }).catch(() => {});
+    await page.waitForSelector('img', { timeout: 10000 });
     const elapsed = Date.now() - start;
     expect(elapsed).toBeLessThan(2000);
   });
 
   test('empty state message shown when no personaggi available', async ({ page }) => {
     await page.goto(PERSONAGGI_PATH);
-    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 15000 }).catch(() => {});
+    await expect(page.getByText('Caricamento personaggi...')).not.toBeVisible({ timeout: 15000 });
 
-    const items = page.locator('.grid .cursor-pointer, .grid > div[class]');
+    const items = page.locator('.cursor-pointer, [role="button"]').filter({ hasText: 'Luffy' });
     const count = await items.count();
 
     if (count === 0) {

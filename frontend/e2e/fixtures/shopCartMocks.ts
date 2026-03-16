@@ -63,24 +63,38 @@ const baseCartResponse = {
   total: 54.89,
 } as const;
 
-export async function mockShopEntities(page: Page): Promise<void> {
+const basePersonaggioResponse = {
+  personaggi: [
+    {
+      id: 1,
+      name: 'Luffy',
+      description: 'Mock personaggio',
+      images: [
+        {
+          id: 1,
+          image_url: '/assets/logo.svg',
+          alt_text: 'Luffy mock image',
+          sort_order: 1,
+          is_main: true,
+        },
+      ],
+    },
+  ],
+  count: 1,
+} as const;
+
+export async function mockPersonaggiEntities(page: Page): Promise<void> {
   await page.route('**/api/personaggi**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        personaggi: [
-          {
-            id: 1,
-            name: 'Luffy',
-            description: 'Mock personaggio',
-            images: [],
-          },
-        ],
-        count: 1,
-      }),
+      body: JSON.stringify(basePersonaggioResponse),
     });
   });
+}
+
+export async function mockShopEntities(page: Page): Promise<void> {
+  await mockPersonaggiEntities(page);
 
   await page.route('**/api/shop/products**', async (route) => {
     await route.fulfill({
