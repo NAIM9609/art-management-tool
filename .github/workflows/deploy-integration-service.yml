@@ -1,0 +1,195 @@
+name: Deploy Integration Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/services/integration-service/**'
+      - 'backend/src/**'
+      - '.github/workflows/deploy-integration-service.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '20'
+  AWS_REGION: ${{ secrets.AWS_REGION || 'eu-north-1' }}
+  PROJECT_NAME: 'art-management-tool'
+  SERVICE_NAME: 'integration-service'
+  SERVICE_PATH: 'backend/services/integration-service'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Integration Service (${{ github.event_name == 'push' && 'development' || inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'push' && 'development' || inputs.environment }}
+
+    env:
+      DEPLOY_ENV: ${{ github.event_name == 'push' && 'development' || inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run tests
+        working-directory: backend
+        run: npm test -- --testPathPattern="services/integration-service" --passWithNoTests
+
+      - name: Build service
+        working-directory: backend
+        run: npx tsc -p services/integration-service/tsconfig.json --outDir services/integration-service/dist
+
+      - name: Package Lambda
+        run: |
+          mkdir -p /tmp/lambda-package
+          cp -r ${{ env.SERVICE_PATH }}/dist /tmp/lambda-package/
+          cd backend && npm ci --omit=dev && cd ..
+          cp -r backend/node_modules /tmp/lambda-package/
+          cd /tmp/lambda-package && zip -r /tmp/lambda.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload Lambda package to S3
+        run: |
+          S3_KEY="${{ env.SERVICE_NAME }}/${{ env.DEPLOY_ENV }}/${{ github.sha }}.zip"
+          aws s3 cp /tmp/lambda.zip "s3://${{ secrets.LAMBDA_BUCKET }}/${S3_KEY}"
+          echo "S3_KEY=${S3_KEY}" >> $GITHUB_ENV
+
+      - name: Update Lambda function code
+        id: update_lambda
+        run: |
+          FUNCTIONS=(
+            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-initiate-oauth"
+            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-handle-callback"
+            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-sync-products"
+            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-sync-inventory"
+            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-sync-orders"
+            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-webhook"
+            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-scheduled-sync"
+          )
+          for FN in "${FUNCTIONS[@]}"; do
+            echo "Updating ${FN}..."
+            aws lambda update-function-code \
+              --function-name "$FN" \
+              --s3-bucket "${{ secrets.LAMBDA_BUCKET }}" \
+              --s3-key "${{ env.S3_KEY }}" \
+              --no-cli-pager
+            aws lambda wait function-updated --function-name "$FN"
+          done
+
+      - name: Run smoke tests
+        id: smoke_test
+        run: |
+          API_URL="${{ secrets.API_GATEWAY_URL }}"
+          if [ -z "$API_URL" ]; then
+            echo "API_GATEWAY_URL not set, skipping smoke tests"
+            exit 0
+          fi
+          echo "Running smoke tests against ${API_URL}..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${API_URL}/api/integrations/etsy/auth" || echo "000")
+          if [ "${HTTP_STATUS:0:1}" = "5" ] || [ "$HTTP_STATUS" = "000" ]; then
+            echo "Smoke test failed: HTTP ${HTTP_STATUS}"
+            exit 1
+          fi
+          echo "Smoke test passed: HTTP ${HTTP_STATUS}"
+
+      - name: Rollback on failure
+        if: failure() && steps.update_lambda.outcome == 'success'
+        run: |
+          echo "Rolling back due to failure..."
+          PREV_S3_KEY="${{ env.SERVICE_NAME }}/${{ env.DEPLOY_ENV }}/previous.zip"
+          if aws s3 ls "s3://${{ secrets.LAMBDA_BUCKET }}/${PREV_S3_KEY}" 2>/dev/null; then
+            FUNCTIONS=(
+              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-initiate-oauth"
+              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-handle-callback"
+              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-sync-products"
+              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-sync-inventory"
+              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-sync-orders"
+              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-webhook"
+              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-integration-service-etsy-scheduled-sync"
+            )
+            for FN in "${FUNCTIONS[@]}"; do
+              aws lambda update-function-code \
+                --function-name "$FN" \
+                --s3-bucket "${{ secrets.LAMBDA_BUCKET }}" \
+                --s3-key "${PREV_S3_KEY}" \
+                --no-cli-pager || true
+            done
+            echo "Rollback completed"
+          else
+            echo "No previous version found for rollback"
+          fi
+
+      - name: Tag previous version in S3
+        if: success()
+        run: |
+          aws s3 cp \
+            "s3://${{ secrets.LAMBDA_BUCKET }}/${{ env.S3_KEY }}" \
+            "s3://${{ secrets.LAMBDA_BUCKET }}/${{ env.SERVICE_NAME }}/${{ env.DEPLOY_ENV }}/previous.zip" || true
+
+      - name: Notify Slack on success
+        if: success() && secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "✅ *${{ env.SERVICE_NAME }}* deployed to *${{ env.DEPLOY_ENV }}*",
+              "attachments": [{
+                "color": "good",
+                "fields": [
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Actor", "value": "${{ github.actor }}", "short": true }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Notify Slack on failure
+        if: failure() && secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "❌ *${{ env.SERVICE_NAME }}* deployment FAILED on *${{ env.DEPLOY_ENV }}*",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Actor", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Run URL", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
