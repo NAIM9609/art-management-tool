@@ -23,7 +23,6 @@ import {
   GetCommand,
   PutCommand,
   UpdateCommand,
-  BatchWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import jwt from 'jsonwebtoken';
 

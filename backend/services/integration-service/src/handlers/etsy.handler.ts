@@ -200,7 +200,7 @@ async function etsyGet(path: string, accessToken: string): Promise<unknown> {
 //    GET /api/integrations/etsy/auth
 // ---------------------------------------------------------------------------
 
-export async function initiateOAuth(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+export async function initiateOAuth(_event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   try {
     const config = getEtsyConfig();
 
@@ -397,6 +397,7 @@ async function syncInventoryListings(
   let syncedCount = 0;
 
   const worker = async () => {
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       const current = nextIndex;
       nextIndex += 1;

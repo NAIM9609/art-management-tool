@@ -433,8 +433,6 @@ describe('Order Service Integration Tests', () => {
 
   describe('Order Updates', () => {
     it('should update order status', async () => {
-      const updatedOrder = { ...BASE_ORDER, status: OrderStatus.PROCESSING };
-
       // findById (in updateOrderStatus) + findById (inside update) → GetCommand x2
       ddbMock.on(GetCommand)
         .resolvesOnce({ Item: BASE_ORDER })   // first findById
