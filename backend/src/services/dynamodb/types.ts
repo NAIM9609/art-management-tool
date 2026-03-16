@@ -79,6 +79,7 @@ export interface BuildProjectionParams {
 export interface UpdateParams {
   key: Record<string, any>;
   updates: Record<string, any>;
+  removeAttributes?: string[];
   conditionExpression?: string;
   expressionAttributeNames?: Record<string, string>;
   expressionAttributeValues?: Record<string, any>;

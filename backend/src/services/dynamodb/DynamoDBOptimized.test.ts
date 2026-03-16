@@ -464,6 +464,35 @@ describe('DynamoDBOptimized', () => {
       expect(result.consumedCapacity?.capacityUnits).toBe(1.0);
     });
 
+    it('should support removing attributes during update', async () => {
+      ddbMock.on(UpdateCommand).resolves({
+        Attributes: { id: '1', updated_at: '2024-01-01T00:00:00.000Z' },
+        ConsumedCapacity: {
+          TableName: 'test-table',
+          CapacityUnits: 1.0,
+        },
+      });
+
+      const params: UpdateParams = {
+        key: { id: '1' },
+        updates: { updated_at: '2024-01-01T00:00:00.000Z' },
+        removeAttributes: ['discount_code', 'discount_amount'],
+      };
+
+      await dynamoDB.update(params);
+
+      expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
+      const updateInput = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+      expect(updateInput.UpdateExpression).toContain('SET');
+      expect(updateInput.UpdateExpression).toContain('REMOVE');
+      expect(updateInput.ExpressionAttributeNames).toEqual(
+        expect.objectContaining({
+          '#upd1': 'discount_code',
+          '#upd2': 'discount_amount',
+        })
+      );
+    });
+
     it('should support condition expressions', async () => {
       ddbMock.on(UpdateCommand).resolves({
         Attributes: { id: '1', name: 'Updated' },

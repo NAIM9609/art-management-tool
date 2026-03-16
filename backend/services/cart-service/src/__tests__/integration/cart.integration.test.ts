@@ -21,6 +21,7 @@ import {
   DeleteCommand,
   BatchWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
+import crypto from 'crypto';
 import { DynamoDBOptimized } from '../../../../../src/services/dynamodb/DynamoDBOptimized';
 import { CartService } from '../../../../../src/services/CartService';
 import { DiscountType } from '../../../../../src/services/dynamodb/repositories/types';
@@ -45,9 +46,18 @@ const USER_ID = 42;
 const CART_ID = 'cart-uuid-1';
 const SESSION_CART_ID = 'cart-uuid-session';
 const USER_CART_ID = 'cart-uuid-user';
-const ITEM_ID = 'item-hash-001';
 const PRODUCT_ID = 101;
 const VARIANT_ID = 'variant-uuid-001';
+
+function makeItemId(cartId: string, productId: number, variantId: string | undefined): string {
+  return crypto
+    .createHash('sha256')
+    .update(`${cartId}:${productId}:${variantId ?? 'null'}`)
+    .digest('hex')
+    .substring(0, 32);
+}
+
+const ITEM_ID = makeItemId(CART_ID, PRODUCT_ID, undefined);
 
 /** Build a mock DynamoDB cart item (as stored in DynamoDB) */
 function makeDdbCart(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -68,13 +78,20 @@ function makeDdbCart(overrides: Record<string, unknown> = {}): Record<string, un
 
 /** Build a mock DynamoDB cart item record */
 function makeDdbItem(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const cartId = (overrides.cart_id as string | undefined) ?? CART_ID;
+  const productId = (overrides.product_id as number | undefined) ?? PRODUCT_ID;
+  const variantId = Object.prototype.hasOwnProperty.call(overrides, 'variant_id')
+    ? (overrides.variant_id as string | undefined)
+    : undefined;
+  const id = (overrides.id as string | undefined) ?? makeItemId(cartId, productId, variantId);
+
   return {
-    PK: `CART#${CART_ID}`,
-    SK: `ITEM#${ITEM_ID}`,
-    id: ITEM_ID,
-    cart_id: CART_ID,
-    product_id: PRODUCT_ID,
-    variant_id: undefined,
+    PK: `CART#${cartId}`,
+    SK: `ITEM#${id}`,
+    id,
+    cart_id: cartId,
+    product_id: productId,
+    variant_id: variantId,
     quantity: 2,
     created_at: NOW,
     updated_at: NOW,
@@ -102,14 +119,17 @@ function makeDdbProduct(overrides: Record<string, unknown> = {}): Record<string,
 /** Build a mock DynamoDB product variant record */
 function makeDdbVariant(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    PK: `VARIANT#${VARIANT_ID}`,
-    SK: 'METADATA',
+    PK: `PRODUCT#${PRODUCT_ID}`,
+    SK: `VARIANT#${VARIANT_ID}`,
     id: VARIANT_ID,
     product_id: PRODUCT_ID,
+    entity_type: 'ProductVariant',
     sku: 'SKU-001',
     name: 'Red / Large',
     price_adjustment: 10,
     stock: 10,
+    GSI1PK: 'VARIANT_SKU#SKU-001',
+    GSI1SK: `${PRODUCT_ID}`,
     created_at: NOW,
     updated_at: NOW,
     ...overrides,
@@ -119,9 +139,11 @@ function makeDdbVariant(overrides: Record<string, unknown> = {}): Record<string,
 /** Build a mock DynamoDB discount code record */
 function makeDdbDiscount(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    PK: 'DISCOUNT_CODE#1',
+    PK: 'DISCOUNT#1',
     SK: 'METADATA',
     GSI1PK: 'DISCOUNT_CODE#SAVE10',
+    GSI2PK: 'DISCOUNT_ACTIVE#true',
+    GSI2SK: '9999-12-31',
     id: 1,
     code: 'SAVE10',
     discount_type: DiscountType.FIXED,
@@ -255,6 +277,18 @@ describe('Cart Service Integration Tests', () => {
         expect(item).toBeDefined();
         expect(item.variant_id).toBe(VARIANT_ID);
         expect(item.quantity).toBe(1);
+
+        const queryCalls = ddbMock.commandCalls(QueryCommand);
+        expect(queryCalls[0].args[0].input).toMatchObject({
+          IndexName: 'GSI1',
+          KeyConditionExpression: 'begins_with(GSI1PK, :prefix)',
+          FilterExpression: 'SK = :sk AND entity_type = :entityType',
+          ExpressionAttributeValues: expect.objectContaining({
+            ':prefix': 'VARIANT_SKU#',
+            ':sk': `VARIANT#${VARIANT_ID}`,
+            ':entityType': 'ProductVariant',
+          }),
+        });
       });
 
       it('should reject adding item with invalid quantity', async () => {
@@ -285,6 +319,7 @@ describe('Cart Service Integration Tests', () => {
       it('should sum quantity when adding existing product/variant combination', async () => {
         const existingItem = makeDdbItem({ quantity: 3 });
         const updatedItem = makeDdbItem({ quantity: 5 }); // 3 + 2
+        const expectedItemId = makeItemId(CART_ID, PRODUCT_ID, undefined);
 
         // no variant → only one GetCommand (product)
         ddbMock.on(GetCommand)
@@ -302,6 +337,18 @@ describe('Cart Service Integration Tests', () => {
         const item = await service.addItem(CART_ID, PRODUCT_ID, undefined, 2);
 
         expect(item.quantity).toBe(5);
+        expect(ddbMock.commandCalls(GetCommand)[1].args[0].input).toMatchObject({
+          Key: {
+            PK: `CART#${CART_ID}`,
+            SK: `ITEM#${expectedItemId}`,
+          },
+        });
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
+          Key: {
+            PK: `CART#${CART_ID}`,
+            SK: `ITEM#${expectedItemId}`,
+          },
+        });
       });
     });
 
@@ -545,6 +592,12 @@ describe('Cart Service Integration Tests', () => {
 
         expect(cart.discount_code).toBe('SAVE10');
         expect(cart.discount_amount).toBe(15);
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
+          Key: {
+            PK: 'DISCOUNT#1',
+            SK: 'METADATA',
+          },
+        });
       });
 
       it('should apply a percentage discount code', async () => {
@@ -652,6 +705,19 @@ describe('Cart Service Integration Tests', () => {
 
         expect(cart.discount_code).toBeUndefined();
         expect(cart.discount_amount).toBeUndefined();
+
+        const cartUpdateInput = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+        expect(cartUpdateInput.Key).toMatchObject({
+          PK: `CART#${CART_ID}`,
+          SK: 'METADATA',
+        });
+        expect(cartUpdateInput.UpdateExpression).toContain('REMOVE');
+
+        const decrementUsageInput = ddbMock.commandCalls(UpdateCommand)[1].args[0].input;
+        expect(decrementUsageInput.Key).toMatchObject({
+          PK: 'DISCOUNT#1',
+          SK: 'METADATA',
+        });
       });
 
       it('should throw when cart does not exist', async () => {
@@ -668,6 +734,9 @@ describe('Cart Service Integration Tests', () => {
 
   describe('TTL', () => {
     it('should set cart TTL to approximately 30 days from now on creation', async () => {
+      const frozenNow = new Date('2024-06-15T12:00:00.000Z');
+      jest.useFakeTimers().setSystemTime(frozenNow);
+
       ddbMock.on(QueryCommand).resolves({ Items: [] });
 
       let capturedPutInput: Record<string, unknown> | undefined;
@@ -677,16 +746,19 @@ describe('Cart Service Integration Tests', () => {
       });
       ddbMock.on(UpdateCommand).resolves({});
 
-      await service.getOrCreateCart(SESSION_ID);
+      try {
+        await service.getOrCreateCart(SESSION_ID);
 
-      expect(capturedPutInput).toBeDefined();
-      const item = (capturedPutInput as any).Item;
-      expect(item).toBeDefined();
-      expect(item.expires_at).toBeDefined();
+        expect(capturedPutInput).toBeDefined();
+        const item = (capturedPutInput as any).Item;
+        expect(item).toBeDefined();
+        expect(item.expires_at).toBeDefined();
 
-      const expectedTTL = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
-      expect(item.expires_at).toBeGreaterThan(expectedTTL - 5);
-      expect(item.expires_at).toBeLessThan(expectedTTL + 5);
+        const expectedTTL = Math.floor(frozenNow.getTime() / 1000) + 30 * 24 * 60 * 60;
+        expect(item.expires_at).toBe(expectedTTL);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should refresh TTL on cart activity (addItem)', async () => {

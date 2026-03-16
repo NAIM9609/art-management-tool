@@ -176,6 +176,7 @@ export class CartRepository {
       updated_at: now,
       expires_at: this.calculateTTL(), // Refresh TTL on activity
     };
+    const removeAttributes: string[] = [];
 
     // Build updates object with only provided fields
     if (data.session_id !== undefined) {
@@ -194,8 +195,21 @@ export class CartRepository {
       }
     }
     
-    if (data.discount_code !== undefined) updates.discount_code = data.discount_code;
-    if (data.discount_amount !== undefined) updates.discount_amount = data.discount_amount;
+    if (Object.prototype.hasOwnProperty.call(data, 'discount_code')) {
+      if (data.discount_code === undefined) {
+        removeAttributes.push('discount_code');
+      } else {
+        updates.discount_code = data.discount_code;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(data, 'discount_amount')) {
+      if (data.discount_amount === undefined) {
+        removeAttributes.push('discount_amount');
+      } else {
+        updates.discount_amount = data.discount_amount;
+      }
+    }
 
     try {
       const result = await this.dynamoDB.update({
@@ -204,6 +218,7 @@ export class CartRepository {
           SK: 'METADATA',
         },
         updates,
+        removeAttributes: removeAttributes.length > 0 ? removeAttributes : undefined,
         conditionExpression: 'attribute_exists(PK)',
         returnValues: 'ALL_NEW',
       });
