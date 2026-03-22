@@ -516,6 +516,27 @@ describe('handleWebhook', () => {
     process.env.ETSY_WEBHOOK_SECRET = original;
   });
 
+  it('treats ENVIRONMENT=test as a test environment when NODE_ENV is unset', async () => {
+    const originalSecret = process.env.ETSY_WEBHOOK_SECRET;
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalEnvironment = process.env.ENVIRONMENT;
+    delete process.env.ETSY_WEBHOOK_SECRET;
+    delete process.env.NODE_ENV;
+    process.env.ENVIRONMENT = 'test';
+
+    const result = await handleWebhook(
+      makeEvent({
+        httpMethod: 'POST',
+        body: JSON.stringify({ event_type: 'SHOP_UPDATED', shop_id: 'shop-env-test' }),
+      })
+    );
+    expect(result.statusCode).toBe(200);
+
+    process.env.ETSY_WEBHOOK_SECRET = originalSecret;
+    process.env.NODE_ENV = originalNodeEnv;
+    process.env.ENVIRONMENT = originalEnvironment;
+  });
+
   it('fails closed in non-dev environments when webhook secret is missing', async () => {
     const originalSecret = process.env.ETSY_WEBHOOK_SECRET;
     const originalEnv = process.env.NODE_ENV;
@@ -585,6 +606,7 @@ describe('scheduledSync', () => {
     });
 
     await expect(scheduledSync({})).resolves.toBeUndefined();
+    expect(mockFetch).toHaveBeenCalled();
 
     delete process.env.ETSY_SHOP_IDS;
   });

@@ -71,6 +71,7 @@ jobs:
           directory: backend/coverage
           flags: backend-unit
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   test-services-unit:
     name: Unit Tests – ${{ matrix.service }}
