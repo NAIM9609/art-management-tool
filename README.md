@@ -179,7 +179,7 @@ with a colour-coded summary.
 
 ```bash
 ./scripts/smoke-test.sh -u https://abc123.execute-api.eu-north-1.amazonaws.com/dev
-./scripts/smoke-test.sh -e prod
+./scripts/smoke-test.sh -e prod -u https://your-prod-api-url
 ```
 
 ---

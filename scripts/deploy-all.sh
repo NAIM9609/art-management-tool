@@ -85,7 +85,15 @@ while [[ $# -gt 0 ]]; do
     --skip-smoke)          SKIP_SMOKE=true; shift ;;
     --skip-tests)          SKIP_TESTS=true; shift ;;
     --services)
-      IFS=',' read -ra SERVICES_TO_DEPLOY <<< "$2"
+      IFS=',' read -ra RAW_SERVICES <<< "$2"
+      SERVICES_TO_DEPLOY=()
+      for svc in "${RAW_SERVICES[@]}"; do
+        svc_trimmed="${svc#"${svc%%[![:space:]]*}"}"
+        svc_trimmed="${svc_trimmed%"${svc_trimmed##*[![:space:]]}"}"
+        if [[ -n "$svc_trimmed" ]]; then
+          SERVICES_TO_DEPLOY+=("$svc_trimmed")
+        fi
+      done
       shift 2
       ;;
     -h|--help) usage; exit 0 ;;
@@ -244,10 +252,12 @@ if [[ -n "${API_GATEWAY_URL:-}" ]]; then
   echo -e "  ${BOLD}Endpoints:${RESET}"
   echo -e "    API Gateway  : ${CYAN}${API_GATEWAY_URL}${RESET}"
   echo -e "    Products     : ${CYAN}${API_GATEWAY_URL}/api/products${RESET}"
-  echo -e "    Orders       : ${CYAN}${API_GATEWAY_URL}/api/orders${RESET}"
+  echo -e "    Orders       : ${CYAN}${API_GATEWAY_URL}/api/orders?email=customer@example.com${RESET}"
   echo -e "    Cart         : ${CYAN}${API_GATEWAY_URL}/api/cart${RESET}"
-  echo -e "    Discounts    : ${CYAN}${API_GATEWAY_URL}/api/discounts${RESET}"
-  echo -e "    Notifications: ${CYAN}${API_GATEWAY_URL}/api/notifications${RESET}"
+  echo -e "    Discounts    : ${CYAN}${API_GATEWAY_URL}/api/admin/discounts${RESET}"
+  echo -e "    Notifications: ${CYAN}${API_GATEWAY_URL}/api/admin/notifications${RESET}"
+  echo -e "    Audit        : ${CYAN}${API_GATEWAY_URL}/api/admin/audit/entity/test/123${RESET}"
+  echo -e "    Etsy OAuth   : ${CYAN}${API_GATEWAY_URL}/api/integrations/etsy/auth${RESET}"
   echo -e "    Content      : ${CYAN}${API_GATEWAY_URL}/api/personaggi${RESET}"
 fi
 echo ""

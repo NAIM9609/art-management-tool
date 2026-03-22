@@ -328,25 +328,52 @@ elif [[ -z "${API_GATEWAY_URL:-}" ]]; then
   warn "API_GATEWAY_URL not set — skipping smoke test"
 else
   step "Running smoke test for ${FULL_SERVICE_NAME}"
-  # Map service → smoke endpoint
+  # Map service → smoke endpoint/method/expected status family
   declare -A SMOKE_ENDPOINTS
+  declare -A SMOKE_METHODS
+  declare -A SMOKE_EXPECTED
+
   SMOKE_ENDPOINTS[product]="/api/products"
+  SMOKE_METHODS[product]="GET"
+  SMOKE_EXPECTED[product]="23"
+
   SMOKE_ENDPOINTS[cart]="/api/cart"
-  SMOKE_ENDPOINTS[order]="/api/orders"
-  SMOKE_ENDPOINTS[discount]="/api/discounts"
+  SMOKE_METHODS[cart]="GET"
+  SMOKE_EXPECTED[cart]="234"
+
+  SMOKE_ENDPOINTS[order]="/api/orders?email=smoke@example.com"
+  SMOKE_METHODS[order]="GET"
+  SMOKE_EXPECTED[order]="24"
+
+  SMOKE_ENDPOINTS[discount]="/api/discounts/validate"
+  SMOKE_METHODS[discount]="POST"
+  SMOKE_EXPECTED[discount]="4"
+
   SMOKE_ENDPOINTS[content]="/api/personaggi"
-  SMOKE_ENDPOINTS[audit]="/api/audit/entity/healthcheck"
-  SMOKE_ENDPOINTS[notification]="/api/notifications"
-  SMOKE_ENDPOINTS[integration]="/api/integrations"
+  SMOKE_METHODS[content]="GET"
+  SMOKE_EXPECTED[content]="23"
+
+  SMOKE_ENDPOINTS[audit]="/api/admin/audit/entity/smoke/123"
+  SMOKE_METHODS[audit]="GET"
+  SMOKE_EXPECTED[audit]="4"
+
+  SMOKE_ENDPOINTS[notification]="/api/admin/notifications"
+  SMOKE_METHODS[notification]="GET"
+  SMOKE_EXPECTED[notification]="4"
+
+  SMOKE_ENDPOINTS[integration]="/api/integrations/etsy/auth"
+  SMOKE_METHODS[integration]="GET"
+  SMOKE_EXPECTED[integration]="23"
 
   ENDPOINT="${SMOKE_ENDPOINTS[$SERVICE_NAME]:-/api/${SERVICE_NAME}}"
+  HTTP_METHOD="${SMOKE_METHODS[$SERVICE_NAME]:-GET}"
+  EXPECTED_PREFIXES="${SMOKE_EXPECTED[$SERVICE_NAME]:-23}"
   URL="${API_GATEWAY_URL}${ENDPOINT}"
-  info "Testing ${URL}..."
+  info "Testing ${HTTP_METHOD} ${URL}..."
 
-  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X "$HTTP_METHOD" "$URL" || echo "000")
   FIRST_DIGIT="${HTTP_STATUS:0:1}"
-  if [[ "$HTTP_STATUS" == "000" ]] || \
-     ([[ "$FIRST_DIGIT" != "2" ]] && [[ "$FIRST_DIGIT" != "3" ]] && [[ "$HTTP_STATUS" != "401" ]]); then
+  if [[ "$HTTP_STATUS" == "000" ]] || ! [[ "$EXPECTED_PREFIXES" == *"$FIRST_DIGIT"* ]]; then
     error "Smoke test FAILED: HTTP ${HTTP_STATUS}"
 
     # Rollback if something was updated
@@ -355,17 +382,34 @@ else
       PREV_S3_KEY="${FULL_SERVICE_NAME}/${ENVIRONMENT}/previous.zip"
       if aws s3 ls "s3://${LAMBDA_BUCKET}/${PREV_S3_KEY}" \
            --region "$AWS_REGION" &>/dev/null; then
+        ROLLBACK_FAILED=false
         for FN_SUFFIX in "${FUNCTIONS[@]}"; do
           [[ -z "$FN_SUFFIX" ]] && continue
           FN="${PROJECT_NAME}-${ENVIRONMENT}-${FN_SUFFIX}"
-          aws lambda update-function-code \
+          info "Rolling back function ${FN} to previous version..."
+          if ! aws lambda update-function-code \
             --function-name "$FN" \
             --s3-bucket "$LAMBDA_BUCKET" \
             --s3-key "$PREV_S3_KEY" \
             --region "$AWS_REGION" \
-            --no-cli-pager &>/dev/null || true
+            --no-cli-pager &>/dev/null; then
+            error "Rollback FAILED while updating code for function ${FN}"
+            ROLLBACK_FAILED=true
+            continue
+          fi
+          if ! aws lambda wait function-updated \
+            --function-name "$FN" \
+            --region "$AWS_REGION" \
+            --no-cli-pager &>/dev/null; then
+            error "Rollback FAILED while waiting for function ${FN} to update"
+            ROLLBACK_FAILED=true
+          fi
         done
-        warn "Rollback complete"
+        if [[ "$ROLLBACK_FAILED" == "true" ]]; then
+          error "Rollback completed with failures for one or more functions. See log output above."
+        else
+          warn "Rollback complete"
+        fi
       else
         warn "No previous version found — rollback skipped"
       fi

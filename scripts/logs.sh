@@ -135,6 +135,11 @@ if ! command -v aws &>/dev/null; then
   exit 1
 fi
 
+if ! command -v python3 &>/dev/null; then
+  error "python3 not found"
+  exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # Convert SINCE to epoch milliseconds for --start-time
 # ---------------------------------------------------------------------------
@@ -245,8 +250,7 @@ fetch_log_group() {
     --log-group-name "$lg"
     --start-time "$START_MS"
     --region "$AWS_REGION"
-    --output text
-    --query "events[*].[timestamp,message]"
+    --output json
   )
 
   if [[ -n "$LOG_LEVEL" ]]; then
@@ -254,9 +258,22 @@ fetch_log_group() {
   fi
 
   while true; do
-    local result
-    result=$(aws logs filter-log-events "${filter_args[@]}" \
+    local response
+    response=$(aws logs filter-log-events "${filter_args[@]}" \
       "${token_arg[@]}" 2>/dev/null || true)
+
+    local result
+    result=$(python3 -c "
+import json, sys
+payload = sys.stdin.read().strip()
+if not payload:
+    raise SystemExit(0)
+data = json.loads(payload)
+for event in data.get('events', []):
+    timestamp = event.get('timestamp', '')
+    message = str(event.get('message', '')).replace('\t', '    ').replace('\n', '\\n')
+    print(f'{timestamp}\t{message}')
+" <<< "$response")
 
     if [[ -n "$result" ]]; then
       # Format: timestamp<TAB>message — convert epoch ms to human time
@@ -272,10 +289,15 @@ fetch_log_group() {
       done <<< "$result"
     fi
 
-    # Pagination: try to get next token (only applies to filter-log-events)
-    next_token=$(aws logs filter-log-events "${filter_args[@]}" \
-      "${token_arg[@]}" 2>/dev/null \
-      --query "nextToken" --output text 2>/dev/null || true)
+    next_token=$(python3 -c "
+import json, sys
+payload = sys.stdin.read().strip()
+if not payload:
+    print('')
+    raise SystemExit(0)
+data = json.loads(payload)
+print(data.get('nextToken', ''))
+" <<< "$response")
 
     if [[ -z "$next_token" ]] || [[ "$next_token" == "None" ]]; then
       break

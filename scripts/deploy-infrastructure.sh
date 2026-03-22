@@ -77,13 +77,13 @@ fi
 # ---------------------------------------------------------------------------
 step "Pre-flight checks"
 
-for cmd in terraform aws; do
+for cmd in terraform aws python3; do
   if ! command -v "$cmd" &>/dev/null; then
     error "Required command not found: $cmd"
     exit 1
   fi
 done
-success "terraform and aws CLI found"
+success "terraform, aws, and python3 found"
 
 if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]] || [[ -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
   error "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set"
@@ -197,13 +197,15 @@ OUTPUT_PATH="$REPO_ROOT/$OUTPUT_FILE"
   echo "# Terraform outputs — environment=${ENVIRONMENT} — $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   terraform -chdir="$TF_DIR" output -json | \
     python3 -c "
-import sys, json
+import sys, json, shlex
 data = json.load(sys.stdin)
 for k, v in data.items():
     val = v.get('value', '')
     if isinstance(val, (list, dict)):
-        val = json.dumps(val)
-    print(f'{k.upper()}={val}')
+        val = json.dumps(val, separators=(',', ':'))
+    else:
+        val = str(val)
+    print(f'{k.upper()}={shlex.quote(val)}')
 "
 } > "$OUTPUT_PATH"
 success "Outputs saved to $OUTPUT_PATH"

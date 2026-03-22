@@ -90,7 +90,6 @@ test_endpoint() {
 
   local BODY_FILE
   BODY_FILE=$(mktemp)
-  trap 'rm -f "$BODY_FILE"' RETURN
 
   local http_status
   http_status=$(curl -s -o "$BODY_FILE" -w "%{http_code}" \
@@ -123,6 +122,8 @@ test_endpoint() {
   if [[ "$VERBOSE" == "true" ]] && [[ -s "$BODY_FILE" ]]; then
     echo -e "  ${CYAN}Response:${RESET} $(head -c 200 "$BODY_FILE")"
   fi
+
+  rm -f "$BODY_FILE"
 }
 
 # ---------------------------------------------------------------------------
@@ -161,14 +162,14 @@ test_endpoint POST "/api/orders"                  "4"   "Create order without au
 # Discount Service
 # ---------------------------------------------------------------------------
 step "Discount Service"
-test_endpoint GET  "/api/discounts"               "4"   "List discounts without auth → 401/403"
+test_endpoint GET  "/api/admin/discounts"         "4"   "List discounts without auth → 401/403"
 test_endpoint POST "/api/discounts/validate"      "4"   "Validate discount without body → 400/401"
 
 # ---------------------------------------------------------------------------
 # Notification Service
 # ---------------------------------------------------------------------------
 step "Notification Service"
-test_endpoint GET  "/api/notifications"           "4"   "List notifications without auth → 401/403"
+test_endpoint GET  "/api/admin/notifications"     "4"   "List notifications without auth → 401/403"
 
 # ---------------------------------------------------------------------------
 # Content Service
@@ -181,14 +182,14 @@ test_endpoint GET  "/api/fumetti"                 "23"  "List fumetti (public)"
 # Audit Service
 # ---------------------------------------------------------------------------
 step "Audit Service"
-test_endpoint GET  "/api/audit/entity/test"       "4"   "Get entity history without auth → 401/403"
-test_endpoint GET  "/api/audit/user/test"         "4"   "Get user activity without auth → 401/403"
+test_endpoint GET  "/api/admin/audit/entity/test/123" "4" "Get entity history without auth → 401/403"
+test_endpoint GET  "/api/admin/audit/user/test"       "4" "Get user activity without auth → 401/403"
 
 # ---------------------------------------------------------------------------
 # Integration Service
 # ---------------------------------------------------------------------------
 step "Integration Service"
-test_endpoint GET  "/api/integrations/etsy/oauth" "4"   "Etsy OAuth without auth → 401/403"
+test_endpoint GET  "/api/integrations/etsy/auth"  "23"  "Etsy OAuth entrypoint (public, expect 2xx/3xx)"
 
 # ---------------------------------------------------------------------------
 # Admin endpoints
