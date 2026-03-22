@@ -128,6 +128,19 @@ fi
 success "Pre-flight checks passed"
 
 # ---------------------------------------------------------------------------
+# Production safeguard
+# ---------------------------------------------------------------------------
+if [[ "$ENVIRONMENT" == "prod" ]]; then
+  warn "You are about to restore and validate a backup in the PRODUCTION environment."
+  warn "A temporary table will be created and deleted unless --keep-table is set."
+  read -r -p "$(echo -e "${BOLD}Type 'yes' to confirm: ${RESET}")" CONFIRM
+  if [[ "${CONFIRM,,}" != "yes" ]]; then
+    warn "Validation cancelled."
+    exit 0
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Cleanup trap — delete temp table on exit (unless --keep-table)
 # ---------------------------------------------------------------------------
 cleanup() {
@@ -231,11 +244,10 @@ done
 # ---------------------------------------------------------------------------
 step "Counting records in temporary table"
 
-ITEM_COUNT=$(aws dynamodb scan \
+ITEM_COUNT=$(aws dynamodb describe-table \
   --table-name "$TEMP_TABLE_NAME" \
-  --select COUNT \
   --region "$AWS_REGION" \
-  --query "Count" \
+  --query "Table.ItemCount" \
   --output text)
 
 if [[ "$ITEM_COUNT" -eq 0 ]]; then
@@ -278,7 +290,7 @@ for i, item in enumerate(items):
         print(f"  WARN  item[{i}] missing PK or SK: {json.dumps(item)[:200]}", file=sys.stderr)
         invalid += 1
     else:
-        print(f"  OK    PK={pk!r} SK={sk!r}")
+      print(f"  OK    PK={pk!r} SK={sk!r}", file=sys.stderr)
 print(invalid)
 PYEOF
 )

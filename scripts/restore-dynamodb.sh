@@ -117,6 +117,11 @@ if ! command -v aws &>/dev/null; then
   exit 1
 fi
 
+if ! command -v python3 &>/dev/null; then
+  error "python3 not found (required for JSON processing)"
+  exit 1
+fi
+
 if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]] || [[ -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
   error "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set"
   exit 1
@@ -229,12 +234,11 @@ done
 # ---------------------------------------------------------------------------
 step "Verifying data integrity (item count)"
 
-# Use a scan with Select=COUNT for an accurate count
-ITEM_COUNT=$(aws dynamodb scan \
+# Use describe-table ItemCount for a low-cost sanity check on item count
+ITEM_COUNT=$(aws dynamodb describe-table \
   --table-name "$NEW_TABLE_NAME" \
-  --select COUNT \
   --region "$AWS_REGION" \
-  --query "Count" \
+  --query "Table.ItemCount" \
   --output text)
 
 info "Restored table item count: ${ITEM_COUNT}"
@@ -297,10 +301,12 @@ echo -e "  Region         : ${AWS_REGION}"
 echo ""
 echo -e "${YELLOW}${BOLD}NEXT STEPS — Traffic switchover (manual):${RESET}"
 echo -e "  1. Validate the restored table data with: ./scripts/validate-backup.sh"
-echo -e "  2. Update DYNAMODB_TABLE_NAME in each Lambda function:"
+echo -e "  2. Update DYNAMODB_TABLE_NAME in each Lambda function (preserve other env vars):"
+echo -e "     # WARNING: The 'Variables={...}' argument REPLACES all environment variables."
+echo -e "     #          Include all required variables, not only DYNAMODB_TABLE_NAME."
 echo -e "     aws lambda update-function-configuration \\"
 echo -e "       --function-name <function-name> \\"
-echo -e "       --environment Variables={DYNAMODB_TABLE_NAME=${NEW_TABLE_NAME}} \\"
+echo -e "       --environment Variables={DYNAMODB_TABLE_NAME=${NEW_TABLE_NAME},OTHER_VAR=value,...} \\" 
 echo -e "       --region ${AWS_REGION}"
 echo -e "  3. Monitor CloudWatch metrics on the new table"
 echo -e "  4. Delete the old table once confident: aws dynamodb delete-table ..."

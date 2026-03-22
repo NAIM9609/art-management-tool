@@ -182,6 +182,30 @@ with a colour-coded summary.
 ./scripts/smoke-test.sh -e prod -u https://your-prod-api-url
 ```
 
+### DynamoDB backup/restore scripts
+
+Operational scripts are available for backup lifecycle management:
+
+- `backup-dynamodb.sh`: create and tag on-demand backups
+- `restore-dynamodb.sh`: restore from backup ARN to a new table
+- `export-to-s3.sh`: export table snapshots to S3 with lifecycle controls
+- `validate-backup.sh`: restore to a temp table and validate data structure
+
+```bash
+./scripts/backup-dynamodb.sh -e prod -o /tmp/latest-backup-arn.txt
+./scripts/restore-dynamodb.sh arn:aws:dynamodb:eu-north-1:123456789012:table/art-management/backup/01234 -e prod
+./scripts/export-to-s3.sh -e prod -b my-backup-bucket --retention-days 90
+./scripts/validate-backup.sh arn:aws:dynamodb:eu-north-1:123456789012:table/art-management/backup/01234 --sample-size 10
+```
+
+Safeguards and behavior:
+
+- Production confirmation prompts are required for `backup-dynamodb.sh`, `restore-dynamodb.sh`, `export-to-s3.sh`, and `validate-backup.sh`.
+- `backup-dynamodb.sh` timeout is configurable via `BACKUP_MAX_WAIT_SECONDS` (default: `1800`).
+- `export-to-s3.sh --retention-days` must be a positive integer; when lifecycle rules are enabled, it must be at least `60`.
+- `restore-dynamodb.sh` and `validate-backup.sh` use `describe-table` item-count sanity checks by default (avoids costly full scans).
+- `restore-dynamodb.sh` prints Lambda update guidance that warns about preserving existing environment variables.
+
 ---
 
 ## Documentation

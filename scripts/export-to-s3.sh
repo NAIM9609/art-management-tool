@@ -113,6 +113,26 @@ if [[ -z "$S3_BUCKET" ]]; then
   exit 1
 fi
 
+if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]]; then
+  error "Invalid --retention-days '${RETENTION_DAYS}'. It must be a positive integer."
+  exit 1
+fi
+
+if (( RETENTION_DAYS <= 0 )); then
+  error "Invalid --retention-days '${RETENTION_DAYS}'. It must be greater than 0."
+  exit 1
+fi
+
+if [[ "$SET_LIFECYCLE" == "true" ]] && (( RETENTION_DAYS < 60 )); then
+  error "Invalid --retention-days '${RETENTION_DAYS}'. It must be at least 60 when lifecycle transitions are enabled."
+  exit 1
+fi
+
+if [[ -z "$S3_PREFIX" ]]; then
+  error "Invalid --prefix. It must not be empty."
+  exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # Pre-flight checks
 # ---------------------------------------------------------------------------
@@ -164,6 +184,20 @@ if [[ "$PITR_STATUS" != "ENABLED" ]]; then
 fi
 
 success "Table is ${TABLE_STATUS} and PITR is ${PITR_STATUS}"
+
+# ---------------------------------------------------------------------------
+# Production safeguard
+# ---------------------------------------------------------------------------
+if [[ "$ENVIRONMENT" == "prod" ]]; then
+  warn "You are about to run a PRODUCTION export and may create/configure an S3 bucket."
+  warn "Bucket: ${S3_BUCKET}"
+  warn "Prefix: ${S3_PREFIX}/"
+  read -r -p "$(echo -e "${BOLD}Type 'yes' to confirm: ${RESET}")" CONFIRM
+  if [[ "${CONFIRM,,}" != "yes" ]]; then
+    warn "Export cancelled."
+    exit 0
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Build S3 destination path: s3://<bucket>/dynamodb/YYYY/MM/DD/

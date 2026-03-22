@@ -63,6 +63,7 @@ ENVIRONMENT="${ENVIRONMENT:-dev}"
 AWS_REGION="${AWS_REGION:-eu-north-1}"
 TABLE_NAME="${DYNAMODB_TABLE_NAME:-}"
 OUTPUT_FILE=""
+MAX_WAIT="${BACKUP_MAX_WAIT_SECONDS:-1800}"
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -81,6 +82,11 @@ done
 # Validate environment
 if [[ ! "$ENVIRONMENT" =~ ^(dev|staging|prod)$ ]]; then
   error "Invalid environment '${ENVIRONMENT}'. Must be: dev, staging, prod"
+  exit 1
+fi
+
+if ! [[ "$MAX_WAIT" =~ ^[0-9]+$ ]] || [[ "$MAX_WAIT" -le 0 ]]; then
+  error "Invalid BACKUP_MAX_WAIT_SECONDS='${MAX_WAIT}'. It must be a positive integer."
   exit 1
 fi
 
@@ -130,10 +136,23 @@ fi
 success "Table '${TABLE_NAME}' is ${TABLE_STATUS}"
 
 # ---------------------------------------------------------------------------
+# Production safeguard
+# ---------------------------------------------------------------------------
+if [[ "$ENVIRONMENT" == "prod" ]]; then
+  warn "You are about to create and tag a backup in the PRODUCTION environment."
+  warn "Table: ${TABLE_NAME}"
+  read -r -p "$(echo -e "${BOLD}Type 'yes' to confirm: ${RESET}")" CONFIRM
+  if [[ "${CONFIRM,,}" != "yes" ]]; then
+    warn "Backup cancelled."
+    exit 0
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Create backup
 # ---------------------------------------------------------------------------
-TIMESTAMP=$(date -u +"%Y-%m-%d-%H-%M")
-BACKUP_NAME="ArtManagementTable-${TIMESTAMP}"
+TIMESTAMP=$(date -u +"%Y-%m-%d-%H-%M-%S")
+BACKUP_NAME="${TABLE_NAME}-${TIMESTAMP}"
 
 step "Creating on-demand backup '${BACKUP_NAME}'"
 
@@ -162,7 +181,7 @@ aws dynamodb tag-resource \
     Key=CreatedAt,Value="$TIMESTAMP" \
     Key=Environment,Value="$ENVIRONMENT" \
     Key=Table,Value="$TABLE_NAME" \
-    Key=ManagedBy,Value=backup-dynamodb-sh \
+    Key=ManagedBy,Value=backup-dynamodb.sh \
   --region "$AWS_REGION"
 
 success "Tags applied"
@@ -172,7 +191,6 @@ success "Tags applied"
 # ---------------------------------------------------------------------------
 step "Waiting for backup to reach AVAILABLE status"
 
-MAX_WAIT=300   # 5 minutes
 INTERVAL=10
 ELAPSED=0
 
