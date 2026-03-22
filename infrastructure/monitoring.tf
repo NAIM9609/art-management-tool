@@ -26,6 +26,7 @@ locals {
     "product-service-get-upload-url",
     "product-service-list-images",
     "product-service-delete-image",
+    "product-service-health",
   ]
 
   # Full Lambda function names for use in CloudWatch metric expressions.

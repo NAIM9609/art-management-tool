@@ -1,0 +1,394 @@
+{
+  "widgets": [
+    {
+      "type": "text",
+      "x": 0,
+      "y": 0,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## Service Health Status"
+      }
+    },
+    {
+      "type": "alarm",
+      "x": 0,
+      "y": 1,
+      "width": 24,
+      "height": 3,
+      "properties": {
+        "title": "Active Alarms",
+        "alarms": [
+          "arn:aws:cloudwatch:{region}:{account_id}:alarm:{project}-{env}-route53-health-check",
+          "arn:aws:cloudwatch:{region}:{account_id}:alarm:{project}-{env}-synthetics-canary-failures",
+          "arn:aws:cloudwatch:{region}:{account_id}:alarm:{project}-{env}-lambda-error-rate",
+          "arn:aws:cloudwatch:{region}:{account_id}:alarm:{project}-{env}-lambda-invocations",
+          "arn:aws:cloudwatch:{region}:{account_id}:alarm:{project}-{env}-dynamodb-read-capacity",
+          "arn:aws:cloudwatch:{region}:{account_id}:alarm:{project}-{env}-dynamodb-write-capacity",
+          "arn:aws:cloudwatch:{region}:{account_id}:alarm:{project}-{env}-api-gateway-5xx-error-rate"
+        ]
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 4,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## API Gateway Metrics"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 5,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "API Gateway – Request Count",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [
+            "AWS/ApiGateway",
+            "Count",
+            "ApiId",
+            "{api_gateway_id}",
+            { "stat": "Sum", "period": 60, "label": "Requests" }
+          ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 5,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "API Gateway – 4xx / 5xx Error Rates",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [
+            "AWS/ApiGateway",
+            "4XXError",
+            "ApiId",
+            "{api_gateway_id}",
+            { "stat": "Sum", "period": 60, "color": "#FF9900", "label": "4xx Errors" }
+          ],
+          [
+            "AWS/ApiGateway",
+            "5XXError",
+            "ApiId",
+            "{api_gateway_id}",
+            { "stat": "Sum", "period": 60, "color": "#D62728", "label": "5xx Errors" }
+          ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 11,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "title": "API Gateway – Latency (p50 / p99)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [
+            "AWS/ApiGateway",
+            "Latency",
+            "ApiId",
+            "{api_gateway_id}",
+            { "stat": "p50", "period": 60, "label": "p50 latency" }
+          ],
+          [
+            "AWS/ApiGateway",
+            "Latency",
+            "ApiId",
+            "{api_gateway_id}",
+            { "stat": "p99", "period": 60, "label": "p99 latency" }
+          ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 17,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## Lambda Metrics – Product Service"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 18,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Lambda – Invocations by Function",
+        "view": "timeSeries",
+        "stacked": true,
+        "metrics": [
+          [ "AWS/Lambda", "Invocations", "FunctionName", "{project}-{env}-product-service-list-products", { "stat": "Sum", "period": 60 } ],
+          [ "AWS/Lambda", "Invocations", "FunctionName", "{project}-{env}-product-service-get-product", { "stat": "Sum", "period": 60 } ],
+          [ "AWS/Lambda", "Invocations", "FunctionName", "{project}-{env}-product-service-create-product", { "stat": "Sum", "period": 60 } ],
+          [ "AWS/Lambda", "Invocations", "FunctionName", "{project}-{env}-product-service-update-product", { "stat": "Sum", "period": 60 } ],
+          [ "AWS/Lambda", "Invocations", "FunctionName", "{project}-{env}-product-service-delete-product", { "stat": "Sum", "period": 60 } ],
+          [ "AWS/Lambda", "Invocations", "FunctionName", "{project}-{env}-product-service-health", { "stat": "Sum", "period": 60 } ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 18,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Lambda – Error Count by Function",
+        "view": "timeSeries",
+        "stacked": true,
+        "metrics": [
+          [ "AWS/Lambda", "Errors", "FunctionName", "{project}-{env}-product-service-list-products", { "stat": "Sum", "period": 60 } ],
+          [ "AWS/Lambda", "Errors", "FunctionName", "{project}-{env}-product-service-get-product", { "stat": "Sum", "period": 60 } ],
+          [ "AWS/Lambda", "Errors", "FunctionName", "{project}-{env}-product-service-create-product", { "stat": "Sum", "period": 60 } ],
+          [ "AWS/Lambda", "Errors", "FunctionName", "{project}-{env}-product-service-update-product", { "stat": "Sum", "period": 60 } ],
+          [ "AWS/Lambda", "Errors", "FunctionName", "{project}-{env}-product-service-delete-product", { "stat": "Sum", "period": 60 } ],
+          [ "AWS/Lambda", "Errors", "FunctionName", "{project}-{env}-product-service-health", { "stat": "Sum", "period": 60 } ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 24,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Lambda – Duration p50 by Function",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [ "AWS/Lambda", "Duration", "FunctionName", "{project}-{env}-product-service-list-products", { "stat": "p50", "period": 60 } ],
+          [ "AWS/Lambda", "Duration", "FunctionName", "{project}-{env}-product-service-get-product", { "stat": "p50", "period": 60 } ],
+          [ "AWS/Lambda", "Duration", "FunctionName", "{project}-{env}-product-service-health", { "stat": "p50", "period": 60 } ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 24,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Lambda – Duration p99 by Function",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [ "AWS/Lambda", "Duration", "FunctionName", "{project}-{env}-product-service-list-products", { "stat": "p99", "period": 60 } ],
+          [ "AWS/Lambda", "Duration", "FunctionName", "{project}-{env}-product-service-get-product", { "stat": "p99", "period": 60 } ],
+          [ "AWS/Lambda", "Duration", "FunctionName", "{project}-{env}-product-service-health", { "stat": "p99", "period": 60 } ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 30,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## DynamoDB Metrics"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 31,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "DynamoDB – Consumed Read Capacity",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [
+            "AWS/DynamoDB",
+            "ConsumedReadCapacityUnits",
+            "TableName",
+            "{dynamodb_table_name}",
+            { "stat": "Sum", "period": 60 }
+          ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 31,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "DynamoDB – Consumed Write Capacity",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [
+            "AWS/DynamoDB",
+            "ConsumedWriteCapacityUnits",
+            "TableName",
+            "{dynamodb_table_name}",
+            { "stat": "Sum", "period": 60 }
+          ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 37,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "DynamoDB – System Errors",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [
+            "AWS/DynamoDB",
+            "SystemErrors",
+            "TableName",
+            "{dynamodb_table_name}",
+            { "stat": "Sum", "period": 60 }
+          ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 37,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "DynamoDB – Successful Request Latency (p99)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [
+            "AWS/DynamoDB",
+            "SuccessfulRequestLatency",
+            "TableName",
+            "{dynamodb_table_name}",
+            "Operation",
+            "GetItem",
+            { "stat": "p99", "period": 60, "label": "GetItem p99" }
+          ],
+          [
+            "AWS/DynamoDB",
+            "SuccessfulRequestLatency",
+            "TableName",
+            "{dynamodb_table_name}",
+            "Operation",
+            "Query",
+            { "stat": "p99", "period": 60, "label": "Query p99" }
+          ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 43,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## Synthetic Monitoring – Canary"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 44,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Synthetics Canary – Success Rate (%)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [
+            "CloudWatchSynthetics",
+            "SuccessPercent",
+            "CanaryName",
+            "{project}-{env}-health",
+            { "stat": "Average", "period": 300, "label": "Success Rate (%)" }
+          ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0, "max": 100 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 44,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Synthetics Canary – Duration (ms)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [
+            "CloudWatchSynthetics",
+            "Duration",
+            "CanaryName",
+            "{project}-{env}-health",
+            { "stat": "p50", "period": 300, "label": "p50" }
+          ],
+          [
+            "CloudWatchSynthetics",
+            "Duration",
+            "CanaryName",
+            "{project}-{env}-health",
+            { "stat": "p99", "period": 300, "label": "p99" }
+          ]
+        ],
+        "region": "{region}",
+        "yAxis": { "left": { "min": 0 } }
+      }
+    }
+  ]
+}
