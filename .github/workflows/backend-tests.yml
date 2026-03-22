@@ -60,11 +60,11 @@ jobs:
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
         if: always()
-        continue-on-error: true
         with:
           directory: backend/coverage
           flags: backend-unit
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   test-integration:
     name: Integration Tests with LocalStack
