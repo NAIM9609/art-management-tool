@@ -76,7 +76,7 @@ resource "aws_iam_role_policy" "synthetics_canary" {
           "logs:CreateLogStream",
           "logs:PutLogEvents",
         ]
-        Resource = "arn:aws:logs:${var.aws_region}:*:log-group:/aws/lambda/cwsyn-*"
+        Resource = "arn:aws:logs:${var.aws_region}:*:log-group:/aws/lambda/cwsyn-*:*"
       },
       {
         Sid    = "S3Artifacts"
@@ -166,10 +166,11 @@ resource "aws_route53_health_check" "product_service" {
 
   fqdn              = local.health_endpoint_host
   port              = 443
-  type              = "HTTPS"
+  type              = "HTTPS_STR_MATCH"
   resource_path     = local.health_endpoint_path
   request_interval  = 30
   failure_threshold = 3
+  search_string     = "\"status\":\"healthy\""
 
   tags = merge(local.health_checks_tags, {
     Name = "${var.project_name}-${var.environment}-product-service-health"
@@ -269,7 +270,7 @@ resource "aws_synthetics_canary" "health_check" {
   start_canary = true
 
   # Base64-encoded zip file containing the canary script.
-  zip_file = filebase64(data.archive_file.canary_script[0].output_path)
+  zip_file = data.archive_file.canary_script[0].output_base64
 
   tags = local.health_checks_tags
 }

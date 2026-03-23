@@ -14,7 +14,7 @@ import {
   checkMemory,
   buildHealthReport,
   CheckStatus,
-} from '../../../../shared/utils/health-check';
+} from '../health-check';
 import {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
@@ -29,9 +29,9 @@ const SERVICE_VERSION = '1.0.0';
  *
  * Runs health checks for DynamoDB, S3, and memory concurrently (each with a
  * 5-second timeout) and returns a consolidated health report.
- * Always returns HTTP 200 so that Route 53 and load-balancer health checks
- * can distinguish between "healthy", "degraded", and "unhealthy" states by
- * inspecting the response body rather than the HTTP status code.
+ * Always returns HTTP 200. The Route 53 health check is configured with
+ * search_string matching `"status":"healthy"` so it can detect degraded or
+ * unhealthy states without requiring a non-2xx response.
  */
 export async function getHealth(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

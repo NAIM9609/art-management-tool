@@ -15,12 +15,12 @@ const mockCheckDynamoDB = jest.fn();
 const mockCheckS3 = jest.fn();
 const mockCheckMemory = jest.fn();
 
-jest.mock('../../../../shared/utils/health-check', () => ({
+jest.mock('../../health-check', () => ({
   checkDynamoDB: (...args: unknown[]) => mockCheckDynamoDB(...args),
   checkS3: (...args: unknown[]) => mockCheckS3(...args),
   checkMemory: () => mockCheckMemory(),
-  buildHealthReport: jest.requireActual('../../../../shared/utils/health-check').buildHealthReport,
-  aggregateStatus: jest.requireActual('../../../../shared/utils/health-check').aggregateStatus,
+  buildHealthReport: jest.requireActual('../../health-check').buildHealthReport,
+  aggregateStatus: jest.requireActual('../../health-check').aggregateStatus,
 }));
 
 // ──────────────────────────────────────────────────────────────────────────────

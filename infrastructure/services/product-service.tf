@@ -246,7 +246,8 @@ resource "aws_iam_policy" "product_service_dynamodb" {
           "dynamodb:BatchGetItem",
           "dynamodb:BatchWriteItem",
           "dynamodb:TransactWriteItems",
-          "dynamodb:TransactGetItems"
+          "dynamodb:TransactGetItems",
+          "dynamodb:DescribeTable"
         ]
         Resource = [
           "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}",
