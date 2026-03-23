@@ -70,6 +70,9 @@ resource "aws_apigatewayv2_integration" "product_service" {
 
 locals {
   api_routes = {
+    # Health check
+    "GET /health" = "product-service-health"
+
     # Products
     "GET /api/products"         = "product-service-list-products"
     "GET /api/products/{slug}"  = "product-service-get-product"

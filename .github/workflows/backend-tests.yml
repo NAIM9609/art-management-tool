@@ -127,11 +127,12 @@ jobs:
           --health-retries 5
 
       localstack:
-        image: localstack/localstack:latest
+        image: localstack/localstack:3.8.1
         env:
           SERVICES: dynamodb,s3
           DEBUG: 1
           AWS_DEFAULT_REGION: us-east-1
+          LOCALSTACK_ACKNOWLEDGE_ACCOUNT_REQUIREMENT: "1"
         ports:
           - 4566:4566
         options: >-

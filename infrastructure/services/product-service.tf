@@ -172,6 +172,11 @@ locals {
       handler     = "dist/handlers/image.handler.deleteImage"
       description = "Delete a product image"
     }
+    "product-service-health" = {
+      timeout     = 10
+      handler     = "dist/handlers/health.handler.getHealth"
+      description = "Health check endpoint for product service"
+    }
   }
 
   common_tags = {
@@ -241,7 +246,8 @@ resource "aws_iam_policy" "product_service_dynamodb" {
           "dynamodb:BatchGetItem",
           "dynamodb:BatchWriteItem",
           "dynamodb:TransactWriteItems",
-          "dynamodb:TransactGetItems"
+          "dynamodb:TransactGetItems",
+          "dynamodb:DescribeTable"
         ]
         Resource = [
           "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.dynamodb_table_name}",
@@ -377,6 +383,12 @@ data "archive_file" "product_service_placeholder" {
       exports.deleteImage = async () => ({ statusCode: 200, body: JSON.stringify({ message: 'placeholder – deploy via CI/CD', function: 'deleteImage' }) });
     JS
     filename = "dist/handlers/image.handler.js"
+  }
+
+  # Match health handler from local.lambda_functions_config.
+  source {
+    content  = "exports.getHealth = async () => ({ statusCode: 200, body: JSON.stringify({ status: 'healthy', service: 'product-service', version: '1.0.0', timestamp: new Date().toISOString(), checks: { dynamodb: 'healthy', s3: 'healthy', memory: 'healthy' }, uptime: 0 }) });"
+    filename = "dist/handlers/health.handler.js"
   }
 }
 

@@ -37,3 +37,9 @@ variable "api_gateway_id" {
   type        = string
   default     = ""
 }
+
+variable "health_endpoint_url" {
+  description = "Full HTTPS URL of the /health endpoint to monitor with Route 53 health checks and CloudWatch Synthetics (e.g. https://abc123.execute-api.us-east-1.amazonaws.com/dev/health). If empty, Route 53 health checks and Synthetics canary will be skipped."
+  type        = string
+  default     = ""
+}
