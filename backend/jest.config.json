@@ -2,7 +2,7 @@
   "preset": "ts-jest",
   "testEnvironment": "node",
   "roots": ["<rootDir>/src", "<rootDir>/services", "<rootDir>/services/order-service/src", "<rootDir>/tests"],
-  "testMatch": ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
+  "testMatch": ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts", "**/*-test.ts"],
   "transform": {
     "^.+\\.ts$": ["ts-jest", {
       "tsconfig": {
