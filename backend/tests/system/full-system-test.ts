@@ -417,9 +417,12 @@ const MOCK_DISCOUNT = {
   discount_type: 'percentage',
   discount_value: 10,
   is_active: true,
-  usage_count: 0,
-  max_usage: 100,
-  expires_at: null,
+  valid_from: '2024-01-01T00:00:00.000Z',
+  valid_until: null,
+  max_uses: 100,
+  times_used: 0,
+  created_at: '2024-01-01T00:00:00.000Z',
+  updated_at: '2024-01-01T00:00:00.000Z',
 };
 
 const MOCK_NOTIFICATION = {
@@ -893,8 +896,8 @@ describe('5. Discount Service', () => {
     it('returns 200 for a valid active code', async () => {
       mockDiscountFindByCode.mockResolvedValueOnce({
         ...MOCK_DISCOUNT,
-        usage_count: 0,
-        max_usage: 100,
+        times_used: 0,
+        max_uses: 100,
         is_active: true,
       });
       const start = Date.now();
@@ -1160,7 +1163,12 @@ describe('8. Integration Service – Etsy', () => {
 
     it('returns error when no Etsy token is configured', async () => {
       mockGetToken.mockResolvedValueOnce(null);
-      const res = await syncProducts(makeEvent({ headers: ADMIN_HEADERS }));
+      const res = await syncProducts(
+        makeEvent({
+          headers: ADMIN_HEADERS,
+          queryStringParameters: { shop_id: 'test-shop' },
+        }),
+      );
       expect(res.statusCode).toBeGreaterThanOrEqual(400);
     });
   });
