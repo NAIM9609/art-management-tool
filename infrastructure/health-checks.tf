@@ -215,8 +215,9 @@ resource "aws_cloudwatch_metric_alarm" "route53_health_check" {
 data "archive_file" "canary_script" {
   count = local.health_check_enabled ? 1 : 0
 
-  type        = "zip"
-  output_path = "${path.module}/canary-script.zip"
+  type          = "zip"
+  output_path   = "${path.module}/canary-script.zip"
+  base64_encode = true
 
   source {
     filename = "nodejs/node_modules/index.js"

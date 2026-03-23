@@ -15,13 +15,16 @@ const mockCheckDynamoDB = jest.fn();
 const mockCheckS3 = jest.fn();
 const mockCheckMemory = jest.fn();
 
-jest.mock('../../health-check', () => ({
-  checkDynamoDB: (...args: unknown[]) => mockCheckDynamoDB(...args),
-  checkS3: (...args: unknown[]) => mockCheckS3(...args),
-  checkMemory: () => mockCheckMemory(),
-  buildHealthReport: jest.requireActual('../../health-check').buildHealthReport,
-  aggregateStatus: jest.requireActual('../../health-check').aggregateStatus,
-}));
+jest.mock('../health-check', () => {
+  const actual = jest.requireActual('../health-check');
+  return {
+    __esModule: true,
+    ...actual,
+    checkDynamoDB: (...args: unknown[]) => mockCheckDynamoDB(...args),
+    checkS3: (...args: unknown[]) => mockCheckS3(...args),
+    checkMemory: () => mockCheckMemory(),
+  };
+});
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Import handler AFTER mocks
@@ -152,5 +155,21 @@ describe('Health handler – getHealth', () => {
     expect(body.checks.s3).toBe('unhealthy');
 
     process.env.S3_BUCKET_NAME = original;
+  });
+
+  it('falls back to us-east-1 region when AWS_REGION is not set', async () => {
+    const original = process.env.AWS_REGION;
+    delete process.env.AWS_REGION;
+
+    mockCheckDynamoDB.mockResolvedValue({ status: 'healthy' });
+    mockCheckS3.mockResolvedValue({ status: 'healthy' });
+    mockCheckMemory.mockReturnValue({ status: 'healthy' });
+
+    await getHealth(makeEvent());
+
+    expect(mockCheckDynamoDB).toHaveBeenCalledWith('test-table', 'us-east-1');
+    expect(mockCheckS3).toHaveBeenCalledWith('test-bucket', 'us-east-1');
+
+    process.env.AWS_REGION = original;
   });
 });
