@@ -11,9 +11,9 @@
 #
 # Options:
 #   -e, --environment ENV       Staging environment name (default: staging)
-#   -r, --region REGION         AWS region (default: $AWS_REGION or eu-north-1)
+#   -r, --region REGION         AWS region (default: value of $AWS_REGION, or us-east-1 if unset)
 #   -t, --table-name TABLE      DynamoDB table name (default: art-management-tool-staging-art-management)
-#   -b, --pg-backup FILE        Path to a pg_dump .sql file to restore (default: backups/prod-backup.sql)
+#   -b, --pg-backup FILE        Path to a pg_dump custom-format (-Fc) backup file to restore (default: backups/prod-backup.dump)
 #   --staging-db-host HOST      PostgreSQL host for staging (required unless --skip-pg)
 #   --staging-db-port PORT      PostgreSQL port for staging (default: 5432)
 #   --staging-db-user USER      PostgreSQL user for staging (default: postgres)
@@ -53,7 +53,7 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 DYNAMODB_TABLE_NAME="${DYNAMODB_TABLE_NAME:-art-management-tool-staging-art-management}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-PG_BACKUP_FILE="${PG_BACKUP_FILE:-$REPO_ROOT/backups/prod-backup.sql}"
+PG_BACKUP_FILE="${PG_BACKUP_FILE:-$REPO_ROOT/backups/prod-backup.dump}"
 
 STAGING_DB_HOST=""
 STAGING_DB_PORT="5432"
@@ -95,11 +95,23 @@ done
 # ---------------------------------------------------------------------------
 step "Pre-flight checks"
 
-for cmd in aws psql pg_restore; do
-  if ! command -v "$cmd" &>/dev/null; then
-    warn "Optional command not found: $cmd (some steps may be skipped)"
+# Require PostgreSQL tools when the PG step is enabled
+if [[ "$SKIP_PG" == "false" ]]; then
+  for cmd in psql pg_restore; do
+    if ! command -v "$cmd" &>/dev/null; then
+      error "Required command not found: $cmd (needed for PostgreSQL clone step). Install it or re-run with --skip-pg."
+      exit 1
+    fi
+  done
+fi
+
+# Require AWS CLI when DynamoDB or Lambda deployment steps are enabled
+if [[ "$SKIP_DYNAMO" == "false" || "$DEPLOY_LAMBDAS" == "true" ]]; then
+  if ! command -v aws &>/dev/null; then
+    error "Required command not found: aws (needed for DynamoDB and/or Lambda deployment). Install AWS CLI or re-run with --skip-dynamo and without --deploy-lambdas."
+    exit 1
   fi
-done
+fi
 
 if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]] || [[ -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
   error "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set"
@@ -215,7 +227,6 @@ if [[ "$SKIP_DYNAMO" == "false" ]]; then
         'IndexName=GSI3,KeySchema=[{AttributeName=GSI3PK,KeyType=HASH},{AttributeName=GSI3SK,KeyType=RANGE}],Projection={ProjectionType=ALL}' \
       --billing-mode PAY_PER_REQUEST \
       --sse-specification Enabled=true \
-      --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true \
       --region "$AWS_REGION" \
       "${AWS_ENDPOINT_ARGS[@]}" \
       --tags \
@@ -229,6 +240,14 @@ if [[ "$SKIP_DYNAMO" == "false" ]]; then
       --table-name "$DYNAMODB_TABLE_NAME" \
       --region "$AWS_REGION" \
       "${AWS_ENDPOINT_ARGS[@]}"
+
+    info "Enabling point-in-time recovery…"
+    aws dynamodb update-continuous-backups \
+      --table-name "$DYNAMODB_TABLE_NAME" \
+      --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true \
+      --region "$AWS_REGION" \
+      "${AWS_ENDPOINT_ARGS[@]}" \
+      --no-cli-pager || warn "PITR enablement failed (may not be supported by this endpoint)"
 
     success "DynamoDB table created: ${DYNAMODB_TABLE_NAME}"
   fi
@@ -244,7 +263,7 @@ if [[ "$DEPLOY_LAMBDAS" == "true" ]]; then
 
   if [[ -x "$SCRIPT_DIR/deploy-all.sh" ]]; then
     info "Running deploy-all.sh for environment=${ENVIRONMENT}…"
-    ENVIRONMENT="$ENVIRONMENT" "$SCRIPT_DIR/deploy-all.sh"
+    ENVIRONMENT="$ENVIRONMENT" AWS_REGION="$AWS_REGION" "$SCRIPT_DIR/deploy-all.sh"
     success "Lambda functions deployed to staging"
   else
     warn "deploy-all.sh not found or not executable; skipping Lambda deployment."

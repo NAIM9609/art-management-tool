@@ -2,7 +2,7 @@
 
 **Task:** 11.2 Data Migration Dry Run  
 **Environment:** Staging (LocalStack + PostgreSQL)  
-**Date:** 2026-03-24
+**Date:** YYYY-MM-DD
 
 ---
 
@@ -27,11 +27,12 @@ in Task 11.2 and serves as the basis for the production migration go/no-go decis
 
 ```bash
 # 1a. Clone production PostgreSQL to staging
+#     Note: backup must be created with `pg_dump -Fc` (custom format) for pg_restore.
 ./scripts/setup-staging.sh \
   --environment staging \
   --staging-db-host <staging-rds-host> \
   --staging-db-name art_management_staging \
-  --pg-backup backups/prod-backup.sql
+  --pg-backup backups/prod-backup.dump
 
 # 1b. For a fully automated dry run (CI), use the workflow:
 #     .github/workflows/data-migration-dry-run.yml
