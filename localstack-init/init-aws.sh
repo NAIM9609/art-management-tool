@@ -3,6 +3,29 @@
 # LocalStack initialization script for AWS services
 # This script runs automatically when LocalStack starts
 
+set -uo pipefail
+
+AWS_ENDPOINT_URL="${AWS_ENDPOINT_URL:-http://localhost:4566}"
+AWS_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+
+# Resolve the LocalStack AWS command once, then reuse it everywhere.
+if command -v awslocal >/dev/null 2>&1; then
+  AWS_LOCAL_CMD=(awslocal)
+elif command -v aws >/dev/null 2>&1; then
+  export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-test}"
+  export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-test}"
+  export AWS_DEFAULT_REGION="$AWS_REGION"
+  AWS_LOCAL_CMD=(aws --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_REGION")
+else
+  echo "Error: neither 'awslocal' nor 'aws' is available in PATH." >&2
+  echo "Tip: use 'lstk start' to run LocalStack, then install AWS CLI v2." >&2
+  exit 1
+fi
+
+aws_local() {
+  "${AWS_LOCAL_CMD[@]}" "$@"
+}
+
 echo "Initializing LocalStack AWS services..."
 
 # Wait for LocalStack to be fully ready
@@ -10,8 +33,8 @@ sleep 5
 
 # Create S3 bucket for images
 echo "Creating S3 bucket: art-images-dev"
-awslocal s3 mb s3://art-images-dev
-awslocal s3api put-bucket-cors --bucket art-images-dev --cors-configuration '{
+aws_local s3 mb s3://art-images-dev || true
+aws_local s3api put-bucket-cors --bucket art-images-dev --cors-configuration '{
   "CORSRules": [
     {
       "AllowedHeaders": ["*"],
@@ -24,7 +47,7 @@ awslocal s3api put-bucket-cors --bucket art-images-dev --cors-configuration '{
 
 # Create DynamoDB table: products
 echo "Creating DynamoDB table: products"
-awslocal dynamodb create-table \
+aws_local dynamodb create-table \
   --table-name products \
   --attribute-definitions \
     AttributeName=id,AttributeType=S \
@@ -38,7 +61,7 @@ awslocal dynamodb create-table \
 
 # Create DynamoDB table: orders
 echo "Creating DynamoDB table: orders"
-awslocal dynamodb create-table \
+aws_local dynamodb create-table \
   --table-name orders \
   --attribute-definitions \
     AttributeName=id,AttributeType=S \
@@ -52,7 +75,7 @@ awslocal dynamodb create-table \
 
 # Create DynamoDB table: carts
 echo "Creating DynamoDB table: carts"
-awslocal dynamodb create-table \
+aws_local dynamodb create-table \
   --table-name carts \
   --attribute-definitions \
     AttributeName=id,AttributeType=S \
@@ -65,7 +88,7 @@ awslocal dynamodb create-table \
 
 # Create DynamoDB table: discount-codes
 echo "Creating DynamoDB table: discount-codes"
-awslocal dynamodb create-table \
+aws_local dynamodb create-table \
   --table-name discount-codes \
   --attribute-definitions \
     AttributeName=code,AttributeType=S \
@@ -75,7 +98,7 @@ awslocal dynamodb create-table \
 
 # Create DynamoDB table: audit-logs
 echo "Creating DynamoDB table: audit-logs"
-awslocal dynamodb create-table \
+aws_local dynamodb create-table \
   --table-name audit-logs \
   --attribute-definitions \
     AttributeName=id,AttributeType=S \
@@ -89,7 +112,7 @@ awslocal dynamodb create-table \
 
 # Create DynamoDB table: notifications
 echo "Creating DynamoDB table: notifications"
-awslocal dynamodb create-table \
+aws_local dynamodb create-table \
   --table-name notifications \
   --attribute-definitions \
     AttributeName=id,AttributeType=S \
@@ -103,7 +126,7 @@ awslocal dynamodb create-table \
 
 # Create DynamoDB table: etsy-products
 echo "Creating DynamoDB table: etsy-products"
-awslocal dynamodb create-table \
+aws_local dynamodb create-table \
   --table-name etsy-products \
   --attribute-definitions \
     AttributeName=listingId,AttributeType=S \
@@ -116,7 +139,7 @@ awslocal dynamodb create-table \
 
 # Create DynamoDB table: etsy-sync-configs
 echo "Creating DynamoDB table: etsy-sync-configs"
-awslocal dynamodb create-table \
+aws_local dynamodb create-table \
   --table-name etsy-sync-configs \
   --attribute-definitions \
     AttributeName=shopId,AttributeType=S \
@@ -126,7 +149,7 @@ awslocal dynamodb create-table \
 
 # Create DynamoDB table: etsy-oauth-tokens
 echo "Creating DynamoDB table: etsy-oauth-tokens"
-awslocal dynamodb create-table \
+aws_local dynamodb create-table \
   --table-name etsy-oauth-tokens \
   --attribute-definitions \
     AttributeName=shopId,AttributeType=S \

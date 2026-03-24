@@ -35,6 +35,7 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
+      - LOCALSTACK_AUTH_TOKEN=ls-JoMO5116-YIQi-Jepa-0038-vilAZunaad17
     volumes:
       - localstack_data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
