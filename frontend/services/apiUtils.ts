@@ -170,6 +170,41 @@ export function getApiBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL || '';
 }
 
+async function parseSuccessResponse<T>(response: Response): Promise<T> {
+  logDev(`parseSuccessResponse status=${response.status} content-type=${response.headers.get('content-type') || 'n/a'}`);
+
+  // No-content successful responses are valid and should not throw JSON parse errors.
+  if (response.status === 204 || response.status === 205) {
+    logDev('parseSuccessResponse: no-content status, returning null');
+    return null as T;
+  }
+
+  const raw = await response.text();
+  logDev(`parseSuccessResponse: raw length=${raw.length}`);
+  if (!raw || !raw.trim()) {
+    logDev('parseSuccessResponse: empty body, returning null');
+    return null as T;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as T;
+    logDev('parseSuccessResponse: JSON.parse succeeded');
+    return parsed;
+  } catch (error) {
+    const contentType = response.headers.get('content-type') || '';
+    logDev('parseSuccessResponse: JSON.parse failed', {
+      contentType,
+      error: error instanceof Error ? error.message : String(error),
+      preview: raw.slice(0, 200),
+    });
+    if (contentType.includes('application/json')) {
+      throw new Error('Invalid JSON response body');
+    }
+
+    return raw as T;
+  }
+}
+
 export async function fetchWithAuth<T>(
   url: string,
   options?: RequestInit,
@@ -185,14 +220,17 @@ export async function fetchWithAuth<T>(
   }
 
   const fullUrl = `${getApiBaseUrl()}${url}`;
+  logDev(`fetchWithAuth url=${fullUrl} useAuth=${useAuth}`);
   const response = await fetchWithRetry(fullUrl, { ...options, headers });
+  logDev(`fetchWithAuth response status=${response.status} ok=${response.ok}`);
 
   if (!response.ok) {
     const errorMessage = await parseErrorResponse(response);
+    logDev('fetchWithAuth non-ok response', { errorMessage });
     throw new Error(`HTTP ${response.status}: ${errorMessage}`);
   }
 
-  return response.json();
+  return parseSuccessResponse<T>(response);
 }
 
 export async function uploadFile(
