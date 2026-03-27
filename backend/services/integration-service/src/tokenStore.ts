@@ -46,14 +46,14 @@ interface StoredOAuthStateItem {
   createdAt: string;
 }
 
-const tableName = process.env.DYNAMODB_TABLE_NAME || '';
+const tableName = process.env.ETSY_TOKENS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME || '';
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({
   region: process.env.AWS_REGION_NAME || process.env.AWS_REGION,
 }));
 
 function ensureTableConfigured(): void {
   if (!tableName) {
-    throw new Error('DYNAMODB_TABLE_NAME is required for Etsy token storage');
+    throw new Error('ETSY_TOKENS_TABLE_NAME (or DYNAMODB_TABLE_NAME) is required for Etsy token storage');
   }
 }
 

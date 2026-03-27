@@ -1,8 +1,6 @@
-import 'reflect-metadata';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import { config } from './config';
-import { initializeDatabase } from './database/connection';
 import { corsMiddleware } from './middleware/cors';
 import { setupRoutes } from './routes';
 
@@ -32,8 +30,6 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
 
 const startServer = async () => {
   try {
-    await initializeDatabase();
-    
     app.listen(config.server.port, () => {
       console.log(`Server starting on port ${config.server.port}`);
       console.log(`Environment: ${config.server.environment}`);

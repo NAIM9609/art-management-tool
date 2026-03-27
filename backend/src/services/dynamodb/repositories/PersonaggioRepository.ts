@@ -4,8 +4,8 @@
  * DynamoDB Structure:
  * PK: "PERSONAGGIO#${id}"
  * SK: "METADATA"
- * GSI1PK: "PERSONAGGIO_ORDER#${order}"
- * GSI1SK: "${id}"
+ * GSI1PK: "PERSONAGGIO_ORDER"           (fixed for all personaggi — enables range queries)
+ * GSI1SK: "${order_padded}#${id}"       (zero-padded order + id for correct lexicographic sort)
  */
 
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
@@ -101,7 +101,13 @@ export class PersonaggioRepository {
       id: item.id,
       name: item.name,
       description: item.description,
+      icon: item.icon,
       images,
+      backgroundColor: item.backgroundColor,
+      backgroundType: item.backgroundType,
+      gradientFrom: item.gradientFrom,
+      gradientTo: item.gradientTo,
+      backgroundImage: item.backgroundImage,
       order: item.order,
       created_at: item.created_at,
       updated_at: item.updated_at,
@@ -122,19 +128,23 @@ export class PersonaggioRepository {
       order: personaggio.order,
       created_at: personaggio.created_at,
       updated_at: personaggio.updated_at,
-      // GSI1 - Personaggio by order for sorted retrieval
-      // Zero-pad order to ensure correct numeric sorting (lexicographic)
-      GSI1PK: `PERSONAGGIO_ORDER#${personaggio.order.toString().padStart(10, '0')}`,
-      GSI1SK: `${personaggio.id}`,
+      // GSI1 - Personaggio by order for sorted retrieval.
+      // GSI1PK is a fixed constant so all personaggi can be fetched with a single
+      // equality key condition. GSI1SK encodes the zero-padded order followed by the
+      // item id so that lexicographic sort equals numeric order sort.
+      GSI1PK: 'PERSONAGGIO_ORDER',
+      GSI1SK: `${personaggio.order.toString().padStart(10, '0')}#${personaggio.id}`,
     };
 
     // Add optional fields
-    if (personaggio.description !== undefined) {
-      item.description = personaggio.description;
-    }
-    if (personaggio.deleted_at !== undefined) {
-      item.deleted_at = personaggio.deleted_at;
-    }
+    if (personaggio.description !== undefined) item.description = personaggio.description;
+    if (personaggio.icon !== undefined) item.icon = personaggio.icon;
+    if (personaggio.backgroundColor !== undefined) item.backgroundColor = personaggio.backgroundColor;
+    if (personaggio.backgroundType !== undefined) item.backgroundType = personaggio.backgroundType;
+    if (personaggio.gradientFrom !== undefined) item.gradientFrom = personaggio.gradientFrom;
+    if (personaggio.gradientTo !== undefined) item.gradientTo = personaggio.gradientTo;
+    if (personaggio.backgroundImage !== undefined) item.backgroundImage = personaggio.backgroundImage;
+    if (personaggio.deleted_at !== undefined) item.deleted_at = personaggio.deleted_at;
 
     return item;
   }
@@ -151,7 +161,13 @@ export class PersonaggioRepository {
       id,
       name: data.name,
       description: data.description,
+      icon: data.icon,
       images: data.images || [],
+      backgroundColor: data.backgroundColor,
+      backgroundType: data.backgroundType,
+      gradientFrom: data.gradientFrom,
+      gradientTo: data.gradientTo,
+      backgroundImage: data.backgroundImage,
       order,
       created_at: now,
       updated_at: now,
@@ -191,15 +207,18 @@ export class PersonaggioRepository {
    * @param includeDeleted - If true, includes soft-deleted items
    */
   async findAll(includeDeleted: boolean = false): Promise<Personaggio[]> {
-    // Query GSI1 to get items sorted by order
+    // Query GSI1 to get all personaggi sorted by order.
+    // GSI1PK is a fixed constant ("PERSONAGGIO_ORDER") shared by all personaggi items,
+    // which enables a simple equality KeyConditionExpression (begins_with() is not valid
+    // on a partition/hash key — only on a sort/range key).
     const result = await this.dynamoDB.queryEventuallyConsistent({
       indexName: 'GSI1',
-      keyConditionExpression: 'begins_with(GSI1PK, :prefix)',
+      keyConditionExpression: 'GSI1PK = :pk',
       expressionAttributeValues: {
-        ':prefix': 'PERSONAGGIO_ORDER#',
+        ':pk': 'PERSONAGGIO_ORDER',
       },
       filterExpression: includeDeleted ? undefined : 'attribute_not_exists(deleted_at)',
-      scanIndexForward: true, // Sort ascending by GSI1PK (lexicographic on "PERSONAGGIO_ORDER#<padded-order>")
+      scanIndexForward: true, // Sort ascending by GSI1SK ("<padded-order>#<id>")
     });
 
     return result.data.map(item => this.mapToPersonaggio(item));
@@ -218,11 +237,17 @@ export class PersonaggioRepository {
     if (data.name !== undefined) updates.name = data.name;
     if (data.description !== undefined) updates.description = data.description;
     if (data.images !== undefined) updates.images = JSON.stringify(data.images);
+    if (data.icon !== undefined) updates.icon = data.icon;
+    if (data.backgroundColor !== undefined) updates.backgroundColor = data.backgroundColor;
+    if (data.backgroundType !== undefined) updates.backgroundType = data.backgroundType;
+    if (data.gradientFrom !== undefined) updates.gradientFrom = data.gradientFrom;
+    if (data.gradientTo !== undefined) updates.gradientTo = data.gradientTo;
+    if (data.backgroundImage !== undefined) updates.backgroundImage = data.backgroundImage;
 
-    // Handle order update - need to update GSI1 attributes
+    // Handle order update — only GSI1SK encodes the order; GSI1PK is always the same constant.
     if (data.order !== undefined) {
       updates.order = data.order;
-      updates.GSI1PK = `PERSONAGGIO_ORDER#${data.order.toString().padStart(10, '0')}`;
+      updates.GSI1SK = `${data.order.toString().padStart(10, '0')}#${id}`;
     }
 
     try {

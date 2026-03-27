@@ -1,25 +1,4 @@
 services:
-  # PostgreSQL Database (Development)
-  postgres:
-    image: postgres:16-alpine
-    container_name: art-postgres-dev
-    environment:
-      POSTGRES_DB: artmanagement
-      POSTGRES_USER: artuser
-      POSTGRES_PASSWORD: dbpass
-      POSTGRES_INITDB_ARGS: "-E UTF8"
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U artuser -d artmanagement"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - art-network-dev
-
   # LocalStack - Local AWS Services Emulation
   localstack:
     image: localstack/localstack:latest
@@ -55,20 +34,13 @@ services:
       dockerfile: Dockerfile
       target: development
     container_name: art-backend-dev
+    command: sh -c "[ -x node_modules/.bin/ts-node-dev ] || npm install && npm run dev"
     ports:
       - "8080:8080"
     environment:
       # Application Configuration
       - PORT=8080
       - ENVIRONMENT=development
-
-      # Database Configuration
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=artuser
-      - DB_PASSWORD=dbpass
-      - DB_NAME=artmanagement
-      - DB_SSLMODE=disable
 
       # AWS Configuration (LocalStack)
       - AWS_REGION=us-east-1
@@ -77,6 +49,16 @@ services:
       - AWS_ENDPOINT_URL=http://localstack:4566
       - S3_BUCKET_NAME=art-images-dev
       - CDN_URL=http://localhost:4566/art-images-dev
+
+      # DynamoDB table names (one per service)
+      - PRODUCTS_TABLE_NAME=products
+      - ORDERS_TABLE_NAME=orders
+      - CARTS_TABLE_NAME=carts
+      - DISCOUNTS_TABLE_NAME=discount-codes
+      - AUDIT_TABLE_NAME=audit-logs
+      - NOTIFICATIONS_TABLE_NAME=notifications
+      - CONTENT_TABLE_NAME=content
+      - ETSY_TOKENS_TABLE_NAME=etsy-oauth-tokens
 
       # JWT Configuration
       - JWT_SECRET=dev-secret-change-in-production
@@ -103,8 +85,6 @@ services:
       - ./backend/src:/app/src
       - /app/node_modules
     depends_on:
-      postgres:
-        condition: service_healthy
       localstack:
         condition: service_healthy
     networks:
@@ -117,6 +97,7 @@ services:
       dockerfile: Dockerfile
       target: development
     container_name: art-frontend-dev
+    command: sh -c "[ -x node_modules/.bin/next ] || npm install && npm run dev"
     ports:
       - "3000:3000"
     environment:
@@ -138,7 +119,5 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_dev_data:
-    driver: local
   localstack_data:
     driver: local

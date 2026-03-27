@@ -5,8 +5,8 @@ import fs from 'fs';
 import { ProductService } from '../../services/ProductService';
 import { OrderService } from '../../services/OrderService';
 import { NotificationService } from '../../services/NotificationService';
-import { AppDataSource } from '../../database/connection';
-import { Category } from '../../entities/Category';
+import { DynamoDBOptimized } from '../../services/dynamodb/DynamoDBOptimized';
+import { CategoryRepository } from '../../services/dynamodb/repositories/CategoryRepository';
 import { config } from '../../config';
 import { AuthRequest } from '../../middleware/auth';
 
@@ -40,6 +40,13 @@ export function createAdminRoutes(
   notificationService: NotificationService
 ): Router {
   const router = Router();
+  const categoryDynamoDB = new DynamoDBOptimized({
+    tableName: process.env.CONTENT_TABLE_NAME || 'content',
+    region: process.env.AWS_REGION || 'us-east-1',
+    maxRetries: 3,
+    retryDelay: 100,
+  });
+  const categoryRepo = new CategoryRepository(categoryDynamoDB);
 
   router.get('/shop/products', async (req: Request, res: Response) => {
     try {
@@ -229,9 +236,19 @@ export function createAdminRoutes(
 
   router.get('/categories', async (req: Request, res: Response) => {
     try {
-      const categoryRepo = AppDataSource.getRepository(Category);
-      const categories = await categoryRepo.find({ relations: ['parent', 'children'] });
-      res.json(categories);
+      const categories = await categoryRepo.findAllFlat(false);
+      // Build parent/children tree in memory for backward-compatible response shape
+      const byId = new Map(categories.map(c => [c.id, { ...c, parent: undefined as any, children: [] as any[] }]));
+      for (const cat of byId.values()) {
+        if (cat.parent_id) {
+          const parent = byId.get(cat.parent_id);
+          if (parent) {
+            cat.parent = { id: parent.id, name: parent.name, slug: parent.slug };
+            parent.children.push({ id: cat.id, name: cat.name, slug: cat.slug });
+          }
+        }
+      }
+      res.json(Array.from(byId.values()));
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -239,9 +256,7 @@ export function createAdminRoutes(
 
   router.post('/categories', async (req: Request, res: Response) => {
     try {
-      const categoryRepo = AppDataSource.getRepository(Category);
-      const category = categoryRepo.create(req.body);
-      await categoryRepo.save(category);
+      const category = await categoryRepo.create(req.body);
       res.status(201).json(category);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -250,15 +265,17 @@ export function createAdminRoutes(
 
   router.get('/categories/:id', async (req: Request, res: Response) => {
     try {
-      const categoryRepo = AppDataSource.getRepository(Category);
-      const category = await categoryRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-        relations: ['parent', 'children'],
-      });
+      const category = await categoryRepo.findById(parseInt(req.params.id));
       if (!category) {
         return res.status(404).json({ error: 'Category not found' });
       }
-      res.json(category);
+      const result: any = { ...category };
+      if (category.parent_id) {
+        result.parent = await categoryRepo.findById(category.parent_id);
+      }
+      const { items: children } = await categoryRepo.findByParentId(category.id);
+      result.children = children;
+      res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -266,9 +283,10 @@ export function createAdminRoutes(
 
   router.patch('/categories/:id', async (req: Request, res: Response) => {
     try {
-      const categoryRepo = AppDataSource.getRepository(Category);
-      await categoryRepo.update(parseInt(req.params.id), req.body);
-      const category = await categoryRepo.findOne({ where: { id: parseInt(req.params.id) } });
+      const category = await categoryRepo.update(parseInt(req.params.id), req.body);
+      if (!category) {
+        return res.status(404).json({ error: 'Category not found' });
+      }
       res.json(category);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -277,7 +295,6 @@ export function createAdminRoutes(
 
   router.delete('/categories/:id', async (req: Request, res: Response) => {
     try {
-      const categoryRepo = AppDataSource.getRepository(Category);
       await categoryRepo.softDelete(parseInt(req.params.id));
       res.json({ message: 'Category deleted' });
     } catch (error: any) {

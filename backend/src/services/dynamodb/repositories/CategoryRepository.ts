@@ -539,4 +539,42 @@ export class CategoryRepository {
       ],
     });
   }
+
+  /**
+   * Scan all category items (PK starts with 'CATEGORY#', SK = 'METADATA').
+   * Used for admin list endpoints that need the full flat category list.
+   */
+  async findAllFlat(includeDeleted: boolean = false): Promise<Category[]> {
+    const { ScanCommand } = await import('@aws-sdk/lib-dynamodb');
+    const allItems: Record<string, any>[] = [];
+    let exclusiveStartKey: Record<string, any> | undefined;
+
+    const filterParts = ['begins_with(PK, :prefix)', 'SK = :sk'];
+    if (!includeDeleted) {
+      filterParts.push('attribute_not_exists(deleted_at)');
+    }
+
+    do {
+      const command = new ScanCommand({
+        TableName: this.getTableName(),
+        FilterExpression: filterParts.join(' AND '),
+        ExpressionAttributeValues: {
+          ':prefix': 'CATEGORY#',
+          ':sk': 'METADATA',
+        },
+        ExclusiveStartKey: exclusiveStartKey,
+      });
+
+      const client = (this.dynamoDB as any).client;
+      const result = await client.send(command);
+
+      if (result.Items) {
+        allItems.push(...result.Items);
+      }
+
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    return allItems.map(item => this.mapToCategory(item));
+  }
 }

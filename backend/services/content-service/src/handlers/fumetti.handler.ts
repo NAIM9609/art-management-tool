@@ -29,7 +29,7 @@ const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
 
 const dynamoDB = new DynamoDBOptimized({
-  tableName: process.env.DYNAMODB_TABLE_NAME,
+  tableName: process.env.CONTENT_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
   region: process.env.AWS_REGION || 'us-east-1',
   maxRetries: 3,
   retryDelay: 100,

@@ -2,8 +2,8 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { AppDataSource } from '../database/connection';
-import { Fumetto } from '../entities/Fumetto';
+import { DynamoDBOptimized } from '../services/dynamodb/DynamoDBOptimized';
+import { FumettoRepository } from '../services/dynamodb/repositories/FumettoRepository';
 import { authMiddleware } from '../middleware/auth';
 import { config } from '../config';
 
@@ -33,27 +33,27 @@ const upload = multer({
 
 export function createFumettiRoutes(): Router {
   const router = Router();
-  const fumettoRepo = AppDataSource.getRepository(Fumetto);
+  const dynamoDB = new DynamoDBOptimized({
+    tableName: process.env.CONTENT_TABLE_NAME || 'content',
+    region: process.env.AWS_REGION || 'us-east-1',
+    maxRetries: 3,
+    retryDelay: 100,
+  });
+  const repo = new FumettoRepository(dynamoDB);
 
-  router.get('/', async (req: Request, res: Response) => {
+  router.get('/', async (_req: Request, res: Response) => {
     try {
-      const fumetti = await fumettoRepo.find({
-        order: { order: 'ASC', createdAt: 'DESC' },
-      });
-      res.json(fumetti);
+      const { items } = await repo.findAll({}, false);
+      res.json(items);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  router.get('/deleted', authMiddleware, async (req: Request, res: Response) => {
+  router.get('/deleted', authMiddleware, async (_req: Request, res: Response) => {
     try {
-      const fumetti = await fumettoRepo.find({
-        withDeleted: true,
-        where: {},
-      });
-      const deleted = fumetti.filter(f => f.deletedAt);
-      res.json(deleted);
+      const { items } = await repo.findAll({}, true);
+      res.json(items.filter(f => f.deleted_at));
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -61,9 +61,7 @@ export function createFumettiRoutes(): Router {
 
   router.get('/:id', async (req: Request, res: Response) => {
     try {
-      const fumetto = await fumettoRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-      });
+      const fumetto = await repo.findById(parseInt(req.params.id));
       if (!fumetto) {
         return res.status(404).json({ error: 'Fumetto not found' });
       }
@@ -75,8 +73,7 @@ export function createFumettiRoutes(): Router {
 
   router.post('/', authMiddleware, async (req: Request, res: Response) => {
     try {
-      const fumetto = fumettoRepo.create(req.body);
-      await fumettoRepo.save(fumetto);
+      const fumetto = await repo.create(req.body);
       res.status(201).json(fumetto);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -85,10 +82,10 @@ export function createFumettiRoutes(): Router {
 
   router.put('/:id', authMiddleware, async (req: Request, res: Response) => {
     try {
-      await fumettoRepo.update(parseInt(req.params.id), req.body);
-      const fumetto = await fumettoRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-      });
+      const fumetto = await repo.update(parseInt(req.params.id), req.body);
+      if (!fumetto) {
+        return res.status(404).json({ error: 'Fumetto not found' });
+      }
       res.json(fumetto);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -97,7 +94,7 @@ export function createFumettiRoutes(): Router {
 
   router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
     try {
-      await fumettoRepo.softDelete(parseInt(req.params.id));
+      await repo.softDelete(parseInt(req.params.id));
       res.json({ message: 'Fumetto deleted' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -106,10 +103,10 @@ export function createFumettiRoutes(): Router {
 
   router.post('/:id/restore', authMiddleware, async (req: Request, res: Response) => {
     try {
-      await fumettoRepo.restore(parseInt(req.params.id));
-      const fumetto = await fumettoRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-      });
+      const fumetto = await repo.restore(parseInt(req.params.id));
+      if (!fumetto) {
+        return res.status(404).json({ error: 'Fumetto not found' });
+      }
       res.json(fumetto);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -118,9 +115,8 @@ export function createFumettiRoutes(): Router {
 
   router.post('/:id/upload', authMiddleware, upload.single('file'), async (req: Request, res: Response) => {
     try {
-      const fumetto = await fumettoRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-      });
+      const id = parseInt(req.params.id);
+      const fumetto = await repo.findById(id);
       if (!fumetto) {
         return res.status(404).json({ error: 'Fumetto not found' });
       }
@@ -131,16 +127,15 @@ export function createFumettiRoutes(): Router {
       const imageUrl = `/uploads/fumetti/${req.file.filename}`;
       const imageType = req.body.type || 'page';
 
+      let updated;
       if (imageType === 'cover') {
-        fumetto.coverImage = imageUrl;
+        updated = await repo.update(id, { coverImage: imageUrl });
       } else {
-        const pages = fumetto.pages || [];
-        pages.push(imageUrl);
-        fumetto.pages = pages;
+        const pages = [...(fumetto.pages || []), imageUrl];
+        updated = await repo.update(id, { pages });
       }
 
-      await fumettoRepo.save(fumetto);
-      res.json({ message: 'Image uploaded', url: imageUrl, type: imageType, fumetto });
+      res.json({ message: 'Image uploaded', url: imageUrl, type: imageType, fumetto: updated });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -148,9 +143,8 @@ export function createFumettiRoutes(): Router {
 
   router.delete('/:id/pages', authMiddleware, async (req: Request, res: Response) => {
     try {
-      const fumetto = await fumettoRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-      });
+      const id = parseInt(req.params.id);
+      const fumetto = await repo.findById(id);
       if (!fumetto) {
         return res.status(404).json({ error: 'Fumetto not found' });
       }
@@ -162,14 +156,13 @@ export function createFumettiRoutes(): Router {
 
       if (type === 'cover') {
         if (fumetto.coverImage === pageUrl) {
-          fumetto.coverImage = undefined;
+          await repo.update(id, { coverImage: undefined });
         }
       } else {
-        const pages = fumetto.pages || [];
-        fumetto.pages = pages.filter((p) => p !== pageUrl);
+        const pages = (fumetto.pages || []).filter(p => p !== pageUrl);
+        await repo.update(id, { pages });
       }
 
-      await fumettoRepo.save(fumetto);
       res.json({ message: 'Page removed successfully' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -178,3 +171,4 @@ export function createFumettiRoutes(): Router {
 
   return router;
 }
+

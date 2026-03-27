@@ -37,12 +37,12 @@ export async function getHealth(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> {
-  const tableName = process.env.DYNAMODB_TABLE_NAME ?? '';
+  const tableName = process.env.PRODUCTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME || '';
   const bucketName = process.env.S3_BUCKET_NAME ?? '';
   const region = process.env.AWS_REGION ?? 'us-east-1';
 
   const [dynamoResult, s3Result, memoryResult] = await Promise.all([
-    tableName ? checkDynamoDB(tableName, region) : Promise.resolve({ status: 'unhealthy' as CheckStatus, error: 'DYNAMODB_TABLE_NAME not set' }),
+    tableName ? checkDynamoDB(tableName, region) : Promise.resolve({ status: 'unhealthy' as CheckStatus, error: 'PRODUCTS_TABLE_NAME not set' }),
     bucketName ? checkS3(bucketName, region) : Promise.resolve({ status: 'unhealthy' as CheckStatus, error: 'S3_BUCKET_NAME not set' }),
     Promise.resolve(checkMemory()),
   ]);
