@@ -1,29 +1,16 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import { ProductService } from '../../services/ProductService';
 import { OrderService } from '../../services/OrderService';
 import { NotificationService } from '../../services/NotificationService';
 import { DynamoDBOptimized } from '../../services/dynamodb/DynamoDBOptimized';
 import { CategoryRepository } from '../../services/dynamodb/repositories/CategoryRepository';
+import { S3Service } from '../../services/s3/S3Service';
 import { config } from '../../config';
 import { AuthRequest } from '../../middleware/auth';
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const dir = path.join(config.uploadBaseDir, 'products');
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: config.uploadMaxFileSize },
   fileFilter: (_req, file, cb) => {
     if (config.uploadAllowedTypes.includes(file.mimetype)) {
@@ -319,7 +306,13 @@ export function createAdminRoutes(
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const imageUrl = `/uploads/products/${req.file.filename}`;
+      const s3Service = new S3Service();
+      const { cdnUrl: imageUrl } = await s3Service.uploadImage(
+        req.file.buffer,
+        'uploads/products',
+        req.file.originalname,
+        req.file.mimetype
+      );
       const altText = req.body.alt_text || '';
       const position = req.body.position !== undefined ? parseInt(req.body.position) : undefined;
 

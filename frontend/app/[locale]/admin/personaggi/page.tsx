@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { TabView, TabPanel } from 'primereact/tabview';
 import { PersonaggioDTO } from '@/services/PersonaggiAPIService';
 import PersonaggioPreview from '@/components/PersonaggioPreview';
@@ -32,8 +32,6 @@ export default function AdminPersonaggiPage() {
     handleCreate,
     handleEdit,
     handleSave,
-    handleSaveForUpload,
-    handleReloadAfterUpload,
     handleDelete,
     handleRestore,
   } = usePersonaggioManagement();
@@ -83,6 +81,7 @@ export default function AdminPersonaggiPage() {
   return (
     <div className="p-6 space-y-6">
       {toast}
+      <ConfirmDialog />
 
       <PageHeader
         title="Gestione Personaggi"
@@ -138,8 +137,6 @@ export default function AdminPersonaggiPage() {
           formData={formData}
           setFormData={setFormData}
           editingPersonaggio={editingPersonaggio}
-          onSaveRequired={handleSaveForUpload}
-          onUploadComplete={handleReloadAfterUpload}
         />
       </Dialog>
 

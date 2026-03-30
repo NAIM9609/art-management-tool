@@ -14,8 +14,6 @@ interface FumettoFormProps {
   onHide: () => void;
   onSave: () => void;
   onChange: (field: keyof FumettoDTO, value: string | string[] | number | null) => void;
-  onSaveForUpload: () => Promise<number | undefined>;
-  onSaveAfterUpload: () => Promise<void>;
 }
 
 export default function FumettoForm({
@@ -25,8 +23,6 @@ export default function FumettoForm({
   onHide,
   onSave,
   onChange,
-  onSaveForUpload,
-  onSaveAfterUpload,
 }: FumettoFormProps) {
   const dialogFooter = (
     <div>
@@ -89,9 +85,8 @@ export default function FumettoForm({
               onImagesChange={(images) => onChange('coverImage', images[0] || '')}
               maxImages={1}
               type="cover"
+              uploadEntity="fumetti"
               fumettoId={formData.id}
-              onSaveRequired={onSaveForUpload}
-              onUploadComplete={onSaveAfterUpload}
             />
           </div>
         </TabPanel>
@@ -105,9 +100,8 @@ export default function FumettoForm({
               onImagesChange={(images) => onChange('pages', images)}
               maxImages={50}
               type="page"
+              uploadEntity="fumetti"
               fumettoId={formData.id}
-              onSaveRequired={onSaveForUpload}
-              onUploadComplete={onSaveAfterUpload}
             />
           </div>
         </TabPanel>

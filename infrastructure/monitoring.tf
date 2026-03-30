@@ -343,3 +343,35 @@ output "dashboard_url" {
   description = "URL of the CloudWatch dashboard"
   value       = "https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${aws_cloudwatch_dashboard.main.dashboard_name}"
 }
+
+# ---------------------------------------------------------------------------
+# AWS Budgets – monthly cost budget (alerts-only, always free)
+# Action-enabled budgets are billed (2 free/month). This uses notification
+# blocks only (no action blocks), so it is always free regardless of count.
+# ---------------------------------------------------------------------------
+
+resource "aws_budgets_budget" "monthly_cost" {
+  name         = "${var.project_name}-${var.environment}-monthly-cost"
+  budget_type  = "COST"
+  limit_amount = tostring(var.monthly_budget_limit_usd)
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  # Alert at 80% of actual spend
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 80
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.admin_email]
+  }
+
+  # Alert when forecast exceeds 100% of budget (early warning before month-end)
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "FORECASTED"
+    subscriber_email_addresses = [var.admin_email]
+  }
+}

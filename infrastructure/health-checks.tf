@@ -261,9 +261,12 @@ resource "aws_synthetics_canary" "health_check" {
   runtime_version      = "syn-nodejs-puppeteer-9.1"
   handler              = "index.handler"
 
-  # Run every 5 minutes.
+  # Run every hour – not every 5 minutes.
+  # CloudWatch Synthetics is NOT in the Always Free tier.
+  # Rate: $0.0012/run → 5-min = 8,640 runs/month ≈ $10/month
+  #                    → 1-hour  =   720 runs/month ≈ $0.86/month
   schedule {
-    expression = "rate(5 minutes)"
+    expression = "rate(1 hour)"
   }
 
   # Start the canary automatically after creation.

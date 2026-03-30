@@ -1,26 +1,13 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import { DynamoDBOptimized } from '../services/dynamodb/DynamoDBOptimized';
 import { PersonaggioRepository } from '../services/dynamodb/repositories/PersonaggioRepository';
+import { S3Service } from '../services/s3/S3Service';
 import { authMiddleware } from '../middleware/auth';
 import { config } from '../config';
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const dir = path.join(config.uploadBaseDir, 'personaggi');
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: config.uploadMaxFileSize },
   fileFilter: (_req, file, cb) => {
     if (config.uploadAllowedTypes.includes(file.mimetype)) {
@@ -30,6 +17,23 @@ const upload = multer({
     }
   },
 });
+
+function getS3KeyFromUrl(imageUrl: string | undefined | null): string | null {
+  if (!imageUrl) {
+    return null;
+  }
+
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    try {
+      const parsed = new URL(imageUrl);
+      return parsed.pathname.replace(/^\/+/, '') || null;
+    } catch {
+      return null;
+    }
+  }
+
+  return imageUrl.replace(/^\/+/, '') || null;
+}
 
 export function createPersonaggiRoutes(): Router {
   const router = Router();
@@ -124,7 +128,13 @@ export function createPersonaggiRoutes(): Router {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const imageUrl = `/uploads/personaggi/${req.file.filename}`;
+      const s3Service = new S3Service();
+      const { cdnUrl: imageUrl, key } = await s3Service.uploadImage(
+        req.file.buffer,
+        'uploads/personaggi',
+        req.file.originalname,
+        req.file.mimetype
+      );
       const imageType = req.body.type || 'gallery';
 
       let updated;
@@ -137,7 +147,7 @@ export function createPersonaggiRoutes(): Router {
         updated = await repo.update(id, { images });
       }
 
-      res.json({ message: 'Image uploaded', url: imageUrl, type: imageType, personaggio: updated });
+      res.json({ message: 'Image uploaded', url: imageUrl, key, type: imageType, personaggio: updated });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -159,14 +169,44 @@ export function createPersonaggiRoutes(): Router {
       if (type === 'icon') {
         if (personaggio.icon === imageUrl) {
           await repo.update(id, { icon: null });
+
+          const key = getS3KeyFromUrl(imageUrl);
+          if (key) {
+            const s3Service = new S3Service();
+            try {
+              await s3Service.deleteImage(key);
+            } catch (error) {
+              console.warn(`Failed to delete S3 icon image ${key}:`, error);
+            }
+          }
         }
       } else if (type === 'background') {
         if (personaggio.backgroundImage === imageUrl) {
           await repo.update(id, { backgroundImage: null });
+
+          const key = getS3KeyFromUrl(imageUrl);
+          if (key) {
+            const s3Service = new S3Service();
+            try {
+              await s3Service.deleteImage(key);
+            } catch (error) {
+              console.warn(`Failed to delete S3 background image ${key}:`, error);
+            }
+          }
         }
       } else {
         const images = (personaggio.images || []).filter(img => img !== imageUrl);
         await repo.update(id, { images });
+
+        const key = getS3KeyFromUrl(imageUrl);
+        if (key) {
+          const s3Service = new S3Service();
+          try {
+            await s3Service.deleteImage(key);
+          } catch (error) {
+            console.warn(`Failed to delete S3 gallery image ${key}:`, error);
+          }
+        }
       }
 
       res.json({ message: 'Image removed successfully' });

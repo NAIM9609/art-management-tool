@@ -83,6 +83,14 @@ locals {
     }
   }
 
+      # Temp upload (no entity ID required — browser-direct presigned upload)
+      "content-service-temp-upload-presign" = {
+        timeout     = 5
+        handler     = "dist/handlers/upload.handler.tempUploadPresign"
+        description = "Generate presigned S3 URL for a temporary upload slot"
+      }
+    }
+
   content_common_tags = {
     Environment = var.environment
     Project     = var.project_name

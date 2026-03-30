@@ -74,6 +74,53 @@ docker-compose -f docker-compose.development.yml logs -f localstack
 docker-compose -f docker-compose.development.yml down
 ```
 
+## Lambda-Mode Local Workflow (No Always-On Backend)
+
+This mode is closer to production: you keep LocalStack running, deploy functions to LocalStack Lambda, and invoke functions on demand.
+
+### 1. Start only LocalStack
+
+```bash
+docker-compose -f docker-compose.development.yml up -d localstack
+```
+
+### 2. Deploy one service to LocalStack Lambda
+
+From `backend/`:
+
+```bash
+npm run lambda:local:deploy -- -ServiceName content
+```
+
+Or deploy all services:
+
+```bash
+npm run lambda:local:deploy:all
+```
+
+### 3. Invoke a function directly
+
+Example (list fumetti):
+
+```bash
+npm run lambda:local:invoke -- -FunctionName art-management-tool-dev-content-service-list-fumetti -Payload '{"requestContext":{"http":{"method":"GET","path":"/api/fumetti"}},"rawPath":"/api/fumetti"}'
+```
+
+### 4. Re-deploy after code changes
+
+When you change service code, redeploy that service:
+
+```bash
+npm run lambda:local:deploy -- -ServiceName product
+```
+
+Notes:
+- This avoids running the Express backend continuously during experiments.
+- LocalStack still runs continuously as the AWS emulator.
+- The deploy script now publishes a shared Lambda dependency layer from `backend/node_modules`, so per-function zip packages stay much smaller.
+- The first deploy can take longer because the dependency layer must be packaged and published before functions are updated.
+- Scripts used: `scripts/localstack-deploy-service.ps1`, `scripts/localstack-deploy-all.ps1`, `scripts/localstack-invoke.ps1`.
+
 ## Running Tests Locally
 
 ### Unit Tests (with AWS mocks)

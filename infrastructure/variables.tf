@@ -43,3 +43,15 @@ variable "health_endpoint_url" {
   type        = string
   default     = ""
 }
+
+variable "monthly_budget_limit_usd" {
+  description = "Monthly cost budget ceiling in USD. An alerts-only budget fires at 80% (actual) and 100% (forecasted) of this amount. Alerts-only budgets are always free (no action-enabled budget charges)."
+  type        = number
+  default     = 10
+}
+
+variable "budget_stop_threshold_usd" {
+  description = "Monthly spend threshold in USD at which AWS Budgets automatically attaches a deny policy to all Lambda execution roles, stopping cost-generating operations. Counts as 1 of the 2 free action-enabled budgets per account per month."
+  type        = number
+  default     = 20
+}

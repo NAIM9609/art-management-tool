@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
-import Image from "next/image";
+import OptimizedImage from "@/components/OptimizedImage";
 import { FumettiAPIService, type FumettoDTO } from "@/services/FumettiAPIService";
 
 export default function FumettoDetailClient() {
@@ -59,16 +59,11 @@ export default function FumettoDetailClient() {
           <div className="space-y-0">
             {fumetto.pages?.map((page, index) => (
               <div key={index} className="relative px-8 md:px-24 lg:px-32">
-                <Image
+                <OptimizedImage
                   src={page}
                   alt={`${fumetto.title} - Pagina ${index + 1}`}
-                  width={0}
-                  height={0}
-                  sizes="100vw"
-                  className="w-full h-auto"
-                  style={{ width: '100%', height: 'auto' }}
-                  priority={index === 0}
-                  quality={100}
+                  className="w-full"
+                  imgClassName="w-full h-auto"
                 />
               </div>
             ))}

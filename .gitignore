@@ -63,3 +63,6 @@ backup_*.sql
 # Uploaded files (stored in Docker volumes)
 uploads/
 !uploads/.gitkeep
+
+# TODO files
+backups/

@@ -21,6 +21,9 @@ const nextConfig: NextConfig = {
     // Static export cannot use Next.js image optimization
     ...(isExportMode ? { unoptimized: true } : {}),
     formats: ['image/avif', 'image/webp'],
+    // Keep domains for backward compatibility with host validation in some
+    // Next.js runtime paths; remotePatterns remains the primary allow-list.
+    domains: ['localhost'],
     remotePatterns: [
       {
         protocol: 'http',
@@ -33,6 +36,13 @@ const nextConfig: NextConfig = {
         hostname: 'giorgiopriviteralab.com',
         port: '3000',
         pathname: '/uploads/**',
+      },
+      {
+        // LocalStack S3 — used in development (CDN_URL=http://localhost:4566/<bucket>)
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '4566',
+        pathname: '/**',
       },
       {
         protocol: 'https',
