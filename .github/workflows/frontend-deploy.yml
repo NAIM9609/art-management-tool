@@ -102,6 +102,7 @@ jobs:
       # Uses GitHub Secrets for secure authentication with AWS
       # Required secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
       - name: Configure AWS credentials
+        if: github.event_name != 'pull_request'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -112,6 +113,7 @@ jobs:
       # Uploads both timestamped and 'latest' versions of the build
       # Required secret: S3_BUCKET_NAME
       - name: Upload to S3
+        if: github.event_name != 'pull_request'
         run: |
           # Upload timestamped version with metadata
           aws s3 cp ../frontend-build-${BUILD_TIMESTAMP}.zip \
@@ -128,6 +130,7 @@ jobs:
       # This method works for Amplify apps NOT connected to a repository provider.
       # Required secrets: AMPLIFY_APP_ID, AMPLIFY_BRANCH_NAME (optional, defaults to 'main')
       - name: Deploy to Amplify
+        if: github.event_name != 'pull_request'
         run: |
           if [ -n "${{ secrets.AMPLIFY_APP_ID }}" ]; then
             BRANCH_NAME="${{ secrets.AMPLIFY_BRANCH_NAME }}"
@@ -177,13 +180,19 @@ jobs:
       - name: Deployment summary
         run: |
           echo "✅ Frontend build completed successfully"
-          echo "📦 Build archive uploaded to S3"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "🧪 Pull request build only — deploy steps skipped"
+          else
+            echo "📦 Build archive uploaded to S3"
+          fi
           
           # Conditionally report Amplify deployment status
           if [ "$AMPLIFY_TRIGGERED" = "api" ]; then
             echo "🚀 Amplify deployment triggered via API (app: ${{ secrets.AMPLIFY_APP_ID }})"
           elif [ "$AMPLIFY_TRIGGERED" = "webhook" ]; then
             echo "🚀 Amplify deployment triggered via webhook"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "🚫 Amplify deployment skipped for pull requests"
           else
             echo "🚫 Amplify deployment was not triggered (no AMPLIFY_APP_ID or webhook configured)"
           fi

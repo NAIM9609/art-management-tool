@@ -348,6 +348,84 @@ describe('ProductRepository', () => {
 
       expect(product).toBeNull();
     });
+
+    it('should populate GSI3 fields when character_id changes', async () => {
+      const updateData: UpdateProductData = {
+        character_id: 321,
+      };
+
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          slug: 'test-product',
+          title: 'Existing Title',
+          status: ProductStatus.PUBLISHED,
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-01T00:00:00.000Z',
+        },
+      });
+
+      let updateExpression: any;
+      ddbMock.on(UpdateCommand).callsFake((input) => {
+        updateExpression = input;
+        return {
+          Attributes: {
+            id: 1,
+            slug: 'test-product',
+            title: 'Existing Title',
+            status: ProductStatus.PUBLISHED,
+            character_id: 321,
+            created_at: '2024-01-01T00:00:00.000Z',
+            updated_at: '2024-01-02T00:00:00.000Z',
+          },
+        };
+      });
+
+      const product = await repository.update(1, updateData);
+
+      expect(product?.character_id).toBe(321);
+      expect(Object.values(updateExpression.ExpressionAttributeValues || {})).toContain('CHARACTER#321');
+      expect(Object.values(updateExpression.ExpressionAttributeValues || {})).toContain('2024-01-01T00:00:00.000Z');
+    });
+
+    it('should avoid adding GSI3 fields when character_id is explicitly cleared', async () => {
+      const updateData: UpdateProductData = {
+        character_id: null,
+      };
+
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          slug: 'test-product',
+          title: 'Existing Title',
+          status: ProductStatus.PUBLISHED,
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-01T00:00:00.000Z',
+        },
+      });
+
+      let updateExpression: any;
+      ddbMock.on(UpdateCommand).callsFake((input) => {
+        updateExpression = input;
+        return {
+          Attributes: {
+            id: 1,
+            slug: 'test-product',
+            title: 'Existing Title',
+            status: ProductStatus.PUBLISHED,
+            character_id: null,
+            created_at: '2024-01-01T00:00:00.000Z',
+            updated_at: '2024-01-02T00:00:00.000Z',
+          },
+        };
+      });
+
+      const product = await repository.update(1, updateData);
+
+      expect(product?.character_id).toBeNull();
+      const exprValues = Object.values(updateExpression.ExpressionAttributeValues || {});
+      expect(exprValues.some(value => typeof value === 'string' && value.startsWith('CHARACTER#'))).toBe(false);
+    });
   });
 
   describe('softDelete', () => {
@@ -429,6 +507,44 @@ describe('ProductRepository', () => {
       ddbMock.on(GetCommand).resolves({ Item: undefined });
 
       const product = await repository.restore(999);
+
+      expect(product).toBeNull();
+    });
+
+    it('should return null when the restore update returns no attributes', async () => {
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          slug: 'deleted-product',
+          title: 'Deleted Product',
+          status: ProductStatus.PUBLISHED,
+          deleted_at: '2024-01-02T00:00:00.000Z',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-01T00:00:00.000Z',
+        },
+      });
+      ddbMock.on(UpdateCommand).resolves({ Attributes: undefined });
+
+      const product = await repository.restore(1);
+
+      expect(product).toBeNull();
+    });
+
+    it('should return null when the restore update hits a conditional check failure', async () => {
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          slug: 'deleted-product',
+          title: 'Deleted Product',
+          status: ProductStatus.PUBLISHED,
+          deleted_at: '2024-01-02T00:00:00.000Z',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-01T00:00:00.000Z',
+        },
+      });
+      ddbMock.on(UpdateCommand).rejects({ name: 'ConditionalCheckFailedException' });
+
+      const product = await repository.restore(1);
 
       expect(product).toBeNull();
     });
@@ -681,6 +797,40 @@ describe('ProductRepository', () => {
       expect(item.GSI3PK).toBeUndefined();
       expect(item.GSI3SK).toBeUndefined();
     });
+
+    it('should preserve optional fields and avoid GSI3 when character_id is explicitly null', () => {
+      const product = {
+        id: 2,
+        slug: 'optional-product',
+        title: 'Optional Product',
+        short_description: '',
+        long_description: '',
+        base_price: 0,
+        currency: 'EUR',
+        sku: '',
+        gtin: '',
+        status: ProductStatus.DRAFT,
+        character_id: null,
+        character_value: '',
+        etsy_link: '',
+        created_at: '2024-02-01T00:00:00.000Z',
+        updated_at: '2024-02-01T00:00:00.000Z',
+        deleted_at: '2024-02-02T00:00:00.000Z',
+      };
+
+      const item = repository.buildProductItem(product);
+
+      expect(item.short_description).toBe('');
+      expect(item.long_description).toBe('');
+      expect(item.sku).toBe('');
+      expect(item.gtin).toBe('');
+      expect(item.character_value).toBe('');
+      expect(item.etsy_link).toBe('');
+      expect(item.deleted_at).toBe('2024-02-02T00:00:00.000Z');
+      expect(item.character_id).toBeUndefined();
+      expect(item.GSI3PK).toBeUndefined();
+      expect(item.GSI3SK).toBeUndefined();
+    });
   });
 
   describe('findBySlug fallback (GSI missing)', () => {
@@ -728,6 +878,27 @@ describe('ProductRepository', () => {
 
       expect(product).toBeNull();
     });
+
+    it('should fall back to the environment table name when the client table name is unavailable', async () => {
+      const resourceNotFound = Object.assign(new Error('index not found'), {
+        name: 'ResourceNotFoundException',
+      });
+      ddbMock.on(QueryCommand).rejects(resourceNotFound);
+      ddbMock.on(ScanCommand).resolves({ Items: [] });
+
+      const originalTableName = (dynamoDB as any).tableName;
+      (dynamoDB as any).tableName = undefined;
+      process.env.DYNAMODB_TABLE_NAME = 'env-fallback-table';
+
+      try {
+        await repository.findBySlug('env-fallback');
+      } finally {
+        (dynamoDB as any).tableName = originalTableName;
+      }
+
+      const calls = ddbMock.commandCalls(ScanCommand);
+      expect(calls[0].args[0].input.TableName).toBe('env-fallback-table');
+    });
   });
 
   describe('findByStatus fallback (GSI missing)', () => {
@@ -762,6 +933,126 @@ describe('ProductRepository', () => {
       ddbMock.on(QueryCommand).rejects(new Error('network error'));
 
       await expect(repository.findByStatus(ProductStatus.PUBLISHED)).rejects.toThrow('network error');
+    });
+  });
+
+  describe('search fallback (GSI missing)', () => {
+    it('should fall back to scan when the published-products index is missing', async () => {
+      const resourceNotFound = Object.assign(new Error('index not found'), {
+        name: 'ResourceNotFoundException',
+      });
+      ddbMock.on(QueryCommand).rejects(resourceNotFound);
+
+      ddbMock.on(ScanCommand).resolves({
+        Items: [
+          {
+            id: 10,
+            slug: 'hero-comic',
+            title: 'Hero Comic',
+            short_description: 'Hero search hit',
+            status: ProductStatus.PUBLISHED,
+            base_price: 14.99,
+            currency: 'USD',
+            created_at: '2024-02-01T00:00:00.000Z',
+            updated_at: '2024-02-01T00:00:00.000Z',
+          },
+        ],
+      });
+
+      const result = await repository.search('Hero');
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].title).toBe('Hero Comic');
+
+      const calls = ddbMock.commandCalls(ScanCommand);
+      expect(calls).toHaveLength(1);
+      const input = calls[0].args[0].input;
+      expect(input.FilterExpression).toContain('contains(#title, :term)');
+      expect(input.ExpressionAttributeValues?.[':term']).toBe('Hero');
+      expect(input.Limit).toBe(50);
+    });
+
+    it('should paginate, sort by created_at descending, and respect the requested limit', async () => {
+      const resourceNotFound = Object.assign(new Error('index not found'), {
+        name: 'ResourceNotFoundException',
+      });
+      ddbMock.on(QueryCommand).rejects(resourceNotFound);
+
+      ddbMock.on(ScanCommand)
+        .resolvesOnce({
+          Items: [
+            {
+              id: 11,
+              slug: 'older-hero',
+              title: 'Older Hero',
+              short_description: 'First page result',
+              status: ProductStatus.PUBLISHED,
+              base_price: 11.99,
+              currency: 'USD',
+              created_at: '2024-01-01T00:00:00.000Z',
+              updated_at: '2024-01-01T00:00:00.000Z',
+            },
+          ],
+          LastEvaluatedKey: { PK: 'PRODUCT#11', SK: 'METADATA' },
+        })
+        .resolvesOnce({
+          Items: [
+            {
+              id: 12,
+              slug: 'newer-hero',
+              title: 'Newer Hero',
+              short_description: 'Second page result',
+              status: ProductStatus.PUBLISHED,
+              base_price: 12.99,
+              currency: 'USD',
+              created_at: '2024-03-01T00:00:00.000Z',
+              updated_at: '2024-03-01T00:00:00.000Z',
+            },
+          ],
+        });
+
+      const result = await repository.search('Hero', { limit: 2 });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0].slug).toBe('newer-hero');
+      expect(result.items[1].slug).toBe('older-hero');
+      expect(ddbMock.commandCalls(ScanCommand)).toHaveLength(2);
+    });
+
+    it('should re-throw non-index errors from search', async () => {
+      ddbMock.on(QueryCommand).rejects(new Error('search failed'));
+
+      await expect(repository.search('Hero')).rejects.toThrow('search failed');
+    });
+  });
+
+  describe('findBySlug fallback pagination stop', () => {
+    it('should stop scanning after the first matching page even when LastEvaluatedKey is present', async () => {
+      const resourceNotFound = Object.assign(new Error('index not found'), {
+        name: 'ResourceNotFoundException',
+      });
+      ddbMock.on(QueryCommand).rejects(resourceNotFound);
+
+      ddbMock.on(ScanCommand).resolvesOnce({
+        Items: [
+          {
+            id: 13,
+            slug: 'first-match',
+            title: 'First Match',
+            status: ProductStatus.PUBLISHED,
+            base_price: 19.99,
+            currency: 'USD',
+            created_at: '2024-02-10T00:00:00.000Z',
+            updated_at: '2024-02-10T00:00:00.000Z',
+          },
+        ],
+        LastEvaluatedKey: { PK: 'PRODUCT#13', SK: 'METADATA' },
+      });
+
+      const product = await repository.findBySlug('first-match');
+
+      expect(product?.slug).toBe('first-match');
+      expect(ddbMock.commandCalls(ScanCommand)).toHaveLength(1);
     });
   });
 

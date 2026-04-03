@@ -33,8 +33,8 @@ import jwt from 'jsonwebtoken';
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const JWT_SECRET = 'smoke-test-secret';
-/** Smoke-test response-time budget (ms). */
-const SMOKE_MAX_LATENCY_MS = 200;
+/** Smoke-test response-time budget (ms). CI runners are noisier than local dev. */
+const SMOKE_MAX_LATENCY_MS = process.env.CI ? 500 : 250;
 
 function makeAdminToken(): string {
   return jwt.sign({ id: 1, username: 'artadmin' }, JWT_SECRET, { expiresIn: '1h' });

@@ -130,71 +130,75 @@ resource "aws_budgets_budget" "cost_stop" {
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
 
-  # ── Action 1 of 2 – product, cart, order, notification ──────────────────
-  action {
-    action_type        = "APPLY_IAM_POLICY"
-    approval_model     = "AUTOMATIC"
-    execution_role_arn = aws_iam_role.budget_action_execution.arn
-
-    action_threshold {
-      action_threshold_type  = "ABSOLUTE_VALUE"
-      action_threshold_value = var.budget_stop_threshold_usd
-    }
-
-    definition {
-      iam_action_definition {
-        policy_arn = aws_iam_policy.budget_cost_stop.arn
-        roles = [
-          "${var.project_name}-${var.environment}-product-service-lambda-role",
-          "${var.project_name}-${var.environment}-cart-service-lambda-role",
-          "${var.project_name}-${var.environment}-order-service-lambda-role",
-          "${var.project_name}-${var.environment}-notification-service-lambda-role",
-        ]
-      }
-    }
-
-    subscriber {
-      address           = var.admin_email
-      subscription_type = "EMAIL"
-    }
-  }
-
-  # ── Action 2 of 2 – integration, discount, content, audit ───────────────
-  action {
-    action_type        = "APPLY_IAM_POLICY"
-    approval_model     = "AUTOMATIC"
-    execution_role_arn = aws_iam_role.budget_action_execution.arn
-
-    action_threshold {
-      action_threshold_type  = "ABSOLUTE_VALUE"
-      action_threshold_value = var.budget_stop_threshold_usd
-    }
-
-    definition {
-      iam_action_definition {
-        policy_arn = aws_iam_policy.budget_cost_stop.arn
-        roles = [
-          "${var.project_name}-${var.environment}-integration-service-lambda-role",
-          "${var.project_name}-${var.environment}-discount-service-lambda-role",
-          "${var.project_name}-${var.environment}-content-service-lambda-role",
-          "${var.project_name}-${var.environment}-audit-service-lambda-role",
-        ]
-      }
-    }
-
-    subscriber {
-      address           = var.admin_email
-      subscription_type = "EMAIL"
-    }
-  }
-
-  # Alert when spend crosses $20 (action is also firing at this threshold)
+  # Alert when spend crosses $20 (the budget actions below fire at the same threshold)
   notification {
     comparison_operator        = "GREATER_THAN"
     threshold                  = 100
     threshold_type             = "PERCENTAGE"
     notification_type          = "ACTUAL"
     subscriber_email_addresses = [var.admin_email]
+  }
+}
+
+# ── Action 1 of 2 – product, cart, order, notification ─────────────────────
+resource "aws_budgets_budget_action" "cost_stop_customer_facing" {
+  budget_name        = aws_budgets_budget.cost_stop.name
+  notification_type  = "ACTUAL"
+  action_type        = "APPLY_IAM_POLICY"
+  approval_model     = "AUTOMATIC"
+  execution_role_arn = aws_iam_role.budget_action_execution.arn
+
+  action_threshold {
+    action_threshold_type  = "ABSOLUTE_VALUE"
+    action_threshold_value = var.budget_stop_threshold_usd
+  }
+
+  definition {
+    iam_action_definition {
+      policy_arn = aws_iam_policy.budget_cost_stop.arn
+      roles = [
+        "${var.project_name}-${var.environment}-product-service-lambda-role",
+        "${var.project_name}-${var.environment}-cart-service-lambda-role",
+        "${var.project_name}-${var.environment}-order-service-lambda-role",
+        "${var.project_name}-${var.environment}-notification-service-lambda-role",
+      ]
+    }
+  }
+
+  subscriber {
+    address           = var.admin_email
+    subscription_type = "EMAIL"
+  }
+}
+
+# ── Action 2 of 2 – integration, discount, content, audit ──────────────────
+resource "aws_budgets_budget_action" "cost_stop_backoffice" {
+  budget_name        = aws_budgets_budget.cost_stop.name
+  notification_type  = "ACTUAL"
+  action_type        = "APPLY_IAM_POLICY"
+  approval_model     = "AUTOMATIC"
+  execution_role_arn = aws_iam_role.budget_action_execution.arn
+
+  action_threshold {
+    action_threshold_type  = "ABSOLUTE_VALUE"
+    action_threshold_value = var.budget_stop_threshold_usd
+  }
+
+  definition {
+    iam_action_definition {
+      policy_arn = aws_iam_policy.budget_cost_stop.arn
+      roles = [
+        "${var.project_name}-${var.environment}-integration-service-lambda-role",
+        "${var.project_name}-${var.environment}-discount-service-lambda-role",
+        "${var.project_name}-${var.environment}-content-service-lambda-role",
+        "${var.project_name}-${var.environment}-audit-service-lambda-role",
+      ]
+    }
+  }
+
+  subscriber {
+    address           = var.admin_email
+    subscription_type = "EMAIL"
   }
 }
 
