@@ -154,6 +154,26 @@ describe('CartItemRepository', () => {
       // Same product and variant should generate same ID
       expect(item1.id).toBe(item2.id);
     });
+
+    it('should rethrow the original conditional error when the existing item cannot be reloaded', async () => {
+      const conditionalError = Object.assign(new Error('duplicate'), {
+        code: 'ConditionalCheckFailedException',
+      });
+      ddbMock.on(PutCommand).rejects(conditionalError);
+      ddbMock.on(GetCommand).resolves({ Item: undefined });
+
+      await expect(
+        repository.addItem('cart-123', 100, undefined, 3)
+      ).rejects.toMatchObject({ code: 'ConditionalCheckFailedException' });
+    });
+
+    it('should rethrow unexpected addItem errors', async () => {
+      ddbMock.on(PutCommand).rejects(new Error('dynamo down'));
+
+      await expect(
+        repository.addItem('cart-123', 100, undefined, 3)
+      ).rejects.toThrow('dynamo down');
+    });
   });
 
   describe('updateQuantity', () => {
@@ -217,6 +237,25 @@ describe('CartItemRepository', () => {
       const hasTimestamp = Object.values(values).some((v: any) => typeof v === 'string' && v.includes('T'));
       expect(hasQuantity).toBe(true);
       expect(hasTimestamp).toBe(true);
+    });
+
+    it('should throw item not found when the update returns no data', async () => {
+      ddbMock.on(UpdateCommand).resolves({ Attributes: undefined });
+
+      await expect(
+        repository.updateQuantity('cart-123', 'item-1', 4)
+      ).rejects.toThrow('Item not found');
+    });
+
+    it('should treat ConditionalCheckFailedException from the error code as item not found', async () => {
+      const conditionalError = Object.assign(new Error('missing item'), {
+        code: 'ConditionalCheckFailedException',
+      });
+      ddbMock.on(UpdateCommand).rejects(conditionalError);
+
+      await expect(
+        repository.updateQuantity('cart-123', 'item-1', 4)
+      ).rejects.toThrow('Item not found');
     });
   });
 
