@@ -158,7 +158,7 @@ data "aws_availability_zones" "available" {
 
 # DynamoDB Table
 resource "aws_dynamodb_table" "art_management" {
-  name           = var.table_name != null ? var.table_name : "${var.project_name}-${var.environment}-art-management"
+  name = var.table_name != null ? var.table_name : "${var.project_name}-${var.environment}-art-management"
   # PROVISIONED keeps the table within the DynamoDB Always Free tier (25 RCU + 25 WCU).
   # PAY_PER_REQUEST is NOT covered by the always-free tier; every request is billed.
   # Total provisioned here: 5 (table) + 5×3 (GSIs) = 20 RCU/WCU – well under the 25 limit.

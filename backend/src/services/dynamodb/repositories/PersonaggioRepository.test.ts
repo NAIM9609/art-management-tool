@@ -738,4 +738,104 @@ describe('PersonaggioRepository', () => {
       expect(updatedSuperman?.images).toHaveLength(3);
     });
   });
+
+  describe('create with optional fields', () => {
+    it('should store icon, backgroundColor, backgroundType, gradient and backgroundImage', async () => {
+      const createData: CreatePersonaggioData = {
+        name: 'Batman',
+        images: ['https://example.com/batman.jpg'],
+        icon: '🦇',
+        backgroundColor: '#1a1a2e',
+        backgroundType: 'gradient',
+        gradientFrom: '#16213e',
+        gradientTo: '#0f3460',
+        backgroundImage: 'https://example.com/bg.jpg',
+      };
+
+      ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 2 } });
+
+      let putItem: any;
+      ddbMock.on(PutCommand).callsFake((input) => {
+        putItem = input.Item;
+        return {};
+      });
+
+      await repository.create(createData);
+
+      expect(putItem.icon).toBe('🦇');
+      expect(putItem.backgroundColor).toBe('#1a1a2e');
+      expect(putItem.backgroundType).toBe('gradient');
+      expect(putItem.gradientFrom).toBe('#16213e');
+      expect(putItem.gradientTo).toBe('#0f3460');
+      expect(putItem.backgroundImage).toBe('https://example.com/bg.jpg');
+    });
+
+    it('should omit undefined optional fields from the stored item', async () => {
+      const createData: CreatePersonaggioData = {
+        name: 'Robin',
+        images: [],
+      };
+
+      ddbMock.on(UpdateCommand).resolves({ Attributes: { value: 3 } });
+
+      let putItem: any;
+      ddbMock.on(PutCommand).callsFake((input) => {
+        putItem = input.Item;
+        return {};
+      });
+
+      await repository.create(createData);
+
+      expect(putItem.icon).toBeUndefined();
+      expect(putItem.backgroundColor).toBeUndefined();
+      expect(putItem.backgroundType).toBeUndefined();
+      expect(putItem.gradientFrom).toBeUndefined();
+      expect(putItem.gradientTo).toBeUndefined();
+      expect(putItem.backgroundImage).toBeUndefined();
+    });
+  });
+
+  describe('mapToPersonaggio', () => {
+    it('should handle images stored as a JSON array string', () => {
+      const item = {
+        id: 1,
+        name: 'Test',
+        images: JSON.stringify(['img1.jpg', 'img2.jpg']),
+        order: 0,
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      };
+
+      const personaggio = repository.mapToPersonaggio(item);
+      expect(personaggio.images).toEqual(['img1.jpg', 'img2.jpg']);
+    });
+
+    it('should handle images already stored as a native array', () => {
+      const item = {
+        id: 1,
+        name: 'Test',
+        images: ['img1.jpg', 'img2.jpg'],
+        order: 0,
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      };
+
+      const personaggio = repository.mapToPersonaggio(item);
+      expect(personaggio.images).toEqual(['img1.jpg', 'img2.jpg']);
+    });
+
+    it('should return empty images array when images field is malformed JSON', () => {
+      const item = {
+        id: 1,
+        name: 'Test',
+        images: 'not-valid-json',
+        order: 0,
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      };
+
+      const personaggio = repository.mapToPersonaggio(item);
+      expect(personaggio.images).toEqual([]);
+    });
+  });
 });

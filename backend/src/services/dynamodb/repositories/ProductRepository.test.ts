@@ -3,7 +3,7 @@
  */
 
 import { mockClient } from 'aws-sdk-client-mock';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
 import { ProductRepository } from './ProductRepository';
 import { ProductStatus, CreateProductData, UpdateProductData } from './types';
@@ -680,6 +680,111 @@ describe('ProductRepository', () => {
 
       expect(item.GSI3PK).toBeUndefined();
       expect(item.GSI3SK).toBeUndefined();
+    });
+  });
+
+  describe('findBySlug fallback (GSI missing)', () => {
+    it('should fall back to scan when ResourceNotFoundException is thrown', async () => {
+      const resourceNotFound = Object.assign(new Error('index not found'), {
+        name: 'ResourceNotFoundException',
+      });
+      ddbMock.on(QueryCommand).rejects(resourceNotFound);
+
+      ddbMock.on(ScanCommand).resolves({
+        Items: [
+          {
+            id: 1,
+            slug: 'test-product',
+            title: 'Test Product',
+            status: ProductStatus.PUBLISHED,
+            base_price: 19.99,
+            currency: 'USD',
+            created_at: '2024-01-01T00:00:00.000Z',
+            updated_at: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+      });
+
+      const product = await repository.findBySlug('test-product');
+
+      expect(product).not.toBeNull();
+      expect(product?.slug).toBe('test-product');
+    });
+
+    it('should re-throw non-index errors from findBySlug', async () => {
+      ddbMock.on(QueryCommand).rejects(new Error('some unexpected error'));
+
+      await expect(repository.findBySlug('any')).rejects.toThrow('some unexpected error');
+    });
+
+    it('should return null when scan finds nothing', async () => {
+      const resourceNotFound = Object.assign(new Error('index not found'), {
+        name: 'ResourceNotFoundException',
+      });
+      ddbMock.on(QueryCommand).rejects(resourceNotFound);
+      ddbMock.on(ScanCommand).resolves({ Items: [] });
+
+      const product = await repository.findBySlug('nonexistent');
+
+      expect(product).toBeNull();
+    });
+  });
+
+  describe('findByStatus fallback (GSI missing)', () => {
+    it('should fall back to scan when GSI is missing for findByStatus', async () => {
+      const resourceNotFound = Object.assign(new Error('index not found'), {
+        name: 'ResourceNotFoundException',
+      });
+      ddbMock.on(QueryCommand).rejects(resourceNotFound);
+
+      ddbMock.on(ScanCommand).resolves({
+        Items: [
+          {
+            id: 2,
+            slug: 'draft-product',
+            title: 'Draft Product',
+            status: ProductStatus.DRAFT,
+            base_price: 9.99,
+            currency: 'USD',
+            created_at: '2024-01-05T00:00:00.000Z',
+            updated_at: '2024-01-05T00:00:00.000Z',
+          },
+        ],
+      });
+
+      const result = await repository.findByStatus(ProductStatus.DRAFT);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].status).toBe(ProductStatus.DRAFT);
+    });
+
+    it('should re-throw non-index errors from findByStatus', async () => {
+      ddbMock.on(QueryCommand).rejects(new Error('network error'));
+
+      await expect(repository.findByStatus(ProductStatus.PUBLISHED)).rejects.toThrow('network error');
+    });
+  });
+
+  describe('isMissingIndexError', () => {
+    it('should detect error with code ResourceNotFoundException', async () => {
+      const err = Object.assign(new Error('table not found'), {
+        code: 'ResourceNotFoundException',
+      });
+      ddbMock.on(QueryCommand).rejects(err);
+      ddbMock.on(ScanCommand).resolves({ Items: [] });
+
+      // If isMissingIndexError correctly detects the code, fallback runs and returns null
+      const product = await repository.findBySlug('x');
+      expect(product).toBeNull();
+    });
+
+    it('should detect error with message containing index not found', async () => {
+      const err = new Error('The provided index not found in table');
+      ddbMock.on(QueryCommand).rejects(err);
+      ddbMock.on(ScanCommand).resolves({ Items: [] });
+
+      const product = await repository.findBySlug('x');
+      expect(product).toBeNull();
     });
   });
 });

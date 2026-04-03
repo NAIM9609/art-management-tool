@@ -132,8 +132,8 @@ resource "aws_budgets_budget" "cost_stop" {
 
   # ── Action 1 of 2 – product, cart, order, notification ──────────────────
   action {
-    action_type    = "APPLY_IAM_POLICY"
-    approval_model = "AUTOMATIC"
+    action_type        = "APPLY_IAM_POLICY"
+    approval_model     = "AUTOMATIC"
     execution_role_arn = aws_iam_role.budget_action_execution.arn
 
     action_threshold {
@@ -161,8 +161,8 @@ resource "aws_budgets_budget" "cost_stop" {
 
   # ── Action 2 of 2 – integration, discount, content, audit ───────────────
   action {
-    action_type    = "APPLY_IAM_POLICY"
-    approval_model = "AUTOMATIC"
+    action_type        = "APPLY_IAM_POLICY"
+    approval_model     = "AUTOMATIC"
     execution_role_arn = aws_iam_role.budget_action_execution.arn
 
     action_threshold {

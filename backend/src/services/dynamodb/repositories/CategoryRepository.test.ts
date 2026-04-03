@@ -834,4 +834,105 @@ describe('CategoryRepository', () => {
       expect(writes).toHaveLength(2);
     });
   });
+
+  describe('findAllFlat', () => {
+    it('should scan and return all non-deleted categories', async () => {
+      const { ScanCommand } = await import('@aws-sdk/lib-dynamodb');
+      ddbMock.on(ScanCommand).resolves({
+        Items: [
+          {
+            id: 1,
+            name: 'Comics',
+            slug: 'comics',
+            created_at: '2024-01-01T00:00:00.000Z',
+            updated_at: '2024-01-01T00:00:00.000Z',
+          },
+          {
+            id: 2,
+            name: 'Manga',
+            slug: 'manga',
+            created_at: '2024-01-02T00:00:00.000Z',
+            updated_at: '2024-01-02T00:00:00.000Z',
+          },
+        ],
+      });
+
+      const categories = await repository.findAllFlat();
+
+      expect(categories).toHaveLength(2);
+      expect(categories[0].name).toBe('Comics');
+      expect(categories[1].name).toBe('Manga');
+
+      const calls = ddbMock.commandCalls(ScanCommand);
+      expect(calls).toHaveLength(1);
+      const input = calls[0].args[0].input;
+      expect(input.FilterExpression).toContain('attribute_not_exists(deleted_at)');
+    });
+
+    it('should include deleted categories when includeDeleted is true', async () => {
+      const { ScanCommand } = await import('@aws-sdk/lib-dynamodb');
+      ddbMock.on(ScanCommand).resolves({
+        Items: [
+          {
+            id: 1,
+            name: 'Comics',
+            slug: 'comics',
+            created_at: '2024-01-01T00:00:00.000Z',
+            updated_at: '2024-01-01T00:00:00.000Z',
+          },
+          {
+            id: 3,
+            name: 'Deleted Category',
+            slug: 'deleted',
+            created_at: '2024-01-03T00:00:00.000Z',
+            updated_at: '2024-01-03T00:00:00.000Z',
+            deleted_at: '2024-01-04T00:00:00.000Z',
+          },
+        ],
+      });
+
+      const categories = await repository.findAllFlat(true);
+
+      expect(categories).toHaveLength(2);
+
+      const calls = ddbMock.commandCalls(ScanCommand);
+      const input = calls[0].args[0].input;
+      expect(input.FilterExpression).not.toContain('attribute_not_exists(deleted_at)');
+    });
+
+    it('should handle paginated scan results via LastEvaluatedKey', async () => {
+      const { ScanCommand } = await import('@aws-sdk/lib-dynamodb');
+      ddbMock
+        .on(ScanCommand)
+        .resolvesOnce({
+          Items: [
+            {
+              id: 1,
+              name: 'Page1Category',
+              slug: 'page1',
+              created_at: '2024-01-01T00:00:00.000Z',
+              updated_at: '2024-01-01T00:00:00.000Z',
+            },
+          ],
+          LastEvaluatedKey: { PK: 'CATEGORY#1', SK: 'METADATA' },
+        })
+        .resolvesOnce({
+          Items: [
+            {
+              id: 2,
+              name: 'Page2Category',
+              slug: 'page2',
+              created_at: '2024-01-02T00:00:00.000Z',
+              updated_at: '2024-01-02T00:00:00.000Z',
+            },
+          ],
+        });
+
+      const categories = await repository.findAllFlat();
+
+      expect(categories).toHaveLength(2);
+      const calls = ddbMock.commandCalls(ScanCommand);
+      expect(calls).toHaveLength(2);
+    });
+  });
 });
