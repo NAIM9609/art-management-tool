@@ -85,11 +85,8 @@ locals {
     "PUT /api/fumetti/{id}"         = "content-service-update-fumetto"
     "DELETE /api/fumetti/{id}"      = "content-service-delete-fumetto"
     "POST /api/fumetti/{id}/upload" = "content-service-get-fumetto-upload-url"
+    "POST /api/upload/temp"         = "content-service-temp-upload-presign"
   }
-
-      # Temp upload (entity-less presigned URL)
-      "POST /api/upload/temp" = "content-service-temp-upload-presign"
-    }
 }
 
 resource "aws_apigatewayv2_route" "content_service" {

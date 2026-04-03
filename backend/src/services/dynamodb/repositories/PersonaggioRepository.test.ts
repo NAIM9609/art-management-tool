@@ -144,8 +144,8 @@ describe('PersonaggioRepository', () => {
       expect(putItem.images).toBe(JSON.stringify(['https://example.com/flash1.jpg']));
       expect(putItem.PK).toBe('PERSONAGGIO#1');
       expect(putItem.SK).toBe('METADATA');
-      expect(putItem.GSI1PK).toContain('PERSONAGGIO_ORDER#');
-      expect(putItem.GSI1SK).toBe('1');
+      expect(putItem.GSI1PK).toBe('PERSONAGGIO_ORDER');
+      expect(putItem.GSI1SK).toBe('0000000001#1');
     });
   });
 
