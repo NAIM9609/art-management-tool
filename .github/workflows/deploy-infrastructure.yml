@@ -69,10 +69,10 @@ jobs:
             -no-color
         continue-on-error: false
 
-      - name: Import existing CloudWatch Log Groups
+      - name: Import existing AWS resources
         if: github.event.inputs.action == 'apply'
         run: |
-          bash ../../scripts/import-log-groups.sh \
+          bash ../../scripts/import-existing-resources.sh \
             "${{ github.event.inputs.environment }}"
 
       - name: Terraform Apply
