@@ -735,7 +735,7 @@ describe('Cart Service Integration Tests', () => {
   describe('TTL', () => {
     it('should set cart TTL to approximately 30 days from now on creation', async () => {
       const frozenNow = new Date('2024-06-15T12:00:00.000Z');
-      jest.useFakeTimers().setSystemTime(frozenNow);
+      jest.useFakeTimers().setSystemTime(frozenNow.getTime());
 
       ddbMock.on(QueryCommand).resolves({ Items: [] });
 
