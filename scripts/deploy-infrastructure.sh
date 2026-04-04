@@ -36,8 +36,6 @@ usage() {
   echo "  AWS_ACCESS_KEY_ID"
   echo "  AWS_SECRET_ACCESS_KEY"
   echo "  JWT_SECRET             (optional, auto-generated if absent)"
-  echo "  ETSY_API_KEY           (optional)"
-  echo "  ETSY_API_SECRET        (optional)"
   echo ""
   echo "Examples:"
   echo "  $(basename "$0") -e dev"
@@ -140,16 +138,12 @@ success "Configuration is valid"
 # Build plan vars
 # ---------------------------------------------------------------------------
 JWT_SECRET="${JWT_SECRET:-}"
-ETSY_API_KEY="${ETSY_API_KEY:-}"
-ETSY_API_SECRET="${ETSY_API_SECRET:-}"
 
 PLAN_ARGS=(
   -var="environment=${ENVIRONMENT}"
   -var="aws_region=${AWS_REGION}"
 )
-[[ -n "$JWT_SECRET"      ]] && PLAN_ARGS+=(-var="jwt_secret=${JWT_SECRET}")
-[[ -n "$ETSY_API_KEY"    ]] && PLAN_ARGS+=(-var="etsy_api_key=${ETSY_API_KEY}")
-[[ -n "$ETSY_API_SECRET" ]] && PLAN_ARGS+=(-var="etsy_api_secret=${ETSY_API_SECRET}")
+[[ -n "$JWT_SECRET" ]] && PLAN_ARGS+=(-var="jwt_secret=${JWT_SECRET}")
 
 PLAN_FILE="/tmp/tfplan-${ENVIRONMENT}-$(date +%Y%m%d%H%M%S)"
 
