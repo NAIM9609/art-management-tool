@@ -69,6 +69,12 @@ jobs:
             -no-color
         continue-on-error: false
 
+      - name: Import existing CloudWatch Log Groups
+        if: github.event.inputs.action == 'apply'
+        run: |
+          bash ../../scripts/import-log-groups.sh \
+            "${{ github.event.inputs.environment }}"
+
       - name: Terraform Apply
         if: github.event.inputs.action == 'apply'
         run: terraform apply -auto-approve tfplan
