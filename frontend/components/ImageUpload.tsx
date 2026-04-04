@@ -8,16 +8,17 @@ import { Image } from 'primereact/image';
 import { Toast } from 'primereact/toast';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 
+const IMAGE_UPLOAD_CONFIRM_GROUP = 'image-upload-confirm';
+
 interface ImageUploadProps {
   label: string;
   images: string[];
   onImagesChange: (images: string[]) => void;
   maxImages?: number;
   type?: 'icon' | 'gallery' | 'background' | 'cover' | 'page';
+  uploadEntity?: 'personaggi' | 'fumetti';
   personaggioId?: number;
   fumettoId?: number;
-  onSaveRequired?: () => Promise<number | undefined>; // Callback per salvare l'entità e ottenere l'ID
-  onUploadComplete?: () => Promise<void>; // Callback dopo l'upload riuscito
 }
 
 export default function ImageUpload({
@@ -26,10 +27,9 @@ export default function ImageUpload({
   onImagesChange,
   maxImages = 10,
   type = 'gallery',
+  uploadEntity,
   personaggioId,
   fumettoId,
-  onSaveRequired,
-  onUploadComplete,
 }: ImageUploadProps) {
   const toast = useRef<Toast>(null);
   const fileUploadRef = useRef<FileUpload>(null);
@@ -38,61 +38,32 @@ export default function ImageUpload({
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
-  // Gestione upload file locale (supporta multipli)
-  const handleUpload = async (event: FileUploadHandlerEvent) => {
-    let currentEntityId = personaggioId || fumettoId;
-    const entityType = personaggioId ? 'personaggio' : 'fumetto';
-    const uploadEndpoint = personaggioId ? 'personaggi' : 'fumetti';
-
-    // Se non c'è un ID e c'è una callback per salvare, salva prima l'entità
-    if (!currentEntityId && onSaveRequired) {
-      toast.current?.show({
-        severity: 'info',
-        summary: 'Salvataggio',
-        detail: `Salvataggio ${entityType}...`,
-        life: 2000,
-      });
-
-      try {
-        currentEntityId = await onSaveRequired();
-        if (!currentEntityId) {
-          toast.current?.show({
-            severity: 'error',
-            summary: 'Errore',
-            detail: `Impossibile salvare ${entityType}. Compila i campi obbligatori.`,
-            life: 3000,
-          });
-          return;
-        }
-      } catch (error) {
-        console.error('Save error:', error);
-        toast.current?.show({
-          severity: 'error',
-          summary: 'Errore',
-          detail: `Errore nel salvataggio ${entityType}`,
-          life: 3000,
-        });
-        return;
-      }
-    } else if (!currentEntityId) {
-      toast.current?.show({
-        severity: 'warn',
-        summary: 'Attenzione',
-        detail: `Salva prima il ${entityType}`,
-        life: 3000,
-      });
-      return;
+  const getUploadEndpoint = (): 'personaggi' | 'fumetti' => {
+    if (uploadEntity) {
+      return uploadEntity;
     }
+    if (type === 'icon' || type === 'gallery' || type === 'background') {
+      return 'personaggi';
+    }
+    if (type === 'cover' || type === 'page') {
+      return 'fumetti';
+    }
+    return personaggioId ? 'personaggi' : 'fumetti';
+  };
 
-    const files = event.files; // Supporto multiplo
+  // Upload file to S3 via the entity-less temp endpoint.
+  // The returned URL is stored in form state and included when the entity is saved.
+  const handleUpload = async (event: FileUploadHandlerEvent) => {
+    const uploadEndpoint = getUploadEndpoint();
+    const files = event.files;
     if (!files || files.length === 0) return;
 
     setUploading(true);
     let successCount = 0;
     let errorCount = 0;
+    const newUrls: string[] = [];
 
     try {
-      // Upload di tutti i file selezionati
       for (const file of files) {
         try {
           // Validate file
@@ -112,31 +83,58 @@ export default function ImageUpload({
           const formData = new FormData();
           formData.append('file', file);
           formData.append('type', type);
+          formData.append('entity', uploadEndpoint);
 
           const token = localStorage.getItem('adminToken');
-          const response = await fetch(
-            `${API_BASE_URL}/api/${uploadEndpoint}/${currentEntityId}/upload`,
-            {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-              body: formData,
-            }
-          );
+          const response = await fetch(`${API_BASE_URL}/api/upload/temp`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+          });
 
           if (!response.ok) {
-            throw new Error('Upload failed');
+            const errorText = await response.text();
+            throw new Error(errorText || `Upload failed (${response.status})`);
           }
 
-          successCount++;
-        } catch (error) {
-          console.error(`Upload error for ${file.name}:`, error);
-          errorCount++;
+            const data = await response.json();
+
+            let cdnUrl: string;
+            if (data.upload_url) {
+              // Lambda / production: presigned URL — PUT file directly to S3.
+              const s3Response = await fetch(data.upload_url, {
+                method: 'PUT',
+                headers: { 'Content-Type': file.type },
+                body: file,
+              });
+              if (!s3Response.ok) {
+                throw new Error(`Direct S3 upload failed (${s3Response.status})`);
+              }
+              cdnUrl = data.cdn_url;
+            } else {
+              // Docker / local: backend already uploaded the file.
+              cdnUrl = data.url;
+            }
+
+            newUrls.push(cdnUrl);
+            successCount++;
+          } catch (error) {
+            console.error(`Upload error for ${file.name}:`, error);
+            errorCount++;
+          }
+      }
+
+      // Aggiorna lo stato del form locale con i nuovi URL
+      if (newUrls.length > 0) {
+        if (type === 'icon' || type === 'background' || type === 'cover') {
+          onImagesChange([newUrls[newUrls.length - 1]]);
+        } else {
+          onImagesChange([...images, ...newUrls]);
         }
       }
 
-      // Mostra risultato
       if (successCount > 0) {
         toast.current?.show({
           severity: 'success',
@@ -155,18 +153,8 @@ export default function ImageUpload({
         });
       }
 
-      // Reset file upload
       if (fileUploadRef.current) {
         fileUploadRef.current.clear();
-      }
-
-      // Ricarica i dati aggiornati dal backend
-      if (onUploadComplete && successCount > 0) {
-        try {
-          await onUploadComplete();
-        } catch (error) {
-          console.error('Error reloading after upload:', error);
-        }
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -234,14 +222,47 @@ export default function ImageUpload({
     const fileName = imageUrl.split('/').pop() || 'immagine';
     
     confirmDialog({
+      group: IMAGE_UPLOAD_CONFIRM_GROUP,
       message: `Vuoi rimuovere "${fileName}"?`,
       header: 'Conferma Eliminazione',
       icon: 'pi pi-exclamation-triangle',
       acceptLabel: 'Sì, rimuovi',
       rejectLabel: 'Annulla',
-      accept: () => {
+      accept: async () => {
+        const uploadEndpoint = getUploadEndpoint();
+        const currentEntityId = uploadEndpoint === 'personaggi' ? personaggioId : fumettoId;
+
+        // If the entity is already saved, attempt to remove from DB + S3.
+        // Silently ignore failures — the image may not be linked to the entity yet
+        // (e.g. it was temp-uploaded but the form hasn't been saved).
+        if (currentEntityId) {
+          try {
+            const token = localStorage.getItem('adminToken');
+            const deletePath =
+              uploadEndpoint === 'personaggi'
+                ? `${API_BASE_URL}/api/personaggi/${currentEntityId}/images`
+                : `${API_BASE_URL}/api/fumetti/${currentEntityId}/pages`;
+            const deleteBody =
+              uploadEndpoint === 'personaggi'
+                ? { imageUrl, type }
+                : { pageUrl: imageUrl, type };
+
+            await fetch(deletePath, {
+              method: 'DELETE',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(deleteBody),
+            });
+          } catch {
+            // Silently ignore — image may not be in entity yet.
+          }
+        }
+
         const newImages = images.filter((_, i) => i !== index);
         onImagesChange(newImages);
+
         toast.current?.show({
           severity: 'success',
           summary: 'Rimossa',
@@ -278,7 +299,7 @@ export default function ImageUpload({
   return (
     <div className="space-y-4">
       <Toast ref={toast} />
-      <ConfirmDialog />
+      <ConfirmDialog group={IMAGE_UPLOAD_CONFIRM_GROUP} />
 
       <label className="block text-sm font-medium mb-2">{label}</label>
 

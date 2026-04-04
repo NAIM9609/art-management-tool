@@ -158,10 +158,15 @@ data "aws_availability_zones" "available" {
 
 # DynamoDB Table
 resource "aws_dynamodb_table" "art_management" {
-  name         = var.table_name != null ? var.table_name : "${var.project_name}-${var.environment}-art-management"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "PK"
-  range_key    = "SK"
+  name = var.table_name != null ? var.table_name : "${var.project_name}-${var.environment}-art-management"
+  # PROVISIONED keeps the table within the DynamoDB Always Free tier (25 RCU + 25 WCU).
+  # PAY_PER_REQUEST is NOT covered by the always-free tier; every request is billed.
+  # Total provisioned here: 5 (table) + 5×3 (GSIs) = 20 RCU/WCU – well under the 25 limit.
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 5
+  write_capacity = 5
+  hash_key       = "PK"
+  range_key      = "SK"
 
   attribute {
     name = "PK"
@@ -208,6 +213,8 @@ resource "aws_dynamodb_table" "art_management" {
     hash_key        = "GSI1PK"
     range_key       = "GSI1SK"
     projection_type = "ALL"
+    read_capacity   = 5
+    write_capacity  = 5
   }
 
   global_secondary_index {
@@ -215,6 +222,8 @@ resource "aws_dynamodb_table" "art_management" {
     hash_key        = "GSI2PK"
     range_key       = "GSI2SK"
     projection_type = "ALL"
+    read_capacity   = 5
+    write_capacity  = 5
   }
 
   global_secondary_index {
@@ -222,6 +231,8 @@ resource "aws_dynamodb_table" "art_management" {
     hash_key        = "GSI3PK"
     range_key       = "GSI3SK"
     projection_type = "ALL"
+    read_capacity   = 5
+    write_capacity  = 5
   }
 
   ttl {
@@ -229,8 +240,10 @@ resource "aws_dynamodb_table" "art_management" {
     enabled        = true
   }
 
+  # PITR stores 35 days of continuous backups and is billed separately (not free-tier covered).
+  # Enable only in prod; dev/staging can rely on on-demand backups if needed.
   point_in_time_recovery {
-    enabled = true
+    enabled = var.environment == "prod"
   }
 
   server_side_encryption {

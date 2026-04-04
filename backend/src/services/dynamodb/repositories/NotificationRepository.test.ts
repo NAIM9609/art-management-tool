@@ -163,6 +163,29 @@ describe('NotificationRepository', () => {
 
       expect(result).toBeNull();
     });
+
+    it('should return null when update succeeds without returning attributes', async () => {
+      ddbMock.on(UpdateCommand).resolves({ Attributes: undefined });
+
+      const result = await repository.update('test-id-123', {
+        title: 'Updated Title',
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when the error code is ConditionalCheckFailedException', async () => {
+      const conditionalError = Object.assign(new Error('missing notification'), {
+        code: 'ConditionalCheckFailedException',
+      });
+      ddbMock.on(UpdateCommand).rejects(conditionalError);
+
+      const result = await repository.update('missing-id', {
+        title: 'Updated Title',
+      });
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('findAll', () => {
@@ -343,6 +366,25 @@ describe('NotificationRepository', () => {
       });
 
       const result = await repository.markAsRead(notificationId);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when markAsRead returns no attributes', async () => {
+      ddbMock.on(UpdateCommand).resolves({ Attributes: undefined });
+
+      const result = await repository.markAsRead('test-id-123');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when markAsRead fails with a conditional check error code', async () => {
+      const conditionalError = Object.assign(new Error('missing notification'), {
+        code: 'ConditionalCheckFailedException',
+      });
+      ddbMock.on(UpdateCommand).rejects(conditionalError);
+
+      const result = await repository.markAsRead('missing-id');
 
       expect(result).toBeNull();
     });

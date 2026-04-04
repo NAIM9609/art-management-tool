@@ -92,52 +92,6 @@ export const usePersonaggioManagement = () => {
     }
   };
 
-  const handleSaveForUpload = async (): Promise<number | undefined> => {
-    if (!formData.name) {
-      throw new Error('Name is required');
-    }
-
-    try {
-      if (editingPersonaggio) {
-        return editingPersonaggio.id;
-      } else {
-        const newPersonaggio = await PersonaggiAPIService.createPersonaggio(formData as PersonaggioDTO);
-        setEditingPersonaggio(newPersonaggio);
-        setFormData({ ...formData, ...newPersonaggio });
-        showSuccess('Personaggio created successfully', undefined, 2000);
-        return newPersonaggio.id;
-      }
-    } catch (error) {
-      console.error('Error saving personaggio:', error);
-      throw error;
-    }
-  };
-
-  const handleReloadAfterUpload = async (): Promise<void> => {
-    if (!editingPersonaggio?.id) return;
-
-    try {
-      const updatedPersonaggio = await PersonaggiAPIService.getPersonaggioAdmin(editingPersonaggio.id);
-      setFormData({
-        name: updatedPersonaggio.name,
-        description: updatedPersonaggio.description,
-        icon: updatedPersonaggio.icon,
-        images: updatedPersonaggio.images || [],
-        backgroundColor: updatedPersonaggio.backgroundColor,
-        backgroundType: updatedPersonaggio.backgroundType,
-        gradientFrom: updatedPersonaggio.gradientFrom,
-        gradientTo: updatedPersonaggio.gradientTo,
-        backgroundImage: updatedPersonaggio.backgroundImage,
-        order: updatedPersonaggio.order,
-      });
-      setEditingPersonaggio(updatedPersonaggio);
-    } catch (error) {
-      console.error('Error reloading after upload:', error);
-      showError('Failed to reload personaggio data');
-      throw error;
-    }
-  };
-
   const handleDelete = async (personaggio: PersonaggioDTO) => {
     try {
       await PersonaggiAPIService.deletePersonaggio(personaggio.id!);
@@ -172,8 +126,6 @@ export const usePersonaggioManagement = () => {
     handleCreate,
     handleEdit,
     handleSave,
-    handleSaveForUpload,
-    handleReloadAfterUpload,
     handleDelete,
     handleRestore,
   };

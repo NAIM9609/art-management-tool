@@ -369,12 +369,13 @@ describe('AuditService', () => {
       expect(AuditLogRepository).toHaveBeenCalledWith(expect.any(DynamoDBOptimized));
     });
 
-    it('should throw error if DYNAMODB_TABLE_NAME is not set', () => {
+    it('should throw error if neither AUDIT_TABLE_NAME nor DYNAMODB_TABLE_NAME is set', () => {
+      delete process.env.AUDIT_TABLE_NAME;
       delete process.env.DYNAMODB_TABLE_NAME;
 
       expect(() => {
         new AuditService();
-      }).toThrow('DYNAMODB_TABLE_NAME environment variable is required for AuditService');
+      }).toThrow('AUDIT_TABLE_NAME (or DYNAMODB_TABLE_NAME) environment variable is required for AuditService');
 
       // Restore for other tests
       process.env.DYNAMODB_TABLE_NAME = 'test-audit-table';

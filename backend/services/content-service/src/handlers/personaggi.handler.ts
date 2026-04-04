@@ -26,7 +26,7 @@ import {
 } from '../types';
 
 const dynamoDB = new DynamoDBOptimized({
-  tableName: process.env.DYNAMODB_TABLE_NAME,
+  tableName: process.env.CONTENT_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
   region: process.env.AWS_REGION || 'us-east-1',
   maxRetries: 3,
   retryDelay: 100,

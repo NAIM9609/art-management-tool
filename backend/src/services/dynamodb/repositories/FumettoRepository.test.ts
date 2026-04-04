@@ -277,6 +277,41 @@ describe('FumettoRepository', () => {
       expect(result.items).toHaveLength(1);
       expect(result.lastEvaluatedKey).toBeDefined();
     });
+
+    it('should include soft-deleted fumetti when includeDeleted is true', async () => {
+      ddbMock.on(QueryCommand).resolves({
+        Items: [
+          {
+            id: 1,
+            title: 'Active Comic',
+            order: 0,
+            pages: [],
+            created_at: '2024-01-01T00:00:00.000Z',
+            updated_at: '2024-01-01T00:00:00.000Z',
+          },
+          {
+            id: 2,
+            title: 'Deleted Comic',
+            order: 1,
+            pages: [],
+            created_at: '2024-01-02T00:00:00.000Z',
+            updated_at: '2024-01-03T00:00:00.000Z',
+            deleted_at: '2024-01-03T00:00:00.000Z',
+          },
+        ],
+        Count: 2,
+      });
+
+      const result = await repository.findAll({}, true);
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items[1].deleted_at).toBeDefined();
+
+      const calls = ddbMock.commandCalls(QueryCommand);
+      const queryInput = calls[calls.length - 1].args[0].input;
+      // When includeDeleted=true, filterExpression should be omitted/undefined
+      expect(queryInput.FilterExpression).toBeUndefined();
+    });
   });
 
   describe('update', () => {

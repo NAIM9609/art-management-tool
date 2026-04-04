@@ -125,8 +125,10 @@ describe('Health handler – getHealth', () => {
     expect(mockCheckS3).toHaveBeenCalledWith('test-bucket', 'us-east-1');
   });
 
-  it('reports unhealthy dynamodb when DYNAMODB_TABLE_NAME is not set', async () => {
-    const original = process.env.DYNAMODB_TABLE_NAME;
+  it('reports unhealthy dynamodb when PRODUCTS_TABLE_NAME is not set', async () => {
+    const original = process.env.PRODUCTS_TABLE_NAME;
+    const originalFallback = process.env.DYNAMODB_TABLE_NAME;
+    delete process.env.PRODUCTS_TABLE_NAME;
     delete process.env.DYNAMODB_TABLE_NAME;
 
     mockCheckS3.mockResolvedValue({ status: 'healthy' });
@@ -138,7 +140,12 @@ describe('Health handler – getHealth', () => {
     const body = JSON.parse(result.body);
     expect(body.checks.dynamodb).toBe('unhealthy');
 
-    process.env.DYNAMODB_TABLE_NAME = original;
+    process.env.DYNAMODB_TABLE_NAME = originalFallback;
+    if (original !== undefined) {
+      process.env.PRODUCTS_TABLE_NAME = original;
+    } else {
+      delete process.env.PRODUCTS_TABLE_NAME;
+    }
   });
 
   it('reports unhealthy s3 when S3_BUCKET_NAME is not set', async () => {

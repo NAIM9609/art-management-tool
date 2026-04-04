@@ -13,6 +13,7 @@
  */
 
 import { DynamoDBOptimized } from '../DynamoDBOptimized';
+import { ScanCommand, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 import {
   Product,
   ProductCategory,
@@ -30,6 +31,93 @@ export class ProductRepository {
   
   constructor(dynamoDB: DynamoDBOptimized) {
     this.dynamoDB = dynamoDB;
+  }
+
+  private isMissingIndexError(error: any): boolean {
+    const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+    return (
+      error?.name === 'ResourceNotFoundException' ||
+      error?.code === 'ResourceNotFoundException' ||
+      message.includes('index not found')
+    );
+  }
+
+  private async scanProductsFallback(
+    params: {
+      status?: ProductStatus;
+      searchTerm?: string;
+      slug?: string;
+      limit: number;
+    }
+  ): Promise<PaginatedResponse<Product>> {
+    const client = (this.dynamoDB as any).client;
+    const tableName = (this.dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME;
+
+    const expressionAttributeNames: Record<string, string> = {
+      '#status': 'status',
+      '#title': 'title',
+      '#desc': 'short_description',
+      '#slug': 'slug',
+    };
+
+    const expressionAttributeValues: Record<string, any> = {
+      ':pkPrefix': 'PRODUCT#',
+      ':metadata': 'METADATA',
+    };
+
+    const filters: string[] = [
+      'begins_with(PK, :pkPrefix)',
+      'SK = :metadata',
+      'attribute_not_exists(deleted_at)',
+    ];
+
+    if (params.status) {
+      expressionAttributeValues[':status'] = params.status;
+      filters.push('#status = :status');
+    }
+
+    if (params.searchTerm) {
+      expressionAttributeValues[':term'] = params.searchTerm;
+      filters.push('(contains(#title, :term) OR contains(#desc, :term))');
+    }
+
+    if (params.slug) {
+      expressionAttributeValues[':slug'] = params.slug;
+      filters.push('#slug = :slug');
+    }
+
+    let lastEvaluatedKey: Record<string, any> | undefined;
+    const products: Product[] = [];
+    const pageSize = Math.max(50, params.limit);
+
+    do {
+      const input: ScanCommandInput = {
+        TableName: tableName,
+        FilterExpression: filters.join(' AND '),
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues,
+        ProjectionExpression: 'id, slug, title, short_description, base_price, currency, #status, created_at, updated_at',
+        ExclusiveStartKey: lastEvaluatedKey,
+        Limit: pageSize,
+      };
+
+      const result = await client.send(new ScanCommand(input));
+      const mapped = (result.Items || []).map((item: any) => this.mapToProduct(item));
+      products.push(...mapped);
+      lastEvaluatedKey = result.LastEvaluatedKey;
+
+      if (params.slug && products.length > 0) {
+        break;
+      }
+    } while (lastEvaluatedKey && products.length < params.limit);
+
+    products.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+    return {
+      items: products.slice(0, params.limit),
+      lastEvaluatedKey,
+      count: products.length,
+    };
   }
 
   /**
@@ -188,20 +276,37 @@ export class ProductRepository {
    * Find product by slug using GSI1 (eventually consistent)
    */
   async findBySlug(slug: string): Promise<Product | null> {
-    const result = await this.dynamoDB.queryEventuallyConsistent({
-      indexName: 'GSI1',
-      keyConditionExpression: 'GSI1PK = :gsi1pk',
-      expressionAttributeValues: {
-        ':gsi1pk': `PRODUCT_SLUG#${slug}`,
-      },
-      limit: 1,
-    });
+    let result: PaginatedResponse<Product>;
 
-    if (result.data.length === 0) {
+    try {
+      const queryResult = await this.dynamoDB.queryEventuallyConsistent({
+        indexName: 'GSI1',
+        keyConditionExpression: 'GSI1PK = :gsi1pk',
+        expressionAttributeValues: {
+          ':gsi1pk': `PRODUCT_SLUG#${slug}`,
+        },
+        limit: 1,
+      });
+
+      result = {
+        items: queryResult.data.map(item => this.mapToProduct(item)),
+        lastEvaluatedKey: queryResult.lastEvaluatedKey,
+        count: queryResult.count,
+      };
+    } catch (error: any) {
+      if (!this.isMissingIndexError(error)) {
+        throw error;
+      }
+
+      const fallback = await this.scanProductsFallback({ slug, limit: 1 });
+      result = fallback;
+    }
+
+    if (result.items.length === 0) {
       return null;
     }
 
-    return this.mapToProduct(result.data[0]);
+    return result.items[0];
   }
 
   /**
@@ -467,28 +572,39 @@ export class ProductRepository {
     status: ProductStatus,
     params: PaginationParams = {}
   ): Promise<PaginatedResponse<Product>> {
-    const result = await this.dynamoDB.queryEventuallyConsistent({
-      indexName: 'GSI2',
-      keyConditionExpression: 'GSI2PK = :gsi2pk',
-      expressionAttributeValues: {
-        ':gsi2pk': `PRODUCT_STATUS#${status}`,
-      },
-      limit: params.limit || 30,
-      exclusiveStartKey: params.lastEvaluatedKey,
-      // Use projection expression to minimize data transfer
-      projectionExpression: 'id, slug, title, short_description, base_price, currency, #status, created_at, updated_at',
-      expressionAttributeNames: {
-        '#status': 'status',
-      },
-      // Exclude soft-deleted products
-      filterExpression: 'attribute_not_exists(deleted_at)',
-    });
+    try {
+      const result = await this.dynamoDB.queryEventuallyConsistent({
+        indexName: 'GSI2',
+        keyConditionExpression: 'GSI2PK = :gsi2pk',
+        expressionAttributeValues: {
+          ':gsi2pk': `PRODUCT_STATUS#${status}`,
+        },
+        limit: params.limit || 30,
+        exclusiveStartKey: params.lastEvaluatedKey,
+        // Use projection expression to minimize data transfer
+        projectionExpression: 'id, slug, title, short_description, base_price, currency, #status, created_at, updated_at',
+        expressionAttributeNames: {
+          '#status': 'status',
+        },
+        // Exclude soft-deleted products
+        filterExpression: 'attribute_not_exists(deleted_at)',
+      });
 
-    return {
-      items: result.data.map(item => this.mapToProduct(item)),
-      lastEvaluatedKey: result.lastEvaluatedKey,
-      count: result.count,
-    };
+      return {
+        items: result.data.map(item => this.mapToProduct(item)),
+        lastEvaluatedKey: result.lastEvaluatedKey,
+        count: result.count,
+      };
+    } catch (error: any) {
+      if (!this.isMissingIndexError(error)) {
+        throw error;
+      }
+
+      return this.scanProductsFallback({
+        status,
+        limit: params.limit || 30,
+      });
+    }
   }
 
   /**
@@ -533,29 +649,41 @@ export class ProductRepository {
     term: string,
     params: PaginationParams = {}
   ): Promise<PaginatedResponse<Product>> {
-    const result = await this.dynamoDB.queryEventuallyConsistent({
-      indexName: 'GSI2',
-      keyConditionExpression: 'GSI2PK = :gsi2pk',
-      expressionAttributeValues: {
-        ':gsi2pk': `PRODUCT_STATUS#${ProductStatus.PUBLISHED}`,
-        ':term': term,
-      },
-      filterExpression: '(contains(#title, :term) OR contains(#desc, :term)) AND attribute_not_exists(deleted_at)',
-      limit: params.limit || 30,
-      exclusiveStartKey: params.lastEvaluatedKey,
-      // Use projection expression to minimize data transfer
-      projectionExpression: 'id, slug, #title, #desc, base_price, currency, #status, created_at, updated_at',
-      expressionAttributeNames: {
-        '#status': 'status',
-        '#title': 'title',
-        '#desc': 'short_description',
-      },
-    });
+    try {
+      const result = await this.dynamoDB.queryEventuallyConsistent({
+        indexName: 'GSI2',
+        keyConditionExpression: 'GSI2PK = :gsi2pk',
+        expressionAttributeValues: {
+          ':gsi2pk': `PRODUCT_STATUS#${ProductStatus.PUBLISHED}`,
+          ':term': term,
+        },
+        filterExpression: '(contains(#title, :term) OR contains(#desc, :term)) AND attribute_not_exists(deleted_at)',
+        limit: params.limit || 30,
+        exclusiveStartKey: params.lastEvaluatedKey,
+        // Use projection expression to minimize data transfer
+        projectionExpression: 'id, slug, #title, #desc, base_price, currency, #status, created_at, updated_at',
+        expressionAttributeNames: {
+          '#status': 'status',
+          '#title': 'title',
+          '#desc': 'short_description',
+        },
+      });
 
-    return {
-      items: result.data.map(item => this.mapToProduct(item)),
-      lastEvaluatedKey: result.lastEvaluatedKey,
-      count: result.count,
-    };
+      return {
+        items: result.data.map(item => this.mapToProduct(item)),
+        lastEvaluatedKey: result.lastEvaluatedKey,
+        count: result.count,
+      };
+    } catch (error: any) {
+      if (!this.isMissingIndexError(error)) {
+        throw error;
+      }
+
+      return this.scanProductsFallback({
+        status: ProductStatus.PUBLISHED,
+        searchTerm: term,
+        limit: params.limit || 30,
+      });
+    }
   }
 }

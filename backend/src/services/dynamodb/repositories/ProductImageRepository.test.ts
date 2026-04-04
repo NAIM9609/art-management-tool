@@ -614,5 +614,29 @@ describe('ProductImageRepository', () => {
 
       expect(image.url).toBe('https://cdn.example.com/products/subfolder/image.jpg');
     });
+
+    it('should not duplicate bucket segment for LocalStack path-style CDN URLs', async () => {
+      // Simulate local development config where CDN_URL already includes bucket path.
+      (repository as any).cdnUrl = 'http://localhost:4566/art-images-dev';
+      (repository as any).bucketName = 'art-images-dev';
+
+      ddbMock.on(QueryCommand).resolves({
+        Items: [
+          {
+            id: 'img1',
+            product_id: 1,
+            url: 'art-images-dev/uploads/products/sample.png',
+            position: 0,
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+          },
+        ],
+      });
+
+      const images = await repository.findByProductId(1);
+
+      expect(images[0].url).toBe('http://localhost:4566/art-images-dev/uploads/products/sample.png');
+      expect(images[0].url).not.toBe('http://localhost:4566/art-images-dev/art-images-dev/uploads/products/sample.png');
+    });
   });
 });

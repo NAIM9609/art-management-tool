@@ -30,11 +30,35 @@ export class ProductImageRepository {
   private dynamoDB: DynamoDBOptimized;
   private tableName: string;
   private cdnUrl: string;
+  private bucketName: string;
   
   constructor(dynamoDB: DynamoDBOptimized) {
     this.dynamoDB = dynamoDB;
     this.tableName = (dynamoDB as any).tableName || process.env.DYNAMODB_TABLE_NAME || 'products';
     this.cdnUrl = config.s3.cdnUrl || '';
+    this.bucketName = config.s3.bucketName || '';
+  }
+
+  private normalizeExtractedKey(rawKey: string): string {
+    let key = rawKey.replace(/^\/+/, '');
+
+    // LocalStack path-style URLs often include the bucket as the first path segment.
+    if (this.bucketName && key.startsWith(`${this.bucketName}/`)) {
+      key = key.slice(this.bucketName.length + 1);
+    }
+
+    if (this.cdnUrl) {
+      try {
+        const cdnPathPrefix = new URL(this.cdnUrl).pathname.replace(/^\/+|\/+$/g, '');
+        if (cdnPathPrefix && key.startsWith(`${cdnPathPrefix}/`)) {
+          key = key.slice(cdnPathPrefix.length + 1);
+        }
+      } catch {
+        // Ignore malformed CDN URL and keep normalized key as-is.
+      }
+    }
+
+    return key;
   }
 
   /**
@@ -52,26 +76,10 @@ export class ProductImageRepository {
       return urlOrKey;
     }
 
-    // If it's already a full URL (starts with http), extract the key
-    if (urlOrKey.startsWith('http://') || urlOrKey.startsWith('https://')) {
-      try {
-        const parsedUrl = new URL(urlOrKey);
-        // Extract pathname and remove leading slash
-        const key = parsedUrl.pathname.startsWith('/') 
-          ? parsedUrl.pathname.substring(1) 
-          : parsedUrl.pathname;
-        
-        const baseUrl = this.cdnUrl.endsWith('/') ? this.cdnUrl.slice(0, -1) : this.cdnUrl;
-        return `${baseUrl}/${key}`;
-      } catch {
-        // If URL parsing fails, return as-is
-        return urlOrKey;
-      }
-    }
-
-    // It's a relative key, convert to CDN URL
+    // Extract and normalize the key first to avoid duplicated bucket segments.
+    const key = this.extractS3Key(urlOrKey);
     const baseUrl = this.cdnUrl.endsWith('/') ? this.cdnUrl.slice(0, -1) : this.cdnUrl;
-    return `${baseUrl}/${urlOrKey}`;
+    return `${baseUrl}/${key}`;
   }
 
   /**
@@ -83,17 +91,14 @@ export class ProductImageRepository {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       try {
         const parsedUrl = new URL(url);
-        // Extract pathname and remove leading slash
-        return parsedUrl.pathname.startsWith('/') 
-          ? parsedUrl.pathname.substring(1) 
-          : parsedUrl.pathname;
+        return this.normalizeExtractedKey(parsedUrl.pathname);
       } catch {
         // If URL parsing fails, return as-is
-        return url;
+        return this.normalizeExtractedKey(url);
       }
     }
     // Otherwise, assume it's already a key
-    return url;
+    return this.normalizeExtractedKey(url);
   }
 
   /**

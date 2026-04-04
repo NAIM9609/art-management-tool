@@ -181,7 +181,7 @@ export class FumettoRepository {
   /**
    * Find all fumetti sorted by order (eventually consistent)
    */
-  async findAll(params: PaginationParams = {}): Promise<PaginatedResponse<Fumetto>> {
+  async findAll(params: PaginationParams = {}, includeDeleted: boolean = false): Promise<PaginatedResponse<Fumetto>> {
     const result = await this.dynamoDB.queryEventuallyConsistent({
       indexName: 'GSI1',
       keyConditionExpression: 'GSI1PK = :pk',
@@ -191,8 +191,7 @@ export class FumettoRepository {
       limit: params.limit || 30,
       exclusiveStartKey: params.lastEvaluatedKey,
       scanIndexForward: true, // Ascending order by GSI1SK (order#id)
-      // Exclude soft-deleted fumetti
-      filterExpression: 'attribute_not_exists(deleted_at)',
+      filterExpression: includeDeleted ? undefined : 'attribute_not_exists(deleted_at)',
     });
 
     return {

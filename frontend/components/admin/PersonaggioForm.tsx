@@ -11,8 +11,6 @@ interface PersonaggioFormProps {
   formData: Partial<PersonaggioDTO>;
   setFormData: (data: Partial<PersonaggioDTO>) => void;
   editingPersonaggio: PersonaggioDTO | null;
-  onSaveRequired: () => Promise<number | undefined>;
-  onUploadComplete: () => Promise<void>;
 }
 
 const backgroundTypeOptions = [
@@ -25,8 +23,6 @@ export default function PersonaggioForm({
   formData,
   setFormData,
   editingPersonaggio,
-  onSaveRequired,
-  onUploadComplete,
 }: PersonaggioFormProps) {
   return (
     <div className="flex flex-col gap-4">
@@ -161,9 +157,8 @@ export default function PersonaggioForm({
           onImagesChange={(images) => setFormData({ ...formData, backgroundImage: images[0] || '' })}
           maxImages={1}
           type="background"
+          uploadEntity="personaggi"
           personaggioId={editingPersonaggio?.id}
-          onSaveRequired={onSaveRequired}
-          onUploadComplete={onUploadComplete}
         />
       ) : null}
 
@@ -173,9 +168,8 @@ export default function PersonaggioForm({
         onImagesChange={(images) => setFormData({ ...formData, icon: images[0] || '' })}
         maxImages={1}
         type="icon"
+        uploadEntity="personaggi"
         personaggioId={editingPersonaggio?.id}
-        onSaveRequired={onSaveRequired}
-        onUploadComplete={onUploadComplete}
       />
 
       <ImageUpload
@@ -184,9 +178,8 @@ export default function PersonaggioForm({
         onImagesChange={(images) => setFormData({ ...formData, images })}
         maxImages={10}
         type="gallery"
+        uploadEntity="personaggi"
         personaggioId={editingPersonaggio?.id}
-        onSaveRequired={onSaveRequired}
-        onUploadComplete={onUploadComplete}
       />
 
       <div className="flex flex-col gap-2">

@@ -5,6 +5,7 @@ import { createAdminRoutes } from '../handlers/admin';
 import { createAuthRoutes } from '../handlers/auth';
 import { createPersonaggiRoutes } from '../handlers/personaggi';
 import { createFumettiRoutes } from '../handlers/fumetti';
+import { createUploadRoutes } from '../handlers/upload';
 import { CartService } from '../services/CartService';
 import { ProductService } from '../services/ProductService';
 import { OrderService } from '../services/OrderService';
@@ -47,6 +48,7 @@ export function setupRoutes(app: Express): void {
   app.use('/api/auth', createAuthRoutes());
   app.use('/api/personaggi', createPersonaggiRoutes());
   app.use('/api/fumetti', createFumettiRoutes());
+  app.use('/api/upload', createUploadRoutes());
 
   console.log('Routes configured successfully');
 }

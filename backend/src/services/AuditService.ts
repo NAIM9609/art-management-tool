@@ -19,10 +19,10 @@ export class AuditService {
 
   constructor() {
     // Initialize DynamoDB client and repository
-    const tableName = process.env.DYNAMODB_TABLE_NAME;
+    const tableName = process.env.AUDIT_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME;
     if (!tableName) {
       throw new Error(
-        'DYNAMODB_TABLE_NAME environment variable is required for AuditService'
+        'AUDIT_TABLE_NAME (or DYNAMODB_TABLE_NAME) environment variable is required for AuditService'
       );
     }
 

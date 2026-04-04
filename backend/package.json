@@ -16,8 +16,11 @@
     "test:integration:core": "jest --testMatch='<rootDir>/src/**/*.integration.test.ts'",
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "lambda:local:deploy": "pwsh -NoProfile -ExecutionPolicy Bypass -File ../scripts/localstack-deploy-service.ps1",
+    "lambda:local:deploy:all": "pwsh -NoProfile -ExecutionPolicy Bypass -File ../scripts/localstack-deploy-all.ps1",
+    "lambda:local:invoke": "pwsh -NoProfile -ExecutionPolicy Bypass -File ../scripts/localstack-invoke.ps1",
     "migrate:test": "DYNAMODB_TABLE_NAME=art-management-local AWS_ENDPOINT_URL=http://localhost:4566 ts-node scripts/migrate-to-dynamodb.ts",
-    "migrate:production": "sh -c 'if [ -z \"${DYNAMODB_TABLE_NAME}\" ] || [ -z \"${AWS_REGION}\" ]; then echo \"Error: DYNAMODB_TABLE_NAME and AWS_REGION must be set before running migrate:production\" >&2; exit 1; fi; ts-node scripts/migrate-to-dynamodb.ts'",
+    "migrate:production": "node -e \"if(!process.env.DYNAMODB_TABLE_NAME||!process.env.AWS_REGION){console.error('Error: DYNAMODB_TABLE_NAME and AWS_REGION must be set before running migrate:production');process.exit(1)}\" && ts-node scripts/migrate-to-dynamodb.ts",
     "validate:migration": "ts-node scripts/validate-migration.ts",
     "rollback:migration": "ts-node scripts/rollback-migration.ts"
   },
@@ -40,9 +43,7 @@
     "sharp": "^0.34.5",
     "stripe": "^14.21.0",
     "typeorm": "^0.3.20",
-    "uuid": "^9.0.1"
-  },
-  "devDependencies": {
+    "uuid": "^9.0.1",
     "@types/bcrypt": "^5.0.2",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",
@@ -62,6 +63,8 @@
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.3.3"
+  },
+  "devDependencies": {
   },
   "engines": {
     "node": "^18.17.0 || ^20.3.0 || >=21.0.0"

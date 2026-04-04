@@ -17,25 +17,34 @@ export default function useFumettoManagement({
   const [loading, setLoading] = useState(true);
   const [editingFumetto, setEditingFumetto] = useState<FumettoDTO | null>(null);
 
+
   const loadFumetti = useCallback(async () => {
     setLoading(true);
     try {
-      const [activeResponse, deletedResponse] = await Promise.all([
+      const [activeResult, deletedResult] = await Promise.allSettled([
         FumettiAPIService.getAllFumettiAdmin(),
         FumettiAPIService.getDeletedFumetti(),
       ]);
-      setFumetti(activeResponse);
-      setDeletedFumetti(deletedResponse);
-    } catch (error) {
-      console.error('Error loading fumetti:', error);
-      showError('Failed to load fumetti');
+
+      if (activeResult.status === 'fulfilled') {
+        setFumetti(activeResult.value);
+      } else {
+        console.error('Error loading active fumetti:', activeResult.reason);
+        showError('Failed to load fumetti');
+      }
+
+      if (deletedResult.status === 'fulfilled') {
+        setDeletedFumetti(deletedResult.value);
+      } else {
+        console.error('Error loading deleted fumetti:', deletedResult.reason);
+      }
     } finally {
       setLoading(false);
     }
   }, [showError]);
 
   const handleSave = useCallback(
-    async (formData: Partial<FumettoDTO>, isEditing: boolean, editingFumetto: FumettoDTO | null) => {
+    async (formData: Partial<FumettoDTO>, editingFumetto: FumettoDTO | null) => {
       try {
         if (!formData.title) {
           showWarn('Title is required');
@@ -47,7 +56,7 @@ export default function useFumettoManagement({
           pages: formData.pages || [],
         };
 
-        if (isEditing && editingFumetto) {
+        if (editingFumetto) {
           await FumettiAPIService.updateFumetto(editingFumetto.id!, dataToSave as FumettoDTO);
           showSuccess('Fumetto updated successfully');
         } else {
@@ -69,66 +78,6 @@ export default function useFumettoManagement({
     [showSuccess, showError, showWarn, loadFumetti]
   );
 
-  const handleSaveForUpload = useCallback(
-    async (formData: Partial<FumettoDTO>, editingFumetto: FumettoDTO | null): Promise<number | undefined> => {
-      if (!formData.title) {
-        throw new Error('Title is required');
-      }
-
-      try {
-        if (editingFumetto) {
-          return editingFumetto.id;
-        } else {
-          const dataToSave = {
-            ...formData,
-            pages: formData.pages || [],
-          };
-
-          const newFumetto = await FumettiAPIService.createFumetto(
-            dataToSave as Omit<FumettoDTO, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>
-          );
-
-          setEditingFumetto(newFumetto);
-          showSuccess('Fumetto created successfully');
-
-          return newFumetto.id;
-        }
-      } catch (error) {
-        console.error('Error saving fumetto:', error);
-        throw error;
-      }
-    },
-    [showSuccess]
-  );
-
-  const handleSaveAfterUpload = useCallback(
-    async (editingFumetto: FumettoDTO | null): Promise<Partial<FumettoDTO> | undefined> => {
-      if (!editingFumetto?.id) {
-        return;
-      }
-
-      try {
-        const updatedFumetto = await FumettiAPIService.getFumettoAdmin(editingFumetto.id);
-
-        setEditingFumetto(updatedFumetto);
-        showSuccess('Image uploaded successfully');
-
-        return {
-          title: updatedFumetto.title,
-          description: updatedFumetto.description,
-          coverImage: updatedFumetto.coverImage,
-          pages: updatedFumetto.pages || [],
-          order: updatedFumetto.order,
-        };
-      } catch (error) {
-        console.error('Error reloading after upload:', error);
-        showError('Failed to reload fumetto');
-        throw error;
-      }
-    },
-    [showSuccess, showError]
-  );
-
   const handleRestore = useCallback(
     async (fumetto: FumettoDTO) => {
       try {
@@ -143,6 +92,10 @@ export default function useFumettoManagement({
     [showSuccess, showError, loadFumetti]
   );
 
+  const resetCreateSession = useCallback(() => {
+    setEditingFumetto(null);
+  }, []);
+
   return {
     fumetti,
     deletedFumetti,
@@ -151,8 +104,7 @@ export default function useFumettoManagement({
     setEditingFumetto,
     loadFumetti,
     handleSave,
-    handleSaveForUpload,
-    handleSaveAfterUpload,
     handleRestore,
+    resetCreateSession,
   };
 }

@@ -1,26 +1,13 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import { AppDataSource } from '../database/connection';
-import { Personaggio } from '../entities/Personaggio';
+import { DynamoDBOptimized } from '../services/dynamodb/DynamoDBOptimized';
+import { PersonaggioRepository } from '../services/dynamodb/repositories/PersonaggioRepository';
+import { S3Service } from '../services/s3/S3Service';
 import { authMiddleware } from '../middleware/auth';
 import { config } from '../config';
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const dir = path.join(config.uploadBaseDir, 'personaggi');
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: config.uploadMaxFileSize },
   fileFilter: (_req, file, cb) => {
     if (config.uploadAllowedTypes.includes(file.mimetype)) {
@@ -31,29 +18,46 @@ const upload = multer({
   },
 });
 
+function getS3KeyFromUrl(imageUrl: string | undefined | null): string | null {
+  if (!imageUrl) {
+    return null;
+  }
+
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    try {
+      const parsed = new URL(imageUrl);
+      return parsed.pathname.replace(/^\/+/, '') || null;
+    } catch {
+      return null;
+    }
+  }
+
+  return imageUrl.replace(/^\/+/, '') || null;
+}
+
 export function createPersonaggiRoutes(): Router {
   const router = Router();
-  const personaggioRepo = AppDataSource.getRepository(Personaggio);
+  const dynamoDB = new DynamoDBOptimized({
+    tableName: process.env.CONTENT_TABLE_NAME || 'content',
+    region: process.env.AWS_REGION || 'us-east-1',
+    maxRetries: 3,
+    retryDelay: 100,
+  });
+  const repo = new PersonaggioRepository(dynamoDB);
 
-  router.get('/', async (req: Request, res: Response) => {
+  router.get('/', async (_req: Request, res: Response) => {
     try {
-      const personaggi = await personaggioRepo.find({
-        order: { order: 'ASC', createdAt: 'DESC' },
-      });
+      const personaggi = await repo.findAll(false);
       res.json(personaggi);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  router.get('/deleted', authMiddleware, async (req: Request, res: Response) => {
+  router.get('/deleted', authMiddleware, async (_req: Request, res: Response) => {
     try {
-      const personaggi = await personaggioRepo.find({
-        withDeleted: true,
-        where: {},
-      });
-      const deleted = personaggi.filter(p => p.deletedAt);
-      res.json(deleted);
+      const all = await repo.findAll(true);
+      res.json(all.filter(p => p.deleted_at));
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -61,9 +65,7 @@ export function createPersonaggiRoutes(): Router {
 
   router.get('/:id', async (req: Request, res: Response) => {
     try {
-      const personaggio = await personaggioRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-      });
+      const personaggio = await repo.findById(parseInt(req.params.id));
       if (!personaggio) {
         return res.status(404).json({ error: 'Personaggio not found' });
       }
@@ -75,8 +77,7 @@ export function createPersonaggiRoutes(): Router {
 
   router.post('/', authMiddleware, async (req: Request, res: Response) => {
     try {
-      const personaggio = personaggioRepo.create(req.body);
-      await personaggioRepo.save(personaggio);
+      const personaggio = await repo.create(req.body);
       res.status(201).json(personaggio);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -85,10 +86,10 @@ export function createPersonaggiRoutes(): Router {
 
   router.put('/:id', authMiddleware, async (req: Request, res: Response) => {
     try {
-      await personaggioRepo.update(parseInt(req.params.id), req.body);
-      const personaggio = await personaggioRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-      });
+      const personaggio = await repo.update(parseInt(req.params.id), req.body);
+      if (!personaggio) {
+        return res.status(404).json({ error: 'Personaggio not found' });
+      }
       res.json(personaggio);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -97,7 +98,7 @@ export function createPersonaggiRoutes(): Router {
 
   router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
     try {
-      await personaggioRepo.softDelete(parseInt(req.params.id));
+      await repo.softDelete(parseInt(req.params.id));
       res.json({ message: 'Personaggio deleted' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -106,10 +107,10 @@ export function createPersonaggiRoutes(): Router {
 
   router.post('/:id/restore', authMiddleware, async (req: Request, res: Response) => {
     try {
-      await personaggioRepo.restore(parseInt(req.params.id));
-      const personaggio = await personaggioRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-      });
+      const personaggio = await repo.restore(parseInt(req.params.id));
+      if (!personaggio) {
+        return res.status(404).json({ error: 'Personaggio not found' });
+      }
       res.json(personaggio);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -118,9 +119,8 @@ export function createPersonaggiRoutes(): Router {
 
   router.post('/:id/upload', authMiddleware, upload.single('file'), async (req: Request, res: Response) => {
     try {
-      const personaggio = await personaggioRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-      });
+      const id = parseInt(req.params.id);
+      const personaggio = await repo.findById(id);
       if (!personaggio) {
         return res.status(404).json({ error: 'Personaggio not found' });
       }
@@ -128,21 +128,26 @@ export function createPersonaggiRoutes(): Router {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const imageUrl = `/uploads/personaggi/${req.file.filename}`;
+      const s3Service = new S3Service();
+      const { cdnUrl: imageUrl, key } = await s3Service.uploadImage(
+        req.file.buffer,
+        'uploads/personaggi',
+        req.file.originalname,
+        req.file.mimetype
+      );
       const imageType = req.body.type || 'gallery';
 
+      let updated;
       if (imageType === 'icon') {
-        personaggio.icon = imageUrl;
+        updated = await repo.update(id, { icon: imageUrl });
       } else if (imageType === 'background') {
-        personaggio.backgroundImage = imageUrl;
+        updated = await repo.update(id, { backgroundImage: imageUrl });
       } else {
-        const images = personaggio.images || [];
-        images.push(imageUrl);
-        personaggio.images = images;
+        const images = [...(personaggio.images || []), imageUrl];
+        updated = await repo.update(id, { images });
       }
 
-      await personaggioRepo.save(personaggio);
-      res.json({ message: 'Image uploaded', url: imageUrl, type: imageType, personaggio });
+      res.json({ message: 'Image uploaded', url: imageUrl, key, type: imageType, personaggio: updated });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -150,9 +155,8 @@ export function createPersonaggiRoutes(): Router {
 
   router.delete('/:id/images', authMiddleware, async (req: Request, res: Response) => {
     try {
-      const personaggio = await personaggioRepo.findOne({
-        where: { id: parseInt(req.params.id) },
-      });
+      const id = parseInt(req.params.id);
+      const personaggio = await repo.findById(id);
       if (!personaggio) {
         return res.status(404).json({ error: 'Personaggio not found' });
       }
@@ -164,18 +168,47 @@ export function createPersonaggiRoutes(): Router {
 
       if (type === 'icon') {
         if (personaggio.icon === imageUrl) {
-          personaggio.icon = undefined;
+          await repo.update(id, { icon: null });
+
+          const key = getS3KeyFromUrl(imageUrl);
+          if (key) {
+            const s3Service = new S3Service();
+            try {
+              await s3Service.deleteImage(key);
+            } catch (error) {
+              console.warn(`Failed to delete S3 icon image ${key}:`, error);
+            }
+          }
         }
       } else if (type === 'background') {
         if (personaggio.backgroundImage === imageUrl) {
-          personaggio.backgroundImage = undefined;
+          await repo.update(id, { backgroundImage: null });
+
+          const key = getS3KeyFromUrl(imageUrl);
+          if (key) {
+            const s3Service = new S3Service();
+            try {
+              await s3Service.deleteImage(key);
+            } catch (error) {
+              console.warn(`Failed to delete S3 background image ${key}:`, error);
+            }
+          }
         }
       } else {
-        const images = personaggio.images || [];
-        personaggio.images = images.filter((img) => img !== imageUrl);
+        const images = (personaggio.images || []).filter(img => img !== imageUrl);
+        await repo.update(id, { images });
+
+        const key = getS3KeyFromUrl(imageUrl);
+        if (key) {
+          const s3Service = new S3Service();
+          try {
+            await s3Service.deleteImage(key);
+          } catch (error) {
+            console.warn(`Failed to delete S3 gallery image ${key}:`, error);
+          }
+        }
       }
 
-      await personaggioRepo.save(personaggio);
       res.json({ message: 'Image removed successfully' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -184,3 +217,4 @@ export function createPersonaggiRoutes(): Router {
 
   return router;
 }
+

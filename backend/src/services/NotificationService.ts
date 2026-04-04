@@ -21,7 +21,7 @@ export class NotificationService {
 
   constructor() {
     const dynamoDB = new DynamoDBOptimized({
-      tableName: process.env.DYNAMODB_TABLE_NAME,
+      tableName: process.env.NOTIFICATIONS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
       region: process.env.AWS_REGION || 'us-east-1',
     });
     this.notificationRepo = new NotificationRepository(dynamoDB);

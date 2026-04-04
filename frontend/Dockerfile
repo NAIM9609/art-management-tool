@@ -30,7 +30,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm i
 
 # Copy source code
 COPY . .
@@ -62,9 +62,21 @@ ENV BACKEND_URL=${BACKEND_URL}
 # Copy package.json for runtime dependencies info
 COPY --from=builder /app/package.json ./package.json
 
+# Copy standalone output and normalize layout to /app
+# Next.js can emit either .next/standalone/server.js or .next/standalone/<app>/server.js.
+COPY --from=builder /app/.next/standalone ./standalone
+RUN if [ -f /app/standalone/server.js ]; then \
+			cp -R /app/standalone/. /app/; \
+		elif [ -f /app/standalone/frontend/server.js ]; then \
+			cp -R /app/standalone/frontend/. /app/; \
+		else \
+			echo "Error: unable to locate standalone server.js" >&2; \
+			ls -la /app/standalone >&2; \
+			exit 1; \
+		fi
+
 # Copy necessary files from builder
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
 # Expose port

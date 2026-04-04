@@ -6,12 +6,17 @@ provider "aws" {
 
 # ---------------------------------------------------------------------------
 # DynamoDB Consumed Capacity Alarms
-# Threshold: 20 RCU / WCU per minute – approaching the 25 RCU/WCU free tier.
+# Billing mode: PROVISIONED – base table: 5 RCU / 5 WCU.
+# Threshold set at 80% of provisioned capacity (4 RCU/s = 240 per 60s period)
+# to warn before throttling, which would pressure an increase in provisioned
+# capacity (and incur costs once the total exceeds the 25 RCU/WCU free tier).
+# Note: GSI consumed capacity is tracked separately (dimension:
+# GlobalSecondaryIndexName). Each GSI is also provisioned at 5 RCU/5 WCU.
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_metric_alarm" "dynamodb_read_capacity" {
   alarm_name        = "${var.project_name}-${var.environment}-dynamodb-read-capacity"
-  alarm_description = "DynamoDB consumed read capacity > 20 RCU/min – approaching free-tier limit (25 RCU)"
+  alarm_description = "DynamoDB base-table consumed read capacity > 240 RCU/min (≥80% of 5 RCU/s provisioned). Throttling would force a capacity increase beyond the 25 RCU always-free limit."
 
   namespace   = "AWS/DynamoDB"
   metric_name = "ConsumedReadCapacityUnits"
@@ -22,7 +27,7 @@ resource "aws_cloudwatch_metric_alarm" "dynamodb_read_capacity" {
   period    = 60 # 1-minute granularity
 
   comparison_operator = "GreaterThanThreshold"
-  threshold           = 20
+  threshold           = 240 # 4 RCU/s × 60s = 80% of provisioned 5 RCU/s base table
   evaluation_periods  = 3
   datapoints_to_alarm = 2
   treat_missing_data  = "notBreaching"
@@ -35,7 +40,7 @@ resource "aws_cloudwatch_metric_alarm" "dynamodb_read_capacity" {
 
 resource "aws_cloudwatch_metric_alarm" "dynamodb_write_capacity" {
   alarm_name        = "${var.project_name}-${var.environment}-dynamodb-write-capacity"
-  alarm_description = "DynamoDB consumed write capacity > 20 WCU/min – approaching free-tier limit (25 WCU)"
+  alarm_description = "DynamoDB base-table consumed write capacity > 240 WCU/min (≥80% of 5 WCU/s provisioned). Throttling would force a capacity increase beyond the 25 WCU always-free limit."
 
   namespace   = "AWS/DynamoDB"
   metric_name = "ConsumedWriteCapacityUnits"
@@ -46,7 +51,7 @@ resource "aws_cloudwatch_metric_alarm" "dynamodb_write_capacity" {
   period    = 60
 
   comparison_operator = "GreaterThanThreshold"
-  threshold           = 20
+  threshold           = 240 # 4 WCU/s × 60s = 80% of provisioned 5 WCU/s base table
   evaluation_periods  = 3
   datapoints_to_alarm = 2
   treat_missing_data  = "notBreaching"
@@ -56,9 +61,6 @@ resource "aws_cloudwatch_metric_alarm" "dynamodb_write_capacity" {
 
   tags = local.monitoring_tags
 }
-
-# ---------------------------------------------------------------------------
-# Lambda Invocations Alarm
 # Free tier: 1,000,000 requests/month.  Alert at 90 % = 900,000/month.
 # Expressed as a daily pace: 900,000 / 30 = 30,000 invocations/day.
 # No FunctionName dimension → aggregates across all Lambda functions in the
@@ -126,6 +128,53 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_rate" {
       metric_name = "Invocations"
       period      = 300
       stat        = "Sum"
+    }
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = local.monitoring_tags
+}
+
+# ---------------------------------------------------------------------------
+# Lambda GB-Seconds Alarm
+# Free tier: 400,000 GB-seconds/month.  Alert at 80% = 320,000 GB-s/month.
+# Daily pace: 320,000 / 30 ≈ 10,667 GB-s/day.
+# All Lambda functions are provisioned at 256 MB = 0.25 GB, so:
+#   GB-seconds = Sum(Duration_ms) / 1000 * 0.25
+#   Alarm when Sum(Duration_ms) / 1000 * 0.25 > 10,667
+# No FunctionName dimension → account-level aggregate.
+# NOTE: The invocations alarm (30K/day) does NOT protect this limit.  At 256 MB
+# and a 10-second timeout, only ~5,333 invocations/day exhaust the GB-second
+# free tier.  This alarm is the binding guard for long-running functions.
+# ---------------------------------------------------------------------------
+
+resource "aws_cloudwatch_metric_alarm" "lambda_gb_seconds" {
+  alarm_name        = "${var.project_name}-${var.environment}-lambda-gb-seconds"
+  alarm_description = "Lambda compute > 10,667 GB-seconds/day (pace for 320K/month – 80% of the 400K GB-second free tier at 256 MB)"
+
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 10667 # GB-seconds per day
+  evaluation_periods  = 1
+  datapoints_to_alarm = 1
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "gb_seconds"
+    expression  = "m_duration / 1000 * 0.25" # 256 MB = 0.25 GB
+    label       = "GB-Seconds (256 MB)"
+    return_data = true
+  }
+
+  metric_query {
+    id = "m_duration"
+    metric {
+      namespace   = "AWS/Lambda"
+      metric_name = "Duration"
+      period      = 86400 # 1 day
+      stat        = "Sum"
+      # No dimensions = account-level aggregate across all Lambda functions
     }
   }
 

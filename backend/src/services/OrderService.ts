@@ -74,23 +74,35 @@ export class OrderService {
   private paymentProvider: PaymentProvider;
   private auditService: AuditService;
   private tableName: string;
+  private productsTableName: string;
   private dynamoDB: DynamoDBOptimized;
 
   constructor(paymentProvider: PaymentProvider, notificationService: NotificationService, auditService?: AuditService) {
-    // Let DynamoDBOptimized throw if DYNAMODB_TABLE_NAME is not set; avoid silent misconfiguration.
-    this.tableName = process.env.DYNAMODB_TABLE_NAME as string;
+    const region = process.env.AWS_REGION || 'us-east-1';
 
-    this.dynamoDB = new DynamoDBOptimized({
-      tableName: this.tableName,
-      region: process.env.AWS_REGION || 'us-east-1',
+    const ordersDb = new DynamoDBOptimized({
+      tableName: process.env.ORDERS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
+      region,
+    });
+    const productsDb = new DynamoDBOptimized({
+      tableName: process.env.PRODUCTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
+      region,
+    });
+    const cartsDb = new DynamoDBOptimized({
+      tableName: process.env.CARTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
+      region,
     });
 
-    this.orderRepo = new OrderRepository(this.dynamoDB);
-    this.orderItemRepo = new OrderItemRepository(this.dynamoDB);
-    this.productRepo = new ProductRepository(this.dynamoDB);
-    this.variantRepo = new ProductVariantRepository(this.dynamoDB);
-    this.cartRepo = new CartRepository(this.dynamoDB);
-    this.cartItemRepo = new CartItemRepository(this.dynamoDB);
+    this.tableName = (ordersDb as any).tableName as string;
+    this.productsTableName = (productsDb as any).tableName as string;
+    this.dynamoDB = ordersDb;
+
+    this.orderRepo = new OrderRepository(ordersDb);
+    this.orderItemRepo = new OrderItemRepository(ordersDb);
+    this.productRepo = new ProductRepository(productsDb);
+    this.variantRepo = new ProductVariantRepository(productsDb);
+    this.cartRepo = new CartRepository(cartsDb);
+    this.cartItemRepo = new CartItemRepository(cartsDb);
     this.paymentProvider = paymentProvider;
     this.notificationService = notificationService;
     this.auditService = auditService || new AuditService();
@@ -205,7 +217,7 @@ export class OrderService {
       if (item.variant_id && item.product_id) {
         transactItems.push({
           Update: {
-            TableName: this.tableName,
+            TableName: this.productsTableName,
             Key: {
               PK: `PRODUCT#${item.product_id}`,
               SK: `VARIANT#${item.variant_id}`,

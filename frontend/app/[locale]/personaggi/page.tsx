@@ -16,12 +16,31 @@ export default function PersonaggiPage() {
   
   useEffect(() => {
     const fetchPersonaggi = async () => {
-      setLoading(true);
-      const data = await PersonaggiAPIService.getAllPersonaggi();
-      // Filtra solo i personaggi che hanno immagini
-      const personaggiWithImages = data.filter((p: PersonaggioDTO) => p.images && p.images.length > 0 && p.name != "eliminare");
-      setPersonaggi(personaggiWithImages);
-      setLoading(false);
+      try {
+        console.debug('[PersonaggiPage] fetchPersonaggi: start');
+        setLoading(true);
+        console.debug('[PersonaggiPage] fetchPersonaggi: calling API getAllPersonaggi');
+        const data = await PersonaggiAPIService.getAllPersonaggi();
+        console.debug('[PersonaggiPage] fetchPersonaggi: API resolved', {
+          isArray: Array.isArray(data),
+          length: Array.isArray(data) ? data.length : undefined,
+          firstItem: Array.isArray(data) && data.length > 0 ? data[0] : null,
+        });
+        // Filtra solo i personaggi che hanno immagini
+        //const personaggiWithImages = data.filter((p: PersonaggioDTO) => p.images && p.images.length > 0 && p.name !== "eliminare");
+        console.debug('[PersonaggiPage] fetchPersonaggi: setPersonaggi(data)');
+        setPersonaggi(data);
+      } catch (error) {
+        console.error("Errore durante il fetch dei personaggi:", error);
+        console.error('[PersonaggiPage] fetchPersonaggi: entering catch with error details', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        setPersonaggi([]);
+      } finally {
+        console.debug('[PersonaggiPage] fetchPersonaggi: finally -> setLoading(false)');
+        setLoading(false);
+      }
     };
     
     fetchPersonaggi();

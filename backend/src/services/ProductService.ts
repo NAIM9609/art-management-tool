@@ -17,6 +17,7 @@ import {
   UpdateProductImageData,
 } from './dynamodb/repositories/types';
 import { AuditService } from './AuditService';
+import { S3Service } from './s3/S3Service';
 
 // Export ProductStatus for backward compatibility
 export { ProductStatus };
@@ -46,7 +47,7 @@ export class ProductService {
   constructor(auditService?: AuditService) {
     // Initialize DynamoDB client
     const dynamoDB = new DynamoDBOptimized({
-      tableName: process.env.DYNAMODB_TABLE_NAME || 'products',
+      tableName: process.env.PRODUCTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME || 'products',
       region: process.env.AWS_REGION || 'us-east-1',
       maxRetries: 3,
       retryDelay: 100,
@@ -591,9 +592,36 @@ export class ProductService {
       }
 
       await this.imageRepo.delete(imageId, productId);
+
+      const key = this.getS3KeyFromUrl(image.url);
+      if (key) {
+        try {
+          const s3Service = new S3Service();
+          await s3Service.deleteImage(key);
+        } catch (error) {
+          console.warn(`Failed to delete S3 product image ${key}:`, error);
+        }
+      }
     } catch (error: any) {
       throw this.mapError(error);
     }
+  }
+
+  private getS3KeyFromUrl(imageUrl: string | undefined | null): string | null {
+    if (!imageUrl) {
+      return null;
+    }
+
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      try {
+        const parsed = new URL(imageUrl);
+        return parsed.pathname.replace(/^\/+/, '') || null;
+      } catch {
+        return null;
+      }
+    }
+
+    return imageUrl.replace(/^\/+/, '') || null;
   }
 
   // ==================== Helper Methods ====================

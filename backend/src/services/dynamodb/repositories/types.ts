@@ -19,7 +19,7 @@ export interface Product {
   sku?: string;
   gtin?: string;
   status: ProductStatus;
-  character_id?: number;
+  character_id?: number | null;
   character_value?: string;
   etsy_link?: string;
   created_at: string;
@@ -59,7 +59,7 @@ export interface CreateProductData {
   sku?: string;
   gtin?: string;
   status?: ProductStatus;
-  character_id?: number;
+  character_id?: number | null;
   character_value?: string;
   etsy_link?: string;
 }
@@ -74,7 +74,7 @@ export interface UpdateProductData {
   sku?: string;
   gtin?: string;
   status?: ProductStatus;
-  character_id?: number;
+  character_id?: number | null;
   character_value?: string;
   etsy_link?: string;
 }
@@ -251,7 +251,13 @@ export interface Personaggio {
   id: number;
   name: string;
   description?: string;
+  icon?: string | null;
   images: string[];
+  backgroundColor?: string | null;
+  backgroundType?: string | null;
+  gradientFrom?: string | null;
+  gradientTo?: string | null;
+  backgroundImage?: string | null;
   order: number;
   created_at: string;
   updated_at: string;
@@ -616,14 +622,26 @@ export interface DiscountCodeStats {
 export interface CreatePersonaggioData {
   name: string;
   description?: string;
+  icon?: string;
   images?: string[];
+  backgroundColor?: string;
+  backgroundType?: string;
+  gradientFrom?: string;
+  gradientTo?: string;
+  backgroundImage?: string;
   order?: number;
 }
 
 export interface UpdatePersonaggioData {
   name?: string;
   description?: string;
+  icon?: string | null;
   images?: string[];
+  backgroundColor?: string | null;
+  backgroundType?: string | null;
+  gradientFrom?: string | null;
+  gradientTo?: string | null;
+  backgroundImage?: string | null;
   order?: number;
 }
 export interface CreateOrderData {

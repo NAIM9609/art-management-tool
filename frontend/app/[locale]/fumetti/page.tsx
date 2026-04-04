@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import OptimizedImage from "@/components/OptimizedImage";
 import { useState, useEffect } from "react";
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -71,20 +71,18 @@ export default function FumettiPage() {
                 {/* Immagine più piccola */}
                 <div className="relative w-48 h-64 overflow-hidden mb-3">
                   {fumetto.coverImage ? (
-                    <Image
+                    <OptimizedImage
                       src={fumetto.coverImage}
                       alt={`${fumetto.title} Cover`}
-                      fill
-                      className="object-contain transition-opacity group-hover:opacity-90"
-                      sizes="192px"
+                      className="w-full h-full"
+                      imgClassName="object-contain transition-opacity group-hover:opacity-90 w-full h-full"
                     />
                   ) : fumetto.pages && fumetto.pages[0] ? (
-                    <Image
+                    <OptimizedImage
                       src={fumetto.pages[0]}
                       alt={fumetto.title}
-                      fill
-                      className="object-contain transition-opacity group-hover:opacity-90"
-                      sizes="192px"
+                      className="w-full h-full"
+                      imgClassName="object-contain transition-opacity group-hover:opacity-90 w-full h-full"
                     />
                   ) : (
                     <div className="w-full h-full bg-gray-100 flex items-center justify-center">

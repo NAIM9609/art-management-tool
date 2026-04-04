@@ -1,4 +1,4 @@
-import Image from "next/image";
+import OptimizedImage from "@/components/OptimizedImage";
 import type { PersonaggioDTO } from "@/services/PersonaggiAPIService";
 
 interface PersonaggioCardProps {
@@ -27,20 +27,18 @@ export default function PersonaggioCard({ personaggio, onClick }: PersonaggioCar
     >
       <div className="relative w-full aspect-square mb-4">
         {personaggio.icon ? (
-          <Image
+          <OptimizedImage
             src={personaggio.icon}
             alt={`${personaggio.name} Icon`}
-            fill
-            className="object-contain rounded-lg"
-            sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            className="w-full h-full"
+            imgClassName="object-contain rounded-lg w-full h-full"
           />
         ) : personaggio.images && personaggio.images[0] ? (
-          <Image
+          <OptimizedImage
             src={personaggio.images[0]}
             alt={personaggio.name}
-            fill
-            className="object-contain rounded-lg"
-            sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            className="w-full h-full"
+            imgClassName="object-contain rounded-lg w-full h-full"
           />
         ) : (
           <div className="w-full h-full bg-gray-200 rounded-lg flex items-center justify-center">

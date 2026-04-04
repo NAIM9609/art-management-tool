@@ -25,6 +25,36 @@ export interface PersonaggiListResponse {
   count: number;
 }
 
+function normalizePersonaggiListResponse(response: unknown): PersonaggioDTO[] {
+  if (Array.isArray(response)) {
+    console.debug('[PersonaggiAPIService] normalize: response is direct array', {
+      length: response.length,
+    });
+    return response as PersonaggioDTO[];
+  }
+
+  if (response && typeof response === 'object') {
+    const maybeList = (response as { personaggi?: unknown }).personaggi;
+    if (Array.isArray(maybeList)) {
+      console.debug('[PersonaggiAPIService] normalize: response.personaggi is array', {
+        length: maybeList.length,
+      });
+      return maybeList as PersonaggioDTO[];
+    }
+
+    console.debug('[PersonaggiAPIService] normalize: object response without personaggi array', {
+      keys: Object.keys(response as Record<string, unknown>),
+    });
+  }
+
+  console.debug('[PersonaggiAPIService] normalize: unsupported response shape', {
+    type: typeof response,
+    value: response,
+  });
+
+  return [];
+}
+
 const CACHE_PREFIX = 'personaggi:';
 
 function getAdminCacheTokenKey(): string | null {
@@ -39,10 +69,25 @@ export class PersonaggiAPIService {
   static async getAllPersonaggi(): Promise<PersonaggioDTO[]> {
     const cacheKey = `${CACHE_PREFIX}all`;
     const cached = getCached<PersonaggioDTO[]>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      console.debug('[PersonaggiAPIService] getAllPersonaggi: cache hit', {
+        cacheKey,
+        length: cached.length,
+      });
+      return cached;
+    }
 
-    const response = await fetchWithAuth<PersonaggiListResponse>('/api/personaggi');
-    const data = response.personaggi || (Array.isArray(response) ? response as PersonaggioDTO[] : []);
+    console.debug('[PersonaggiAPIService] getAllPersonaggi: cache miss, requesting /api/personaggi');
+
+    const response = await fetchWithAuth<unknown>('/api/personaggi');
+    console.debug('[PersonaggiAPIService] getAllPersonaggi: raw response received', {
+      type: typeof response,
+      isArray: Array.isArray(response),
+    });
+    const data = normalizePersonaggiListResponse(response);
+    console.debug('[PersonaggiAPIService] getAllPersonaggi: normalized data', {
+      length: data.length,
+    });
     setCached(cacheKey, data, CACHE_TTL.CONTENT);
     return data;
   }
@@ -58,8 +103,8 @@ export class PersonaggiAPIService {
     const cached = getCached<PersonaggioDTO[]>(cacheKey);
     if (cached) return cached;
 
-    const response = await fetchWithAuth<PersonaggiListResponse>('/api/personaggi', {}, true);
-    const data = response.personaggi || (Array.isArray(response) ? response as PersonaggioDTO[] : []);
+    const response = await fetchWithAuth<unknown>('/api/personaggi', {}, true);
+    const data = normalizePersonaggiListResponse(response);
     setCached(cacheKey, data, CACHE_TTL.CONTENT);
     return data;
   }
@@ -160,8 +205,8 @@ export class PersonaggiAPIService {
 
   // GET /api/personaggi/deleted - Ottieni tutti i personaggi cancellati
   static async getDeletedPersonaggi(): Promise<PersonaggioDTO[]> {
-    const response = await fetchWithAuth<PersonaggiListResponse>('/api/personaggi/deleted', {}, true);
-    return response.personaggi || (Array.isArray(response) ? response as PersonaggioDTO[] : []);
+    const response = await fetchWithAuth<unknown>('/api/personaggi/deleted', {}, true);
+    return normalizePersonaggiListResponse(response);
   }
 
   // POST /api/personaggi/{id}/upload - Upload immagine per un personaggio

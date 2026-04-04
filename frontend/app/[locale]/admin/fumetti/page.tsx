@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { TabView, TabPanel } from 'primereact/tabview';
 import { FumettoDTO, FumettiAPIService } from '@/services/FumettiAPIService';
 import FumettiModal from '@/components/FumettiModal';
+import OptimizedImage from '@/components/OptimizedImage';
 import { useToast } from '@/hooks/useToast';
 import { useFormDialog } from '@/hooks/useFormDialog';
 import useFumettoManagement from '@/hooks/useFumettoManagement';
 import PageHeader from '@/components/admin/PageHeader';
 import FumettoForm from '@/components/admin/FumettoForm';
-import FumettoColumns from '@/components/admin/FumettoColumns';
 
 export default function AdminFumettiPage() {
   const { toast, showSuccess, showError, showWarn } = useToast();
@@ -32,9 +33,8 @@ export default function AdminFumettiPage() {
     setEditingFumetto,
     loadFumetti,
     handleSave: saveFumetto,
-    handleSaveForUpload: saveForUpload,
-    handleSaveAfterUpload: saveAfterUpload,
     handleRestore,
+    resetCreateSession,
   } = useFumettoManagement({
     showSuccess,
     showError,
@@ -57,7 +57,7 @@ export default function AdminFumettiPage() {
       pages: [],
       order: 0,
     });
-    setEditingFumetto(null);
+    resetCreateSession();
   };
 
   const handleEdit = (fumetto: FumettoDTO) => {
@@ -66,27 +66,9 @@ export default function AdminFumettiPage() {
   };
 
   const handleSave = async () => {
-    const success = await saveFumetto(formData, isEditing, editingFumetto);
+    const success = await saveFumetto(formData, editingFumetto);
     if (success) {
       closeDialog();
-    }
-  };
-
-  const handleSaveForUpload = async (): Promise<number | undefined> => {
-    const id = await saveForUpload(formData, editingFumetto);
-    if (id && !isEditing) {
-      const updatedData = await saveAfterUpload(editingFumetto);
-      if (updatedData) {
-        updateFormData(updatedData);
-      }
-    }
-    return id;
-  };
-
-  const handleSaveAfterUpload = async (): Promise<void> => {
-    const updatedData = await saveAfterUpload(editingFumetto);
-    if (updatedData) {
-      updateFormData(updatedData);
     }
   };
 
@@ -108,9 +90,77 @@ export default function AdminFumettiPage() {
     });
   };
 
-  const handlePreview = (fumetto: FumettoDTO) => {
-    setPreviewFumetto(fumetto);
-    setShowPreviewDialog(true);
+  const handlePreview = async (fumetto: FumettoDTO) => {
+    try {
+      const detailedFumetto = fumetto.id
+        ? await FumettiAPIService.getFumettoAdmin(fumetto.id)
+        : fumetto;
+      setPreviewFumetto(detailedFumetto);
+      setShowPreviewDialog(true);
+    } catch (error) {
+      console.error('Error loading fumetto preview:', error);
+      showError('Failed to load fumetto preview');
+    }
+  };
+
+  const coverImageBodyTemplate = (rowData: FumettoDTO) => {
+    return rowData.coverImage ? (
+      <OptimizedImage
+        src={rowData.coverImage}
+        alt={rowData.title}
+        width={80}
+        height={80}
+        imgClassName="object-cover"
+      />
+    ) : (
+      <span className="text-500">No image</span>
+    );
+  };
+
+  const pagesBodyTemplate = (rowData: FumettoDTO) => {
+    return <span>{rowData.pages?.length || 0} pages</span>;
+  };
+
+  const actionsBodyTemplate = (rowData: FumettoDTO, isDeleted = false) => {
+    if (isDeleted) {
+      return (
+        <div className="flex gap-2">
+          <Button
+            icon="pi pi-undo"
+            className="p-button-rounded p-button-success"
+            onClick={() => handleRestore(rowData)}
+            tooltip="Restore"
+            tooltipOptions={{ position: 'top' }}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex gap-2">
+        <Button
+          icon="pi pi-eye"
+          className="p-button-rounded p-button-info"
+          onClick={() => handlePreview(rowData)}
+          tooltip="Preview"
+          tooltipOptions={{ position: 'top' }}
+        />
+        <Button
+          icon="pi pi-pencil"
+          className="p-button-rounded p-button-warning"
+          onClick={() => handleEdit(rowData)}
+          tooltip="Edit"
+          tooltipOptions={{ position: 'top' }}
+        />
+        <Button
+          icon="pi pi-trash"
+          className="p-button-rounded p-button-danger"
+          onClick={() => handleDelete(rowData)}
+          tooltip="Delete"
+          tooltipOptions={{ position: 'top' }}
+        />
+      </div>
+    );
   };
 
   return (
@@ -142,10 +192,26 @@ export default function AdminFumettiPage() {
             tableStyle={{ minWidth: '60rem' }}
             emptyMessage="No active fumetti found"
           >
-            <FumettoColumns
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onPreview={handlePreview}
+            <Column field="id" header="ID" sortable style={{ width: '80px' }} />
+            <Column field="title" header="Title" sortable />
+            <Column field="description" header="Description" sortable />
+            <Column
+              header="Cover Image"
+              body={coverImageBodyTemplate}
+              style={{ width: '120px' }}
+            />
+            <Column
+              header="Pages"
+              body={pagesBodyTemplate}
+              sortable
+              style={{ width: '100px' }}
+            />
+            <Column field="order" header="Order" sortable style={{ width: '100px' }} />
+            <Column
+              header="Actions"
+              body={(rowData: FumettoDTO) => actionsBodyTemplate(rowData)}
+              exportable={false}
+              style={{ width: '180px' }}
             />
           </DataTable>
         </TabPanel>
@@ -160,12 +226,26 @@ export default function AdminFumettiPage() {
             tableStyle={{ minWidth: '60rem' }}
             emptyMessage="No deleted fumetti found"
           >
-            <FumettoColumns
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onPreview={handlePreview}
-              onRestore={handleRestore}
-              isDeleted
+            <Column field="id" header="ID" sortable style={{ width: '80px' }} />
+            <Column field="title" header="Title" sortable />
+            <Column field="description" header="Description" sortable />
+            <Column
+              header="Cover Image"
+              body={coverImageBodyTemplate}
+              style={{ width: '120px' }}
+            />
+            <Column
+              header="Pages"
+              body={pagesBodyTemplate}
+              sortable
+              style={{ width: '100px' }}
+            />
+            <Column field="order" header="Order" sortable style={{ width: '100px' }} />
+            <Column
+              header="Actions"
+              body={(rowData: FumettoDTO) => actionsBodyTemplate(rowData, true)}
+              exportable={false}
+              style={{ width: '180px' }}
             />
           </DataTable>
         </TabPanel>
@@ -178,8 +258,6 @@ export default function AdminFumettiPage() {
         onHide={closeDialog}
         onSave={handleSave}
         onChange={(field, value) => updateFormData({ [field]: value })}
-        onSaveForUpload={handleSaveForUpload}
-        onSaveAfterUpload={handleSaveAfterUpload}
       />
 
       {previewFumetto && (

@@ -15,17 +15,33 @@ export class CartService {
   private variantRepo: ProductVariantRepository;
 
   constructor(dynamoDB?: DynamoDBOptimized) {
-    // Rely on DYNAMODB_TABLE_NAME env var; DynamoDBOptimized throws loudly when missing.
-    const db = dynamoDB || new DynamoDBOptimized({
-      tableName: process.env.DYNAMODB_TABLE_NAME,
-      region: process.env.AWS_REGION || 'us-east-1',
-    });
-
-    this.cartRepo = new CartRepository(db);
-    this.cartItemRepo = new CartItemRepository(db);
-    this.discountRepo = new DiscountCodeRepository(db);
-    this.productRepo = new ProductRepository(db);
-    this.variantRepo = new ProductVariantRepository(db);
+    if (dynamoDB) {
+      // Use injected instance for all repos (test / Lambda single-table usage)
+      this.cartRepo = new CartRepository(dynamoDB);
+      this.cartItemRepo = new CartItemRepository(dynamoDB);
+      this.discountRepo = new DiscountCodeRepository(dynamoDB);
+      this.productRepo = new ProductRepository(dynamoDB);
+      this.variantRepo = new ProductVariantRepository(dynamoDB);
+    } else {
+      const region = process.env.AWS_REGION || 'us-east-1';
+      const cartsDb = new DynamoDBOptimized({
+        tableName: process.env.CARTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
+        region,
+      });
+      const discountsDb = new DynamoDBOptimized({
+        tableName: process.env.DISCOUNTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
+        region,
+      });
+      const productsDb = new DynamoDBOptimized({
+        tableName: process.env.PRODUCTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
+        region,
+      });
+      this.cartRepo = new CartRepository(cartsDb);
+      this.cartItemRepo = new CartItemRepository(cartsDb);
+      this.discountRepo = new DiscountCodeRepository(discountsDb);
+      this.productRepo = new ProductRepository(productsDb);
+      this.variantRepo = new ProductVariantRepository(productsDb);
+    }
   }
 
   /**

@@ -7,15 +7,6 @@ interface ServerConfig {
   environment: string;
 }
 
-interface DatabaseConfig {
-  host: string;
-  port: number;
-  user: string;
-  password: string;
-  name: string;
-  sslMode: string;
-}
-
 interface EtsyConfig {
   apiKey: string;
   apiSecret: string;
@@ -55,7 +46,6 @@ interface S3Config {
 
 export interface Config {
   server: ServerConfig;
-  database: DatabaseConfig;
   etsy: EtsyConfig;
   scheduler: SchedulerConfig;
   rateLimit: RateLimitConfig;
@@ -101,14 +91,6 @@ export const config: Config = {
   server: {
     port: getEnvInt('PORT', 8080),
     environment: getEnv('ENVIRONMENT', 'development'),
-  },
-  database: {
-    host: getEnv('DB_HOST', 'localhost'),
-    port: getEnvInt('DB_PORT', 5432),
-    user: getEnv('DB_USER', 'artuser'),
-    password: getEnv('DB_PASSWORD', 'dbpass'),
-    name: getEnv('DB_NAME', 'artmanagement'),
-    sslMode: getEnv('DB_SSLMODE', 'disable'),
   },
   etsy: {
     apiKey: getEnv('ETSY_API_KEY', ''),

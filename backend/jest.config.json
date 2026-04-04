@@ -2,7 +2,7 @@
   "preset": "ts-jest",
   "testEnvironment": "node",
   "roots": ["<rootDir>/src", "<rootDir>/services", "<rootDir>/services/order-service/src", "<rootDir>/tests"],
-  "testMatch": ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts", "**/*-test.ts"],
+  "testMatch": ["**/__tests__/**/*.test.ts", "**/__tests__/**/*.spec.ts", "**/?(*.)+(spec|test).ts", "**/*-test.ts"],
   "transform": {
     "^.+\\.ts$": ["ts-jest", {
       "tsconfig": {
@@ -41,5 +41,6 @@
       "statements": 80
     }
   },
-  "moduleFileExtensions": ["ts", "tsx", "js", "jsx", "json", "node"]
+  "moduleFileExtensions": ["ts", "tsx", "js", "jsx", "json", "node"],
+  "testPathIgnorePatterns": ["[/\\\\]node_modules[/\\\\]", "[/\\\\]dist[/\\\\]"]
 }

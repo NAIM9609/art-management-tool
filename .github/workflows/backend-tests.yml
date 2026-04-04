@@ -32,7 +32,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm i
 
       - name: Run ESLint (core)
         working-directory: backend
@@ -58,7 +58,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm i
 
       - name: Run unit tests
         working-directory: backend
@@ -101,7 +101,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm i
 
       - name: Run ${{ matrix.service }} unit tests
         working-directory: backend
@@ -178,7 +178,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm i
 
       - name: Wait for LocalStack
         run: |
@@ -273,7 +273,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm i
 
       - name: Run ${{ matrix.service }} integration tests
         working-directory: backend
@@ -295,7 +295,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm i
 
       - name: Build
         working-directory: backend
