@@ -39,7 +39,7 @@ export async function getHealth(
 ): Promise<APIGatewayProxyResult> {
   const tableName = process.env.PRODUCTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME || '';
   const bucketName = process.env.S3_BUCKET_NAME ?? '';
-  const region = process.env.AWS_REGION ?? 'us-east-1';
+  const region = process.env.AWS_REGION_CUSTOM ?? 'us-east-1';
 
   const [dynamoResult, s3Result, memoryResult] = await Promise.all([
     tableName ? checkDynamoDB(tableName, region) : Promise.resolve({ status: 'unhealthy' as CheckStatus, error: 'PRODUCTS_TABLE_NAME not set' }),

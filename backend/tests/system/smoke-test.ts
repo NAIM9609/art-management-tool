@@ -19,7 +19,7 @@
 
 // ── Environment (must precede all imports) ────────────────────────────────────
 process.env.DYNAMODB_TABLE_NAME = 'art-smoke-test';
-process.env.AWS_REGION = 'us-east-1';
+process.env.AWS_REGION_CUSTOM = 'us-east-1';
 process.env.JWT_SECRET = 'smoke-test-secret';
 process.env.S3_BUCKET_NAME = 'art-smoke-test-bucket';
 process.env.ETSY_CLIENT_ID = 'smoke-client-id';

@@ -12,7 +12,7 @@
  *
  * Environment variables:
  *   DATABASE_HOST / DATABASE_PORT / DATABASE_USER / DATABASE_PASSWORD / DATABASE_NAME
- *   AWS_REGION / AWS_ENDPOINT_URL (for LocalStack)
+ *   AWS_REGION_CUSTOM / AWS_ENDPOINT_URL (for LocalStack)
  *   DYNAMODB_TABLE_NAME
  *   SPOT_CHECK_SAMPLE_SIZE   (default: 5)
  */
@@ -79,7 +79,7 @@ interface QueryCheckResult {
 
 function buildDynamoClient(): DynamoDBDocumentClient {
   const clientConfig: Record<string, any> = {
-    region: process.env.AWS_REGION || 'us-east-1',
+    region: process.env.AWS_REGION_CUSTOM || 'us-east-1',
   };
   if (process.env.AWS_ENDPOINT_URL) {
     clientConfig.endpoint = process.env.AWS_ENDPOINT_URL;

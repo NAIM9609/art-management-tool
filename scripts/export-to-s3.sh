@@ -6,7 +6,7 @@
 #
 # Options:
 #   -e, --environment ENV     Target environment: dev | staging | prod (default: dev)
-#   -r, --region REGION       AWS region (default: $AWS_REGION or eu-north-1)
+#   -r, --region REGION       AWS region (default: $AWS_REGION_CUSTOM or eu-north-1)
 #   -t, --table TABLE         DynamoDB table name (default: derived from project/env)
 #   -b, --bucket BUCKET       S3 bucket for exports ($BACKUP_S3_BUCKET)
 #   --prefix PREFIX           S3 key prefix (default: dynamodb)
@@ -16,7 +16,7 @@
 #
 # Environment variables:
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-#   ENVIRONMENT, AWS_REGION, DYNAMODB_TABLE_NAME, BACKUP_S3_BUCKET
+#   ENVIRONMENT, AWS_REGION_CUSTOM, DYNAMODB_TABLE_NAME, BACKUP_S3_BUCKET
 #
 # Notes:
 #   - DynamoDB point-in-time recovery must be enabled on the table.
@@ -51,7 +51,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -e, --environment ENV     Target environment: dev | staging | prod (default: dev)"
-  echo "  -r, --region REGION       AWS region (default: \$AWS_REGION or eu-north-1)"
+  echo "  -r, --region REGION       AWS region (default: \$AWS_REGION_CUSTOM or eu-north-1)"
   echo "  -t, --table TABLE         DynamoDB table name (overrides default)"
   echo "  -b, --bucket BUCKET       S3 destination bucket (\$BACKUP_S3_BUCKET)"
   echo "  --prefix PREFIX           S3 key prefix (default: dynamodb)"
@@ -61,7 +61,7 @@ usage() {
   echo ""
   echo "Environment variables:"
   echo "  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY"
-  echo "  ENVIRONMENT, AWS_REGION, DYNAMODB_TABLE_NAME, BACKUP_S3_BUCKET"
+  echo "  ENVIRONMENT, AWS_REGION_CUSTOM, DYNAMODB_TABLE_NAME, BACKUP_S3_BUCKET"
   echo ""
   echo "Examples:"
   echo "  BACKUP_S3_BUCKET=my-backups $(basename "$0")"
@@ -73,7 +73,7 @@ usage() {
 # Defaults
 # ---------------------------------------------------------------------------
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-AWS_REGION="${AWS_REGION:-eu-north-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-eu-north-1}"
 TABLE_NAME="${DYNAMODB_TABLE_NAME:-}"
 S3_BUCKET="${BACKUP_S3_BUCKET:-}"
 S3_PREFIX="dynamodb"
@@ -86,7 +86,7 @@ SET_LIFECYCLE=true
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment)    ENVIRONMENT="$2";    shift 2 ;;
-    -r|--region)         AWS_REGION="$2";     shift 2 ;;
+    -r|--region)         AWS_REGION_CUSTOM="$2";     shift 2 ;;
     -t|--table)          TABLE_NAME="$2";     shift 2 ;;
     -b|--bucket)         S3_BUCKET="$2";      shift 2 ;;
     --prefix)            S3_PREFIX="$2";      shift 2 ;;
@@ -162,18 +162,18 @@ step "Verifying table '${TABLE_NAME}' and point-in-time recovery"
 
 TABLE_STATUS=$(aws dynamodb describe-table \
   --table-name "$TABLE_NAME" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --query "Table.TableStatus" \
   --output text 2>/dev/null || echo "NOT_FOUND")
 
 if [[ "$TABLE_STATUS" == "NOT_FOUND" ]]; then
-  error "Table '${TABLE_NAME}' not found in region '${AWS_REGION}'"
+  error "Table '${TABLE_NAME}' not found in region '${AWS_REGION_CUSTOM}'"
   exit 1
 fi
 
 PITR_STATUS=$(aws dynamodb describe-continuous-backups \
   --table-name "$TABLE_NAME" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --query "ContinuousBackupsDescription.PointInTimeRecoveryDescription.PointInTimeRecoveryStatus" \
   --output text 2>/dev/null || echo "UNKNOWN")
 
@@ -215,32 +215,32 @@ info "Export destination: ${S3_DESTINATION}"
 # ---------------------------------------------------------------------------
 step "Verifying S3 bucket '${S3_BUCKET}'"
 
-if ! aws s3api head-bucket --bucket "$S3_BUCKET" --region "$AWS_REGION" 2>/dev/null; then
-  warn "Bucket '${S3_BUCKET}' not found — creating it in region '${AWS_REGION}'"
+if ! aws s3api head-bucket --bucket "$S3_BUCKET" --region "$AWS_REGION_CUSTOM" 2>/dev/null; then
+  warn "Bucket '${S3_BUCKET}' not found — creating it in region '${AWS_REGION_CUSTOM}'"
 
-  if [[ "$AWS_REGION" == "us-east-1" ]]; then
+  if [[ "$AWS_REGION_CUSTOM" == "us-east-1" ]]; then
     aws s3api create-bucket \
       --bucket "$S3_BUCKET" \
-      --region "$AWS_REGION"
+      --region "$AWS_REGION_CUSTOM"
   else
     aws s3api create-bucket \
       --bucket "$S3_BUCKET" \
-      --region "$AWS_REGION" \
-      --create-bucket-configuration LocationConstraint="$AWS_REGION"
+      --region "$AWS_REGION_CUSTOM" \
+      --create-bucket-configuration LocationConstraint="$AWS_REGION_CUSTOM"
   fi
 
   # Enable versioning for safety
   aws s3api put-bucket-versioning \
     --bucket "$S3_BUCKET" \
     --versioning-configuration Status=Enabled \
-    --region "$AWS_REGION"
+    --region "$AWS_REGION_CUSTOM"
 
   # Block public access
   aws s3api put-public-access-block \
     --bucket "$S3_BUCKET" \
     --public-access-block-configuration \
       BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
-    --region "$AWS_REGION"
+    --region "$AWS_REGION_CUSTOM"
 
   success "Bucket created: ${S3_BUCKET}"
 fi
@@ -280,7 +280,7 @@ PYEOF
   aws s3api put-bucket-lifecycle-configuration \
     --bucket "$S3_BUCKET" \
     --lifecycle-configuration "$LIFECYCLE_CONFIG" \
-    --region "$AWS_REGION"
+    --region "$AWS_REGION_CUSTOM"
 
   success "Lifecycle policy applied (${S3_PREFIX}/ → expire after ${RETENTION_DAYS} days, Glacier after 60 days)"
 fi
@@ -293,7 +293,7 @@ step "Starting DynamoDB export to S3 (format: DYNAMODB_JSON, compression: GZIP)"
 # Get current table ARN
 TABLE_ARN=$(aws dynamodb describe-table \
   --table-name "$TABLE_NAME" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --query "Table.TableArn" \
   --output text)
 
@@ -303,7 +303,7 @@ EXPORT_OUTPUT=$(aws dynamodb export-table-to-point-in-time \
   --s3-prefix "$EXPORT_PREFIX" \
   --export-format "DYNAMODB_JSON" \
   --s3-sse-algorithm "AES256" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --output json)
 
 EXPORT_ARN=$(echo "$EXPORT_OUTPUT" | python3 -c "import sys,json; print(json.load(sys.stdin)['ExportDescription']['ExportArn'])")
@@ -324,7 +324,7 @@ ELAPSED=0
 while true; do
   STATUS=$(aws dynamodb describe-export \
     --export-arn "$EXPORT_ARN" \
-    --region "$AWS_REGION" \
+    --region "$AWS_REGION_CUSTOM" \
     --query "ExportDescription.ExportStatus" \
     --output text)
 
@@ -334,7 +334,7 @@ while true; do
   elif [[ "$STATUS" == "FAILED" ]]; then
     FAILURE_MSG=$(aws dynamodb describe-export \
       --export-arn "$EXPORT_ARN" \
-      --region "$AWS_REGION" \
+      --region "$AWS_REGION_CUSTOM" \
       --query "ExportDescription.FailureMessage" \
       --output text 2>/dev/null || echo "unknown")
     error "Export FAILED: ${FAILURE_MSG}"
@@ -356,7 +356,7 @@ done
 # ---------------------------------------------------------------------------
 EXPORT_DETAILS=$(aws dynamodb describe-export \
   --export-arn "$EXPORT_ARN" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --output json)
 
 EXPORTED_ITEMS=$(echo "$EXPORT_DETAILS" | python3 -c "import sys,json; print(json.load(sys.stdin)['ExportDescription'].get('ExportedItemCount','unknown'))")
@@ -372,7 +372,7 @@ echo -e "  Destination  : ${CYAN}${S3_DESTINATION}${RESET}"
 echo -e "  Export ARN   : ${CYAN}${EXPORT_ARN}${RESET}"
 echo -e "  Items        : ${EXPORTED_ITEMS}"
 echo -e "  Retention    : ${RETENTION_DAYS} days"
-echo -e "  Region       : ${AWS_REGION}"
+echo -e "  Region       : ${AWS_REGION_CUSTOM}"
 [[ -n "$EXPORT_MANIFEST" ]] && echo -e "  Manifest     : ${EXPORT_MANIFEST}"
 echo ""
 

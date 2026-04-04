@@ -436,7 +436,7 @@ resource "aws_lambda_function" "product_service" {
       DYNAMODB_TABLE_NAME = local.dynamodb_table_name
       S3_BUCKET_NAME      = local.s3_bucket_name
       CDN_URL             = var.cdn_url
-      AWS_REGION          = var.aws_region
+      AWS_REGION_CUSTOM          = var.aws_region
       AWS_REGION_NAME     = var.aws_region
       ENVIRONMENT         = var.environment
       JWT_SECRET          = local.effective_jwt_secret

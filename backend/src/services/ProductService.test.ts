@@ -15,7 +15,7 @@ jest.mock('./AuditService');
 
 // Mock environment variables
 process.env.DYNAMODB_TABLE_NAME = 'test-products';
-process.env.AWS_REGION = 'us-east-1';
+process.env.AWS_REGION_CUSTOM = 'us-east-1';
 
 describe('ProductService', () => {
   let service: ProductService;

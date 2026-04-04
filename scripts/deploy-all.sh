@@ -27,7 +27,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -e, --environment ENV      Target environment: dev | staging | prod (default: dev)"
-  echo "  -r, --region REGION        AWS region (default: \$AWS_REGION or eu-north-1)"
+  echo "  -r, --region REGION        AWS region (default: \$AWS_REGION_CUSTOM or eu-north-1)"
   echo "  -b, --bucket BUCKET        S3 bucket for Lambda artifacts (\$LAMBDA_BUCKET)"
   echo "  --skip-infrastructure      Skip Terraform infrastructure deployment"
   echo "  --skip-smoke               Skip smoke tests"
@@ -66,7 +66,7 @@ ALL_SERVICES=(
 # Defaults
 # ---------------------------------------------------------------------------
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-AWS_REGION="${AWS_REGION:-eu-north-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-eu-north-1}"
 LAMBDA_BUCKET="${LAMBDA_BUCKET:-}"
 SKIP_INFRA=false
 SKIP_SMOKE=false
@@ -79,7 +79,7 @@ SERVICES_TO_DEPLOY=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment)      ENVIRONMENT="$2"; shift 2 ;;
-    -r|--region)           AWS_REGION="$2"; shift 2 ;;
+    -r|--region)           AWS_REGION_CUSTOM="$2"; shift 2 ;;
     -b|--bucket)           LAMBDA_BUCKET="$2"; shift 2 ;;
     --skip-infrastructure) SKIP_INFRA=true; shift ;;
     --skip-smoke)          SKIP_SMOKE=true; shift ;;
@@ -142,7 +142,7 @@ success "Pre-flight checks passed"
 echo ""
 echo -e "${BOLD}Deployment Summary${RESET}"
 echo -e "  Environment : ${BOLD}${ENVIRONMENT}${RESET}"
-echo -e "  Region      : ${BOLD}${AWS_REGION}${RESET}"
+echo -e "  Region      : ${BOLD}${AWS_REGION_CUSTOM}${RESET}"
 echo -e "  Services    : ${BOLD}${SERVICES_TO_DEPLOY[*]}${RESET}"
 echo -e "  Skip Infra  : ${BOLD}${SKIP_INFRA}${RESET}"
 echo ""
@@ -164,11 +164,11 @@ START_TIME=$(date +%s)
 # ---------------------------------------------------------------------------
 if [[ "$SKIP_INFRA" == "false" ]]; then
   step "Step 1/3: Deploying infrastructure"
-  export ENVIRONMENT AWS_REGION JWT_SECRET="${JWT_SECRET:-}" \
+  export ENVIRONMENT AWS_REGION_CUSTOM JWT_SECRET="${JWT_SECRET:-}" \
          ETSY_API_KEY="${ETSY_API_KEY:-}" ETSY_API_SECRET="${ETSY_API_SECRET:-}"
   bash "$SCRIPT_DIR/deploy-infrastructure.sh" \
     --environment "$ENVIRONMENT" \
-    --region "$AWS_REGION" \
+    --region "$AWS_REGION_CUSTOM" \
     --output-file "terraform-outputs-${ENVIRONMENT}.env"
   success "Infrastructure deployed"
 
@@ -194,7 +194,7 @@ for SVC in "${SERVICES_TO_DEPLOY[@]}"; do
   DEPLOY_ARGS=(
     "$SVC"
     --environment "$ENVIRONMENT"
-    --region "$AWS_REGION"
+    --region "$AWS_REGION_CUSTOM"
     --bucket "$LAMBDA_BUCKET"
     --skip-smoke   # smoke tests run collectively below
   )

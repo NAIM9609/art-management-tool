@@ -24,7 +24,7 @@
 
 // ── Environment (must precede all imports) ────────────────────────────────────
 process.env.DYNAMODB_TABLE_NAME = 'art-system-test';
-process.env.AWS_REGION = 'us-east-1';
+process.env.AWS_REGION_CUSTOM = 'us-east-1';
 process.env.JWT_SECRET = 'system-test-secret';
 process.env.S3_BUCKET_NAME = 'art-system-test-bucket';
 process.env.ETSY_CLIENT_ID = 'test-client-id';

@@ -21,7 +21,7 @@ on:
 
 env:
   NODE_VERSION: '20'
-  AWS_REGION: ${{ secrets.AWS_REGION || 'eu-north-1' }}
+  AWS_REGION_CUSTOM: ${{ secrets.AWS_REGION_CUSTOM || 'eu-north-1' }}
   PROJECT_NAME: 'art-management-tool'
   SERVICE_NAME: 'audit-service'
   SERVICE_PATH: 'backend/services/audit-service'
@@ -74,7 +74,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION_CUSTOM }}
 
       - name: Upload Lambda package to S3
         run: |

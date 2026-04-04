@@ -10,14 +10,14 @@
 #
 # Options:
 #   -e, --environment ENV       Target environment: dev | staging | prod (default: dev)
-#   -r, --region REGION         AWS region (default: $AWS_REGION or eu-north-1)
+#   -r, --region REGION         AWS region (default: $AWS_REGION_CUSTOM or eu-north-1)
 #   --sample-size N             Number of items to spot-check (default: 5)
 #   --keep-table                Do not delete the temp table after validation
 #   -h, --help                  Show this help message
 #
 # Environment variables:
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-#   ENVIRONMENT, AWS_REGION
+#   ENVIRONMENT, AWS_REGION_CUSTOM
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -e, --environment ENV    Target environment: dev | staging | prod (default: dev)"
-  echo "  -r, --region REGION      AWS region (default: \$AWS_REGION or eu-north-1)"
+  echo "  -r, --region REGION      AWS region (default: \$AWS_REGION_CUSTOM or eu-north-1)"
   echo "  --sample-size N          Number of items to spot-check (default: 5)"
   echo "  --keep-table             Do not delete the temp table after validation"
   echo "  -h, --help               Show this help message"
@@ -65,7 +65,7 @@ usage() {
 # Defaults
 # ---------------------------------------------------------------------------
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-AWS_REGION="${AWS_REGION:-eu-north-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-eu-north-1}"
 SAMPLE_SIZE=5
 KEEP_TABLE=false
 TEMP_TABLE_NAME=""
@@ -84,7 +84,7 @@ shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment) ENVIRONMENT="$2"; shift 2 ;;
-    -r|--region)      AWS_REGION="$2";  shift 2 ;;
+    -r|--region)      AWS_REGION_CUSTOM="$2";  shift 2 ;;
     --sample-size)    SAMPLE_SIZE="$2"; shift 2 ;;
     --keep-table)     KEEP_TABLE=true;  shift ;;
     -h|--help) usage; exit 0 ;;
@@ -150,14 +150,14 @@ cleanup() {
     step "Cleaning up temporary table '${TEMP_TABLE_NAME}'"
     TABLE_EXISTS=$(aws dynamodb describe-table \
       --table-name "$TEMP_TABLE_NAME" \
-      --region "$AWS_REGION" \
+      --region "$AWS_REGION_CUSTOM" \
       --query "Table.TableStatus" \
       --output text 2>/dev/null || echo "NOT_FOUND")
 
     if [[ "$TABLE_EXISTS" != "NOT_FOUND" ]]; then
       aws dynamodb delete-table \
         --table-name "$TEMP_TABLE_NAME" \
-        --region "$AWS_REGION" \
+        --region "$AWS_REGION_CUSTOM" \
         --output json > /dev/null
       success "Temporary table '${TEMP_TABLE_NAME}' deleted"
     else
@@ -177,7 +177,7 @@ step "Describing backup"
 
 BACKUP_INFO=$(aws dynamodb describe-backup \
   --backup-arn "$BACKUP_ARN" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --output json)
 
 BACKUP_STATUS=$(echo "$BACKUP_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['BackupDescription']['BackupDetails']['BackupStatus'])")
@@ -203,7 +203,7 @@ step "Restoring backup to temporary table '${TEMP_TABLE_NAME}'"
 aws dynamodb restore-table-from-backup \
   --target-table-name "$TEMP_TABLE_NAME" \
   --backup-arn "$BACKUP_ARN" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --output json > /dev/null
 
 success "Restore initiated"
@@ -220,7 +220,7 @@ ELAPSED=0
 while true; do
   TABLE_STATUS=$(aws dynamodb describe-table \
     --table-name "$TEMP_TABLE_NAME" \
-    --region "$AWS_REGION" \
+    --region "$AWS_REGION_CUSTOM" \
     --query "Table.TableStatus" \
     --output text 2>/dev/null || echo "CREATING")
 
@@ -246,7 +246,7 @@ step "Counting records in temporary table"
 
 ITEM_COUNT=$(aws dynamodb describe-table \
   --table-name "$TEMP_TABLE_NAME" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --query "Table.ItemCount" \
   --output text)
 
@@ -266,7 +266,7 @@ step "Spot-checking ${SAMPLE_SIZE} item(s) for structural validity"
 SAMPLE_OUTPUT=$(aws dynamodb scan \
   --table-name "$TEMP_TABLE_NAME" \
   --limit "$SAMPLE_SIZE" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --output json)
 
 SAMPLE_COUNT=$(echo "$SAMPLE_OUTPUT" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('Items', [])))")
@@ -313,7 +313,7 @@ step "Checking Global Secondary Indexes on temp table"
 
 GSI_LIST=$(aws dynamodb describe-table \
   --table-name "$TEMP_TABLE_NAME" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --query "Table.GlobalSecondaryIndexes[*].{Name:IndexName,Status:IndexStatus}" \
   --output json 2>/dev/null || echo "[]")
 

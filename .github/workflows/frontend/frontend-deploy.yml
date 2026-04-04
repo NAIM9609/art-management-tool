@@ -11,7 +11,7 @@ on:
 # Define environment variables that can be used across all jobs
 env:
   NODE_VERSION: '20'  # Use Node.js LTS version
-  AWS_REGION: 'us-east-1'  # Default AWS region, can be overridden by secrets
+  AWS_REGION_CUSTOM: 'us-east-1'  # Default AWS region, can be overridden by secrets
 
 jobs:
   build-and-deploy:
@@ -100,7 +100,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION || env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION_CUSTOM || env.AWS_REGION_CUSTOM }}
       
       # Step 7: Upload build artifacts to S3
       # Uploads both timestamped and 'latest' versions of the build

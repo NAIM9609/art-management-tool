@@ -121,7 +121,7 @@ export const config: Config = {
   },
   s3: {
     bucketName: getEnv('S3_BUCKET_NAME', ''),
-    region: getEnv('AWS_REGION', 'us-east-1'),
+    region: getEnv('AWS_REGION_CUSTOM', 'us-east-1'),
     cdnUrl: getEnv('CDN_URL', ''),
   },
   jwtSecret: getJwtSecret(),

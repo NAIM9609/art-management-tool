@@ -9,14 +9,14 @@
 #
 # Options:
 #   -e, --environment ENV       Target environment: dev | staging | prod (default: dev)
-#   -r, --region REGION         AWS region (default: $AWS_REGION or eu-north-1)
+#   -r, --region REGION         AWS region (default: $AWS_REGION_CUSTOM or eu-north-1)
 #   -n, --new-table NAME        Name for the restored table (default: <original>-restored-<timestamp>)
 #   --no-wait                   Return immediately without waiting for table to become ACTIVE
 #   -h, --help                  Show this help message
 #
 # Environment variables:
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-#   ENVIRONMENT, AWS_REGION
+#   ENVIRONMENT, AWS_REGION_CUSTOM
 #
 # NOTE: After restoration is verified, traffic switchover is a manual step.
 #       Update the DYNAMODB_TABLE_NAME environment variable in each Lambda
@@ -51,7 +51,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -e, --environment ENV     Target environment: dev | staging | prod (default: dev)"
-  echo "  -r, --region REGION       AWS region (default: \$AWS_REGION or eu-north-1)"
+  echo "  -r, --region REGION       AWS region (default: \$AWS_REGION_CUSTOM or eu-north-1)"
   echo "  -n, --new-table NAME      Name for the restored table"
   echo "  --no-wait                 Do not wait for table to become ACTIVE"
   echo "  -h, --help                Show this help message"
@@ -68,7 +68,7 @@ usage() {
 # Defaults
 # ---------------------------------------------------------------------------
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-AWS_REGION="${AWS_REGION:-eu-north-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-eu-north-1}"
 NEW_TABLE_NAME=""
 NO_WAIT=false
 
@@ -86,7 +86,7 @@ shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment) ENVIRONMENT="$2"; shift 2 ;;
-    -r|--region)      AWS_REGION="$2";  shift 2 ;;
+    -r|--region)      AWS_REGION_CUSTOM="$2";  shift 2 ;;
     -n|--new-table)   NEW_TABLE_NAME="$2"; shift 2 ;;
     --no-wait)        NO_WAIT=true; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -136,7 +136,7 @@ step "Describing backup"
 
 BACKUP_INFO=$(aws dynamodb describe-backup \
   --backup-arn "$BACKUP_ARN" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --output json)
 
 BACKUP_STATUS=$(echo "$BACKUP_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['BackupDescription']['BackupDetails']['BackupStatus'])")
@@ -183,7 +183,7 @@ step "Restoring table '${NEW_TABLE_NAME}' from backup"
 aws dynamodb restore-table-from-backup \
   --target-table-name "$NEW_TABLE_NAME" \
   --backup-arn "$BACKUP_ARN" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --output json > /dev/null
 
 success "Restore initiated for '${NEW_TABLE_NAME}'"
@@ -192,7 +192,7 @@ if [[ "$NO_WAIT" == "true" ]]; then
   warn "--no-wait specified; skipping status check"
   echo ""
   echo -e "  Restored table : ${CYAN}${NEW_TABLE_NAME}${RESET}"
-  echo -e "  Region         : ${AWS_REGION}"
+  echo -e "  Region         : ${AWS_REGION_CUSTOM}"
   echo -e "  Status         : CREATING (async)"
   echo ""
   exit 0
@@ -210,7 +210,7 @@ ELAPSED=0
 while true; do
   TABLE_STATUS=$(aws dynamodb describe-table \
     --table-name "$NEW_TABLE_NAME" \
-    --region "$AWS_REGION" \
+    --region "$AWS_REGION_CUSTOM" \
     --query "Table.TableStatus" \
     --output text 2>/dev/null || echo "CREATING")
 
@@ -237,7 +237,7 @@ step "Verifying data integrity (item count)"
 # Use describe-table ItemCount for a low-cost sanity check on item count
 ITEM_COUNT=$(aws dynamodb describe-table \
   --table-name "$NEW_TABLE_NAME" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --query "Table.ItemCount" \
   --output text)
 
@@ -256,7 +256,7 @@ step "Verifying Global Secondary Indexes"
 
 GSI_LIST=$(aws dynamodb describe-table \
   --table-name "$NEW_TABLE_NAME" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --query "Table.GlobalSecondaryIndexes[*].{Name:IndexName,Status:IndexStatus}" \
   --output json 2>/dev/null || echo "[]")
 
@@ -297,7 +297,7 @@ echo -e "${BOLD}${GREEN}Restore complete${RESET}"
 echo -e "  Restored table : ${BOLD}${NEW_TABLE_NAME}${RESET}"
 echo -e "  Source backup  : ${CYAN}${BACKUP_ARN}${RESET}"
 echo -e "  Item count     : ${ITEM_COUNT}"
-echo -e "  Region         : ${AWS_REGION}"
+echo -e "  Region         : ${AWS_REGION_CUSTOM}"
 echo ""
 echo -e "${YELLOW}${BOLD}NEXT STEPS — Traffic switchover (manual):${RESET}"
 echo -e "  1. Validate the restored table data with: ./scripts/validate-backup.sh"
@@ -307,7 +307,7 @@ echo -e "     #          Include all required variables, not only DYNAMODB_TABLE
 echo -e "     aws lambda update-function-configuration \\"
 echo -e "       --function-name <function-name> \\"
 echo -e "       --environment Variables={DYNAMODB_TABLE_NAME=${NEW_TABLE_NAME},OTHER_VAR=value,...} \\" 
-echo -e "       --region ${AWS_REGION}"
+echo -e "       --region ${AWS_REGION_CUSTOM}"
 echo -e "  3. Monitor CloudWatch metrics on the new table"
 echo -e "  4. Delete the old table once confident: aws dynamodb delete-table ..."
 echo ""

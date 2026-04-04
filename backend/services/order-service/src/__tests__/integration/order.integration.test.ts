@@ -74,7 +74,7 @@ const TEST_REGION = 'us-east-1';
 
 const ORIGINAL_ENV = {
   DYNAMODB_TABLE_NAME: process.env.DYNAMODB_TABLE_NAME,
-  AWS_REGION: process.env.AWS_REGION,
+  AWS_REGION_CUSTOM: process.env.AWS_REGION_CUSTOM,
   TAX_RATE: process.env.TAX_RATE,
 };
 
@@ -143,7 +143,7 @@ describe('Order Service Integration Tests', () => {
   beforeEach(() => {
     ddbMock.reset();
     process.env.DYNAMODB_TABLE_NAME = TABLE_NAME;
-    process.env.AWS_REGION = TEST_REGION;
+    process.env.AWS_REGION_CUSTOM = TEST_REGION;
   });
 
   afterEach(() => {
@@ -154,10 +154,10 @@ describe('Order Service Integration Tests', () => {
       process.env.DYNAMODB_TABLE_NAME = ORIGINAL_ENV.DYNAMODB_TABLE_NAME;
     }
 
-    if (ORIGINAL_ENV.AWS_REGION === undefined) {
-      delete process.env.AWS_REGION;
+    if (ORIGINAL_ENV.AWS_REGION_CUSTOM === undefined) {
+      delete process.env.AWS_REGION_CUSTOM;
     } else {
-      process.env.AWS_REGION = ORIGINAL_ENV.AWS_REGION;
+      process.env.AWS_REGION_CUSTOM = ORIGINAL_ENV.AWS_REGION_CUSTOM;
     }
 
     if (ORIGINAL_ENV.TAX_RATE === undefined) {

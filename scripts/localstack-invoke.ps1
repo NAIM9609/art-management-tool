@@ -18,7 +18,7 @@ if ([string]::IsNullOrWhiteSpace($Endpoint)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($Region)) {
-  $Region = if ($env:AWS_REGION) { $env:AWS_REGION } else { 'us-east-1' }
+  $Region = if ($env:AWS_REGION_CUSTOM) { $env:AWS_REGION_CUSTOM } else { 'us-east-1' }
 }
 
 function Test-Command([string]$Name) {

@@ -31,7 +31,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -e, --environment ENV   Target environment: dev | staging | prod (default: dev)"
-  echo "  -r, --region REGION     AWS region (default: \$AWS_REGION or eu-north-1)"
+  echo "  -r, --region REGION     AWS region (default: \$AWS_REGION_CUSTOM or eu-north-1)"
   echo "  -b, --bucket BUCKET     S3 bucket for Lambda artifacts (\$LAMBDA_BUCKET)"
   echo "  --skip-tests            Skip unit tests before deploying"
   echo "  --skip-smoke            Skip smoke test after deploying"
@@ -138,7 +138,7 @@ SERVICE_FUNCTIONS[product]="
 # ---------------------------------------------------------------------------
 SERVICE_NAME=""
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-AWS_REGION="${AWS_REGION:-eu-north-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-eu-north-1}"
 LAMBDA_BUCKET="${LAMBDA_BUCKET:-}"
 SKIP_TESTS=false
 SKIP_SMOKE=false
@@ -163,7 +163,7 @@ SERVICE_NAME="$1"; shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment) ENVIRONMENT="$2"; shift 2 ;;
-    -r|--region)      AWS_REGION="$2"; shift 2 ;;
+    -r|--region)      AWS_REGION_CUSTOM="$2"; shift 2 ;;
     -b|--bucket)      LAMBDA_BUCKET="$2"; shift 2 ;;
     --skip-tests)     SKIP_TESTS=true; shift ;;
     --skip-smoke)     SKIP_SMOKE=true; shift ;;
@@ -222,7 +222,7 @@ success "Credentials and bucket validated"
 FULL_SERVICE_NAME="${SERVICE_NAME}-service"
 info "Service      : ${BOLD}${FULL_SERVICE_NAME}${RESET}"
 info "Environment  : ${BOLD}${ENVIRONMENT}${RESET}"
-info "AWS Region   : ${BOLD}${AWS_REGION}${RESET}"
+info "AWS Region   : ${BOLD}${AWS_REGION_CUSTOM}${RESET}"
 info "Lambda bucket: ${BOLD}${LAMBDA_BUCKET}${RESET}"
 
 # ---------------------------------------------------------------------------
@@ -281,7 +281,7 @@ COMMIT_SHA="${GITHUB_SHA:-$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/nu
 S3_KEY="${FULL_SERVICE_NAME}/${ENVIRONMENT}/${COMMIT_SHA}.zip"
 
 aws s3 cp "$LAMBDA_ZIP" "s3://${LAMBDA_BUCKET}/${S3_KEY}" \
-  --region "$AWS_REGION"
+  --region "$AWS_REGION_CUSTOM"
 success "Uploaded to s3://${LAMBDA_BUCKET}/${S3_KEY}"
 
 # ---------------------------------------------------------------------------
@@ -300,11 +300,11 @@ for FN_SUFFIX in "${FUNCTIONS[@]}"; do
       --function-name "$FN" \
       --s3-bucket "$LAMBDA_BUCKET" \
       --s3-key "$S3_KEY" \
-      --region "$AWS_REGION" \
+      --region "$AWS_REGION_CUSTOM" \
       --no-cli-pager &>/dev/null; then
     aws lambda wait function-updated \
       --function-name "$FN" \
-      --region "$AWS_REGION"
+      --region "$AWS_REGION_CUSTOM"
     ANY_UPDATED=true
     success "  ${FN} updated"
   else
@@ -381,7 +381,7 @@ else
       warn "Rolling back ${FULL_SERVICE_NAME}..."
       PREV_S3_KEY="${FULL_SERVICE_NAME}/${ENVIRONMENT}/previous.zip"
       if aws s3 ls "s3://${LAMBDA_BUCKET}/${PREV_S3_KEY}" \
-           --region "$AWS_REGION" &>/dev/null; then
+           --region "$AWS_REGION_CUSTOM" &>/dev/null; then
         ROLLBACK_FAILED=false
         for FN_SUFFIX in "${FUNCTIONS[@]}"; do
           [[ -z "$FN_SUFFIX" ]] && continue
@@ -391,7 +391,7 @@ else
             --function-name "$FN" \
             --s3-bucket "$LAMBDA_BUCKET" \
             --s3-key "$PREV_S3_KEY" \
-            --region "$AWS_REGION" \
+            --region "$AWS_REGION_CUSTOM" \
             --no-cli-pager &>/dev/null; then
             error "Rollback FAILED while updating code for function ${FN}"
             ROLLBACK_FAILED=true
@@ -399,7 +399,7 @@ else
           fi
           if ! aws lambda wait function-updated \
             --function-name "$FN" \
-            --region "$AWS_REGION" \
+            --region "$AWS_REGION_CUSTOM" \
             --no-cli-pager &>/dev/null; then
             error "Rollback FAILED while waiting for function ${FN} to update"
             ROLLBACK_FAILED=true
@@ -426,7 +426,7 @@ step "Tagging current version as 'previous'"
 aws s3 cp \
   "s3://${LAMBDA_BUCKET}/${S3_KEY}" \
   "s3://${LAMBDA_BUCKET}/${FULL_SERVICE_NAME}/${ENVIRONMENT}/previous.zip" \
-  --region "$AWS_REGION" || warn "Could not tag previous version"
+  --region "$AWS_REGION_CUSTOM" || warn "Could not tag previous version"
 
 # ---------------------------------------------------------------------------
 # Cleanup

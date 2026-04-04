@@ -72,7 +72,7 @@ function getRepository(): DiscountCodeRepository {
   if (!discountRepo) {
     const db = new DynamoDBOptimized({
       tableName: process.env.DISCOUNTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
-      region: process.env.AWS_REGION || 'us-east-1',
+      region: process.env.AWS_REGION_CUSTOM || 'us-east-1',
     });
     discountRepo = new DiscountCodeRepository(db);
   }

@@ -67,7 +67,7 @@ export async function withTimeout<T>(
  */
 export async function checkDynamoDB(
   tableName: string,
-  region: string = process.env.AWS_REGION ?? 'us-east-1',
+  region: string = process.env.AWS_REGION_CUSTOM ?? 'us-east-1',
   timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<CheckResult> {
   const start = Date.now();
@@ -92,7 +92,7 @@ export async function checkDynamoDB(
  */
 export async function checkS3(
   bucketName: string,
-  region: string = process.env.AWS_REGION ?? 'us-east-1',
+  region: string = process.env.AWS_REGION_CUSTOM ?? 'us-east-1',
   timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<CheckResult> {
   const start = Date.now();

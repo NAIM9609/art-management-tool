@@ -142,7 +142,7 @@ SERVICE_TABLES[product]="products"
 SERVICE_NAME=""
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 AWS_ENDPOINT_URL="${AWS_ENDPOINT_URL:-http://localhost:4566}"
-AWS_REGION="${AWS_REGION:-us-east-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-us-east-1}"
 PROJECT_NAME="${PROJECT_NAME:-art-management-tool}"
 S3_BUCKET_NAME="${S3_BUCKET_NAME:-art-images-dev}"
 SKIP_BUILD=false
@@ -165,7 +165,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment) ENVIRONMENT="$2"; shift 2 ;;
     --endpoint) AWS_ENDPOINT_URL="$2"; shift 2 ;;
-    --region) AWS_REGION="$2"; shift 2 ;;
+    --region) AWS_REGION_CUSTOM="$2"; shift 2 ;;
     --project-name) PROJECT_NAME="$2"; shift 2 ;;
     --bucket) S3_BUCKET_NAME="$2"; shift 2 ;;
     --skip-build) SKIP_BUILD=true; shift ;;
@@ -202,8 +202,8 @@ if command -v awslocal >/dev/null 2>&1; then
 elif command -v aws >/dev/null 2>&1; then
   export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-test}"
   export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-test}"
-  export AWS_DEFAULT_REGION="$AWS_REGION"
-  AWS_CMD=(aws --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_REGION")
+  export AWS_DEFAULT_REGION="$AWS_REGION_CUSTOM"
+  AWS_CMD=(aws --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_REGION_CUSTOM")
 else
   error "Neither 'awslocal' nor 'aws' command is available"
   exit 1
@@ -233,7 +233,7 @@ success "Package created: $LAMBDA_ZIP"
 LAMBDA_ROLE_ARN="arn:aws:iam::000000000000:role/${PROJECT_NAME}-${ENVIRONMENT}-local-lambda-role"
 RUNTIME="${RUNTIMES[$SERVICE_NAME]}"
 TABLE_NAME="${SERVICE_TABLES[$SERVICE_NAME]}"
-COMMON_ENV_VARS="DYNAMODB_TABLE_NAME=${TABLE_NAME},AWS_REGION=${AWS_REGION},AWS_REGION_NAME=${AWS_REGION},AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL},ENVIRONMENT=${ENVIRONMENT},S3_BUCKET_NAME=${S3_BUCKET_NAME},CDN_URL=${AWS_ENDPOINT_URL}/${S3_BUCKET_NAME},JWT_SECRET=local-dev-secret,CORS_ALLOWED_ORIGINS=http://localhost:3000,PAYMENT_PROVIDER=mock,RATE_LIMIT_ENABLED=false,SCHEDULER_ENABLED=false,CONTENT_TABLE_NAME=content,PRODUCTS_TABLE_NAME=products,ORDERS_TABLE_NAME=orders,CARTS_TABLE_NAME=carts,DISCOUNTS_TABLE_NAME=discount-codes,AUDIT_TABLE_NAME=audit-logs,NOTIFICATIONS_TABLE_NAME=notifications,ETSY_TOKENS_TABLE_NAME=etsy-oauth-tokens"
+COMMON_ENV_VARS="DYNAMODB_TABLE_NAME=${TABLE_NAME},AWS_REGION_CUSTOM=${AWS_REGION_CUSTOM},AWS_REGION_NAME=${AWS_REGION_CUSTOM},AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL},ENVIRONMENT=${ENVIRONMENT},S3_BUCKET_NAME=${S3_BUCKET_NAME},CDN_URL=${AWS_ENDPOINT_URL}/${S3_BUCKET_NAME},JWT_SECRET=local-dev-secret,CORS_ALLOWED_ORIGINS=http://localhost:3000,PAYMENT_PROVIDER=mock,RATE_LIMIT_ENABLED=false,SCHEDULER_ENABLED=false,CONTENT_TABLE_NAME=content,PRODUCTS_TABLE_NAME=products,ORDERS_TABLE_NAME=orders,CARTS_TABLE_NAME=carts,DISCOUNTS_TABLE_NAME=discount-codes,AUDIT_TABLE_NAME=audit-logs,NOTIFICATIONS_TABLE_NAME=notifications,ETSY_TOKENS_TABLE_NAME=etsy-oauth-tokens"
 
 step "Deploying Lambda functions to LocalStack"
 FAILED=0

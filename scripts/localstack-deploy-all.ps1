@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 
 if (-not $PSBoundParameters.ContainsKey('Environment') -and $env:ENVIRONMENT) { $Environment = $env:ENVIRONMENT }
 if (-not $PSBoundParameters.ContainsKey('Endpoint') -and $env:AWS_ENDPOINT_URL) { $Endpoint = $env:AWS_ENDPOINT_URL }
-if (-not $PSBoundParameters.ContainsKey('Region') -and $env:AWS_REGION) { $Region = $env:AWS_REGION }
+if (-not $PSBoundParameters.ContainsKey('Region') -and $env:AWS_REGION_CUSTOM) { $Region = $env:AWS_REGION_CUSTOM }
 if (-not $PSBoundParameters.ContainsKey('ProjectName') -and $env:PROJECT_NAME) { $ProjectName = $env:PROJECT_NAME }
 if (-not $PSBoundParameters.ContainsKey('Bucket') -and $env:S3_BUCKET_NAME) { $Bucket = $env:S3_BUCKET_NAME }
 

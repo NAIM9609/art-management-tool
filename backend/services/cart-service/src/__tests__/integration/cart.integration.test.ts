@@ -8,7 +8,7 @@
 
 // Set environment variables before any imports
 process.env.DYNAMODB_TABLE_NAME = 'test-cart-integration';
-process.env.AWS_REGION = 'us-east-1';
+process.env.AWS_REGION_CUSTOM = 'us-east-1';
 process.env.JWT_SECRET = 'test-secret';
 
 import { mockClient } from 'aws-sdk-client-mock';

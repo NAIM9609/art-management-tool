@@ -27,7 +27,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -e, --environment ENV   Target environment: dev | staging | prod (default: dev)"
-  echo "  -r, --region REGION     AWS region (default: \$AWS_REGION or eu-north-1)"
+  echo "  -r, --region REGION     AWS region (default: \$AWS_REGION_CUSTOM or eu-north-1)"
   echo "  -p, --plan-only         Run plan only, do not apply"
   echo "  -o, --output-file FILE  Save terraform outputs to FILE (default: terraform-outputs.env)"
   echo "  -h, --help              Show this help message"
@@ -46,7 +46,7 @@ usage() {
 # Defaults
 # ---------------------------------------------------------------------------
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-AWS_REGION="${AWS_REGION:-eu-north-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-eu-north-1}"
 PLAN_ONLY=false
 OUTPUT_FILE="terraform-outputs.env"
 
@@ -56,7 +56,7 @@ OUTPUT_FILE="terraform-outputs.env"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment) ENVIRONMENT="$2"; shift 2 ;;
-    -r|--region)      AWS_REGION="$2"; shift 2 ;;
+    -r|--region)      AWS_REGION_CUSTOM="$2"; shift 2 ;;
     -p|--plan-only)   PLAN_ONLY=true; shift ;;
     -o|--output-file) OUTPUT_FILE="$2"; shift 2 ;;
     -h|--help)        usage; exit 0 ;;
@@ -107,7 +107,7 @@ if [[ ! -d "$TF_DIR" ]]; then
 fi
 
 info "Environment  : ${BOLD}$ENVIRONMENT${RESET}"
-info "AWS Region   : ${BOLD}$AWS_REGION${RESET}"
+info "AWS Region   : ${BOLD}$AWS_REGION_CUSTOM${RESET}"
 info "Terraform dir: $TF_DIR"
 
 # ---------------------------------------------------------------------------
@@ -141,7 +141,7 @@ JWT_SECRET="${JWT_SECRET:-}"
 
 PLAN_ARGS=(
   -var="environment=${ENVIRONMENT}"
-  -var="aws_region=${AWS_REGION}"
+  -var="aws_region=${AWS_REGION_CUSTOM}"
 )
 [[ -n "$JWT_SECRET" ]] && PLAN_ARGS+=(-var="jwt_secret=${JWT_SECRET}")
 

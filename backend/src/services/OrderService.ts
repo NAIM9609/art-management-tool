@@ -78,7 +78,7 @@ export class OrderService {
   private dynamoDB: DynamoDBOptimized;
 
   constructor(paymentProvider: PaymentProvider, notificationService: NotificationService, auditService?: AuditService) {
-    const region = process.env.AWS_REGION || 'us-east-1';
+    const region = process.env.AWS_REGION_CUSTOM || 'us-east-1';
 
     const ordersDb = new DynamoDBOptimized({
       tableName: process.env.ORDERS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,

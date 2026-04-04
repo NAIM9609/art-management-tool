@@ -6,14 +6,14 @@
 #
 # Options:
 #   -e, --environment ENV   Target environment: dev | staging | prod (default: dev)
-#   -r, --region REGION     AWS region (default: $AWS_REGION or eu-north-1)
+#   -r, --region REGION     AWS region (default: $AWS_REGION_CUSTOM or eu-north-1)
 #   -t, --table TABLE       DynamoDB table name (default: derived from project/env)
 #   -o, --output FILE       Write backup ARN to this file (optional)
 #   -h, --help              Show this help message
 #
 # Environment variables:
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-#   ENVIRONMENT, AWS_REGION, DYNAMODB_TABLE_NAME
+#   ENVIRONMENT, AWS_REGION_CUSTOM, DYNAMODB_TABLE_NAME
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -41,14 +41,14 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -e, --environment ENV   Target environment: dev | staging | prod (default: dev)"
-  echo "  -r, --region REGION     AWS region (default: \$AWS_REGION or eu-north-1)"
+  echo "  -r, --region REGION     AWS region (default: \$AWS_REGION_CUSTOM or eu-north-1)"
   echo "  -t, --table TABLE       DynamoDB table name (overrides default)"
   echo "  -o, --output FILE       Write backup ARN to this file (optional)"
   echo "  -h, --help              Show this help message"
   echo ""
   echo "Environment variables:"
   echo "  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY"
-  echo "  ENVIRONMENT, AWS_REGION, DYNAMODB_TABLE_NAME"
+  echo "  ENVIRONMENT, AWS_REGION_CUSTOM, DYNAMODB_TABLE_NAME"
   echo ""
   echo "Examples:"
   echo "  $(basename "$0")"
@@ -60,7 +60,7 @@ usage() {
 # Defaults
 # ---------------------------------------------------------------------------
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-AWS_REGION="${AWS_REGION:-eu-north-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-eu-north-1}"
 TABLE_NAME="${DYNAMODB_TABLE_NAME:-}"
 OUTPUT_FILE=""
 MAX_WAIT="${BACKUP_MAX_WAIT_SECONDS:-1800}"
@@ -71,7 +71,7 @@ MAX_WAIT="${BACKUP_MAX_WAIT_SECONDS:-1800}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment) ENVIRONMENT="$2"; shift 2 ;;
-    -r|--region)      AWS_REGION="$2";  shift 2 ;;
+    -r|--region)      AWS_REGION_CUSTOM="$2";  shift 2 ;;
     -t|--table)       TABLE_NAME="$2";  shift 2 ;;
     -o|--output)      OUTPUT_FILE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -119,12 +119,12 @@ step "Verifying table '${TABLE_NAME}' exists"
 
 TABLE_STATUS=$(aws dynamodb describe-table \
   --table-name "$TABLE_NAME" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --query "Table.TableStatus" \
   --output text 2>/dev/null || echo "NOT_FOUND")
 
 if [[ "$TABLE_STATUS" == "NOT_FOUND" ]]; then
-  error "Table '${TABLE_NAME}' not found in region '${AWS_REGION}'"
+  error "Table '${TABLE_NAME}' not found in region '${AWS_REGION_CUSTOM}'"
   exit 1
 fi
 
@@ -159,7 +159,7 @@ step "Creating on-demand backup '${BACKUP_NAME}'"
 BACKUP_ARN=$(aws dynamodb create-backup \
   --table-name "$TABLE_NAME" \
   --backup-name "$BACKUP_NAME" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --query "BackupDetails.BackupArn" \
   --output text)
 
@@ -182,7 +182,7 @@ aws dynamodb tag-resource \
     Key=Environment,Value="$ENVIRONMENT" \
     Key=Table,Value="$TABLE_NAME" \
     Key=ManagedBy,Value=backup-dynamodb.sh \
-  --region "$AWS_REGION"
+  --region "$AWS_REGION_CUSTOM"
 
 success "Tags applied"
 
@@ -197,7 +197,7 @@ ELAPSED=0
 while true; do
   BACKUP_STATUS=$(aws dynamodb describe-backup \
     --backup-arn "$BACKUP_ARN" \
-    --region "$AWS_REGION" \
+    --region "$AWS_REGION_CUSTOM" \
     --query "BackupDescription.BackupDetails.BackupStatus" \
     --output text)
 
@@ -224,7 +224,7 @@ done
 # ---------------------------------------------------------------------------
 BACKUP_SIZE=$(aws dynamodb describe-backup \
   --backup-arn "$BACKUP_ARN" \
-  --region "$AWS_REGION" \
+  --region "$AWS_REGION_CUSTOM" \
   --query "BackupDescription.BackupDetails.BackupSizeBytes" \
   --output text 2>/dev/null || echo "unknown")
 
@@ -234,7 +234,7 @@ echo -e "  Name        : ${BOLD}${BACKUP_NAME}${RESET}"
 echo -e "  ARN         : ${CYAN}${BACKUP_ARN}${RESET}"
 echo -e "  Table       : ${TABLE_NAME}"
 echo -e "  Environment : ${ENVIRONMENT}"
-echo -e "  Region      : ${AWS_REGION}"
+echo -e "  Region      : ${AWS_REGION_CUSTOM}"
 echo -e "  Size        : ${BACKUP_SIZE} bytes"
 echo ""
 

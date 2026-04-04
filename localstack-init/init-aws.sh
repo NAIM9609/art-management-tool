@@ -6,7 +6,7 @@
 set -uo pipefail
 
 AWS_ENDPOINT_URL="${AWS_ENDPOINT_URL:-http://localhost:4566}"
-AWS_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+AWS_REGION_CUSTOM="${AWS_DEFAULT_REGION:-us-east-1}"
 
 # Resolve the LocalStack AWS command once, then reuse it everywhere.
 if command -v awslocal >/dev/null 2>&1; then
@@ -14,8 +14,8 @@ if command -v awslocal >/dev/null 2>&1; then
 elif command -v aws >/dev/null 2>&1; then
   export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-test}"
   export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-test}"
-  export AWS_DEFAULT_REGION="$AWS_REGION"
-  AWS_LOCAL_CMD=(aws --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_REGION")
+  export AWS_DEFAULT_REGION="$AWS_REGION_CUSTOM"
+  AWS_LOCAL_CMD=(aws --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_REGION_CUSTOM")
 else
   echo "Error: neither 'awslocal' nor 'aws' is available in PATH." >&2
   echo "Tip: use 'lstk start' to run LocalStack, then install AWS CLI v2." >&2

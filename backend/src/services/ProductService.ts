@@ -48,7 +48,7 @@ export class ProductService {
     // Initialize DynamoDB client
     const dynamoDB = new DynamoDBOptimized({
       tableName: process.env.PRODUCTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME || 'products',
-      region: process.env.AWS_REGION || 'us-east-1',
+      region: process.env.AWS_REGION_CUSTOM || 'us-east-1',
       maxRetries: 3,
       retryDelay: 100,
     });

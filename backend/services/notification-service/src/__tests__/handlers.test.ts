@@ -4,7 +4,7 @@
 
 // Set environment variables before any imports
 process.env.DYNAMODB_TABLE_NAME = 'test-notifications';
-process.env.AWS_REGION = 'us-east-1';
+process.env.AWS_REGION_CUSTOM = 'us-east-1';
 process.env.JWT_SECRET = 'test-secret';
 
 import jwt from 'jsonwebtoken';

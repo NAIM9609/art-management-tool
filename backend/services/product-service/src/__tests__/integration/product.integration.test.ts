@@ -23,7 +23,7 @@
 
 // ── Environment configuration (must be set before any imports) ────────────────
 process.env.DYNAMODB_TABLE_NAME = 'art-products-test';
-process.env.AWS_REGION = 'us-east-1';
+process.env.AWS_REGION_CUSTOM = 'us-east-1';
 process.env.JWT_SECRET = 'integration-test-secret';
 
 import { mockClient } from 'aws-sdk-client-mock';

@@ -35,7 +35,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -e, --environment ENV   Target environment: dev | staging | prod (default: dev)"
-  echo "  -r, --region REGION     AWS region (default: \$AWS_REGION or eu-north-1)"
+  echo "  -r, --region REGION     AWS region (default: \$AWS_REGION_CUSTOM or eu-north-1)"
   echo "  -b, --bucket BUCKET     S3 bucket for Lambda artifacts (\$LAMBDA_BUCKET)"
   echo "  -y, --yes               Skip confirmation prompt"
   echo "  -h, --help              Show this help message"
@@ -141,7 +141,7 @@ SERVICE_FUNCTIONS[product]="
 SERVICE_NAME=""
 VERSION=""
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-AWS_REGION="${AWS_REGION:-eu-north-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-eu-north-1}"
 LAMBDA_BUCKET="${LAMBDA_BUCKET:-}"
 AUTO_CONFIRM=false
 PROJECT_NAME="art-management-tool"
@@ -170,7 +170,7 @@ VERSION="$1"; shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment) ENVIRONMENT="$2"; shift 2 ;;
-    -r|--region)      AWS_REGION="$2"; shift 2 ;;
+    -r|--region)      AWS_REGION_CUSTOM="$2"; shift 2 ;;
     -b|--bucket)      LAMBDA_BUCKET="$2"; shift 2 ;;
     -y|--yes)         AUTO_CONFIRM=true; shift ;;
     -h|--help)        usage; exit 0 ;;
@@ -237,7 +237,7 @@ info "Env       : ${BOLD}${ENVIRONMENT}${RESET}"
 
 # Check the artifact exists in S3
 if ! aws s3 ls "s3://${LAMBDA_BUCKET}/${S3_KEY}" \
-     --region "$AWS_REGION" &>/dev/null; then
+     --region "$AWS_REGION_CUSTOM" &>/dev/null; then
   error "Artifact not found in S3: s3://${LAMBDA_BUCKET}/${S3_KEY}"
   exit 1
 fi
@@ -270,11 +270,11 @@ BACKUP_KEY="${FULL_SERVICE_NAME}/${ENVIRONMENT}/pre-rollback-${TIMESTAMP}.zip"
 # Try to find the current 'previous.zip' to know what we're replacing
 CURRENT_S3_KEY="${FULL_SERVICE_NAME}/${ENVIRONMENT}/previous.zip"
 if aws s3 ls "s3://${LAMBDA_BUCKET}/${CURRENT_S3_KEY}" \
-     --region "$AWS_REGION" &>/dev/null; then
+     --region "$AWS_REGION_CUSTOM" &>/dev/null; then
   aws s3 cp \
     "s3://${LAMBDA_BUCKET}/${CURRENT_S3_KEY}" \
     "s3://${LAMBDA_BUCKET}/${BACKUP_KEY}" \
-    --region "$AWS_REGION" || warn "Could not save backup"
+    --region "$AWS_REGION_CUSTOM" || warn "Could not save backup"
   info "Current version backed up to s3://${LAMBDA_BUCKET}/${BACKUP_KEY}"
 fi
 
@@ -293,11 +293,11 @@ for FN_SUFFIX in "${FUNCTIONS[@]}"; do
       --function-name "$FN" \
       --s3-bucket "$LAMBDA_BUCKET" \
       --s3-key "$S3_KEY" \
-      --region "$AWS_REGION" \
+      --region "$AWS_REGION_CUSTOM" \
       --no-cli-pager &>/dev/null; then
     aws lambda wait function-updated \
       --function-name "$FN" \
-      --region "$AWS_REGION"
+      --region "$AWS_REGION_CUSTOM"
     success "  ${FN} rolled back"
   else
     error "  Failed to roll back ${FN}"
@@ -323,7 +323,7 @@ for FN_SUFFIX in "${FUNCTIONS[@]}"; do
   # Check function state
   STATE=$(aws lambda get-function-configuration \
     --function-name "$FN" \
-    --region "$AWS_REGION" \
+    --region "$AWS_REGION_CUSTOM" \
     --query "State" \
     --output text 2>/dev/null || echo "Unknown")
 

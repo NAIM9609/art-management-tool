@@ -23,7 +23,7 @@ export class CartService {
       this.productRepo = new ProductRepository(dynamoDB);
       this.variantRepo = new ProductVariantRepository(dynamoDB);
     } else {
-      const region = process.env.AWS_REGION || 'us-east-1';
+      const region = process.env.AWS_REGION_CUSTOM || 'us-east-1';
       const cartsDb = new DynamoDBOptimized({
         tableName: process.env.CARTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME,
         region,

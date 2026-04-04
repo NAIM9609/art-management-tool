@@ -29,14 +29,14 @@ shift
 PAYLOAD='{}'
 PAYLOAD_FILE=''
 AWS_ENDPOINT_URL="${AWS_ENDPOINT_URL:-http://localhost:4566}"
-AWS_REGION="${AWS_REGION:-us-east-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-us-east-1}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -p|--payload) PAYLOAD="$2"; shift 2 ;;
     -f|--payload-file) PAYLOAD_FILE="$2"; shift 2 ;;
     --endpoint) AWS_ENDPOINT_URL="$2"; shift 2 ;;
-    --region) AWS_REGION="$2"; shift 2 ;;
+    --region) AWS_REGION_CUSTOM="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1"; usage; exit 1 ;;
   esac
@@ -47,8 +47,8 @@ if command -v awslocal >/dev/null 2>&1; then
 elif command -v aws >/dev/null 2>&1; then
   export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-test}"
   export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-test}"
-  export AWS_DEFAULT_REGION="$AWS_REGION"
-  AWS_CMD=(aws --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_REGION")
+  export AWS_DEFAULT_REGION="$AWS_REGION_CUSTOM"
+  AWS_CMD=(aws --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_REGION_CUSTOM")
 else
   echo "Neither 'awslocal' nor 'aws' command is available" >&2
   exit 1

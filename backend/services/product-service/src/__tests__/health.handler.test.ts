@@ -5,7 +5,7 @@
 // Set environment variables before any imports
 process.env.DYNAMODB_TABLE_NAME = 'test-table';
 process.env.S3_BUCKET_NAME = 'test-bucket';
-process.env.AWS_REGION = 'us-east-1';
+process.env.AWS_REGION_CUSTOM = 'us-east-1';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Mocks
@@ -164,9 +164,9 @@ describe('Health handler – getHealth', () => {
     process.env.S3_BUCKET_NAME = original;
   });
 
-  it('falls back to us-east-1 region when AWS_REGION is not set', async () => {
-    const original = process.env.AWS_REGION;
-    delete process.env.AWS_REGION;
+  it('falls back to us-east-1 region when AWS_REGION_CUSTOM is not set', async () => {
+    const original = process.env.AWS_REGION_CUSTOM;
+    delete process.env.AWS_REGION_CUSTOM;
 
     mockCheckDynamoDB.mockResolvedValue({ status: 'healthy' });
     mockCheckS3.mockResolvedValue({ status: 'healthy' });
@@ -177,6 +177,6 @@ describe('Health handler – getHealth', () => {
     expect(mockCheckDynamoDB).toHaveBeenCalledWith('test-table', 'us-east-1');
     expect(mockCheckS3).toHaveBeenCalledWith('test-bucket', 'us-east-1');
 
-    process.env.AWS_REGION = original;
+    process.env.AWS_REGION_CUSTOM = original;
   });
 });

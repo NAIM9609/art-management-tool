@@ -31,7 +31,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -e, --environment ENV      Target environment: dev | staging | prod (default: dev)"
-  echo "  -r, --region REGION        AWS region (default: \$AWS_REGION or eu-north-1)"
+  echo "  -r, --region REGION        AWS region (default: \$AWS_REGION_CUSTOM or eu-north-1)"
   echo "  -f, --follow               Follow/tail mode (stream new log events)"
   echo "  -l, --level LEVEL          Filter by log level: ERROR | WARN | INFO | DEBUG"
   echo "  -n, --function FUNCTION    Tail a specific function (e.g. list-products)"
@@ -70,7 +70,7 @@ ALL_SERVICES=(audit cart content discount integration notification order product
 # ---------------------------------------------------------------------------
 SERVICE_NAME=""
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-AWS_REGION="${AWS_REGION:-eu-north-1}"
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-eu-north-1}"
 FOLLOW=false
 LOG_LEVEL=""
 SPECIFIC_FUNCTION=""
@@ -97,7 +97,7 @@ SERVICE_NAME="$1"; shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment) ENVIRONMENT="$2"; shift 2 ;;
-    -r|--region)      AWS_REGION="$2"; shift 2 ;;
+    -r|--region)      AWS_REGION_CUSTOM="$2"; shift 2 ;;
     -f|--follow)      FOLLOW=true; shift ;;
     -l|--level)       LOG_LEVEL="${2^^}"; shift 2 ;;
     -n|--function)    SPECIFIC_FUNCTION="$2"; shift 2 ;;
@@ -192,7 +192,7 @@ fi
 
 info "Environment : ${BOLD}${ENVIRONMENT}${RESET}"
 info "Service     : ${BOLD}${SERVICE_NAME}${RESET}"
-info "Region      : ${BOLD}${AWS_REGION}${RESET}"
+info "Region      : ${BOLD}${AWS_REGION_CUSTOM}${RESET}"
 info "Since       : ${BOLD}${SINCE}${RESET}"
 [[ -n "$LOG_LEVEL"  ]] && info "Level filter: ${BOLD}${LOG_LEVEL}${RESET}"
 [[ -n "$PATTERN"    ]] && info "Pattern     : ${BOLD}${PATTERN}${RESET}"
@@ -237,7 +237,7 @@ fetch_log_group() {
   # Verify log group exists
   if ! aws logs describe-log-groups \
        --log-group-name-prefix "$lg" \
-       --region "$AWS_REGION" \
+       --region "$AWS_REGION_CUSTOM" \
        --query "logGroups[?logGroupName=='${lg}'].logGroupName" \
        --output text 2>/dev/null | grep -q .; then
     warn "Log group not found (may not have received traffic): ${lg}"
@@ -249,7 +249,7 @@ fetch_log_group() {
   local filter_args=(
     --log-group-name "$lg"
     --start-time "$START_MS"
-    --region "$AWS_REGION"
+    --region "$AWS_REGION_CUSTOM"
     --output json
   )
 
@@ -324,7 +324,7 @@ if [[ "$FOLLOW" == "true" ]]; then
       # Verify group exists silently
       if ! aws logs describe-log-groups \
            --log-group-name-prefix "$LG" \
-           --region "$AWS_REGION" \
+           --region "$AWS_REGION_CUSTOM" \
            --query "logGroups[?logGroupName=='${LG}'].logGroupName" \
            --output text 2>/dev/null | grep -q .; then
         continue
@@ -337,7 +337,7 @@ if [[ "$FOLLOW" == "true" ]]; then
         --log-group-name "$LG"
         --start-time "$local_start"
         --end-time "$local_end"
-        --region "$AWS_REGION"
+        --region "$AWS_REGION_CUSTOM"
         --output text
         --query "events[*].[timestamp,message]"
       )

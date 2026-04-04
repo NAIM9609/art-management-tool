@@ -20,7 +20,7 @@
     "lambda:local:deploy:all": "pwsh -NoProfile -ExecutionPolicy Bypass -File ../scripts/localstack-deploy-all.ps1",
     "lambda:local:invoke": "pwsh -NoProfile -ExecutionPolicy Bypass -File ../scripts/localstack-invoke.ps1",
     "migrate:test": "DYNAMODB_TABLE_NAME=art-management-local AWS_ENDPOINT_URL=http://localhost:4566 ts-node scripts/migrate-to-dynamodb.ts",
-    "migrate:production": "node -e \"if(!process.env.DYNAMODB_TABLE_NAME||!process.env.AWS_REGION){console.error('Error: DYNAMODB_TABLE_NAME and AWS_REGION must be set before running migrate:production');process.exit(1)}\" && ts-node scripts/migrate-to-dynamodb.ts",
+    "migrate:production": "node -e \"if(!process.env.DYNAMODB_TABLE_NAME||!process.env.AWS_REGION_CUSTOM){console.error('Error: DYNAMODB_TABLE_NAME and AWS_REGION_CUSTOM must be set before running migrate:production');process.exit(1)}\" && ts-node scripts/migrate-to-dynamodb.ts",
     "validate:migration": "ts-node scripts/validate-migration.ts",
     "rollback:migration": "ts-node scripts/rollback-migration.ts"
   },

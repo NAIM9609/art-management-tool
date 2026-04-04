@@ -29,7 +29,7 @@ export function createAdminRoutes(
   const router = Router();
   const categoryDynamoDB = new DynamoDBOptimized({
     tableName: process.env.CONTENT_TABLE_NAME || 'content',
-    region: process.env.AWS_REGION || 'us-east-1',
+    region: process.env.AWS_REGION_CUSTOM || 'us-east-1',
     maxRetries: 3,
     retryDelay: 100,
   });

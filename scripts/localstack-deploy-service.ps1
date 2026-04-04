@@ -17,7 +17,7 @@ $ErrorActionPreference = 'Stop'
 
 if (-not $PSBoundParameters.ContainsKey('Environment') -and $env:ENVIRONMENT) { $Environment = $env:ENVIRONMENT }
 if (-not $PSBoundParameters.ContainsKey('Endpoint') -and $env:AWS_ENDPOINT_URL) { $Endpoint = $env:AWS_ENDPOINT_URL }
-if (-not $PSBoundParameters.ContainsKey('Region') -and $env:AWS_REGION) { $Region = $env:AWS_REGION }
+if (-not $PSBoundParameters.ContainsKey('Region') -and $env:AWS_REGION_CUSTOM) { $Region = $env:AWS_REGION_CUSTOM }
 if (-not $PSBoundParameters.ContainsKey('ProjectName') -and $env:PROJECT_NAME) { $ProjectName = $env:PROJECT_NAME }
 if (-not $PSBoundParameters.ContainsKey('Bucket') -and $env:S3_BUCKET_NAME) { $Bucket = $env:S3_BUCKET_NAME }
 
@@ -286,7 +286,7 @@ Write-Ok "Package created: $zipPath"
 $roleArn = "arn:aws:iam::000000000000:role/$ProjectName-$Environment-local-lambda-role"
 $runtime = $runtimes[$ServiceName]
 $tableName = $tables[$ServiceName]
-$envVars = "Variables={DYNAMODB_TABLE_NAME=$tableName,AWS_REGION=$Region,AWS_REGION_NAME=$Region,AWS_ENDPOINT_URL=$Endpoint,ENVIRONMENT=$Environment,S3_BUCKET_NAME=$Bucket,CDN_URL=$Endpoint/$Bucket,JWT_SECRET=local-dev-secret,CORS_ALLOWED_ORIGINS=http://localhost:3000,PAYMENT_PROVIDER=mock,RATE_LIMIT_ENABLED=false,SCHEDULER_ENABLED=false,CONTENT_TABLE_NAME=content,PRODUCTS_TABLE_NAME=products,ORDERS_TABLE_NAME=orders,CARTS_TABLE_NAME=carts,DISCOUNTS_TABLE_NAME=discount-codes,AUDIT_TABLE_NAME=audit-logs,NOTIFICATIONS_TABLE_NAME=notifications,ETSY_TOKENS_TABLE_NAME=etsy-oauth-tokens}"
+$envVars = "Variables={DYNAMODB_TABLE_NAME=$tableName,AWS_REGION_CUSTOM=$Region,AWS_REGION_NAME=$Region,AWS_ENDPOINT_URL=$Endpoint,ENVIRONMENT=$Environment,S3_BUCKET_NAME=$Bucket,CDN_URL=$Endpoint/$Bucket,JWT_SECRET=local-dev-secret,CORS_ALLOWED_ORIGINS=http://localhost:3000,PAYMENT_PROVIDER=mock,RATE_LIMIT_ENABLED=false,SCHEDULER_ENABLED=false,CONTENT_TABLE_NAME=content,PRODUCTS_TABLE_NAME=products,ORDERS_TABLE_NAME=orders,CARTS_TABLE_NAME=carts,DISCOUNTS_TABLE_NAME=discount-codes,AUDIT_TABLE_NAME=audit-logs,NOTIFICATIONS_TABLE_NAME=notifications,ETSY_TOKENS_TABLE_NAME=etsy-oauth-tokens}"
 
 Write-Step 'Deploying Lambda functions to LocalStack'
 

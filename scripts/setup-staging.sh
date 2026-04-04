@@ -11,7 +11,7 @@
 #
 # Options:
 #   -e, --environment ENV       Staging environment name (default: staging)
-#   -r, --region REGION         AWS region (default: value of $AWS_REGION, or us-east-1 if unset)
+#   -r, --region REGION         AWS region (default: value of $AWS_REGION_CUSTOM, or us-east-1 if unset)
 #   -t, --table-name TABLE      DynamoDB table name (default: art-management-tool-staging-art-management)
 #   -b, --pg-backup FILE        Path to a pg_dump custom-format (-Fc) backup file to restore (default: backups/prod-backup.dump)
 #   --staging-db-host HOST      PostgreSQL host for staging (required unless --skip-pg)
@@ -48,8 +48,8 @@ step()    { echo -e "\n${BOLD}${CYAN}==> $*${RESET}"; }
 # ---------------------------------------------------------------------------
 ENVIRONMENT="${ENVIRONMENT:-staging}"
 # Default region matches the DynamoDB dry-run workflow (us-east-1).
-# Override via --region or the AWS_REGION environment variable to match your deployment region.
-AWS_REGION="${AWS_REGION:-us-east-1}"
+# Override via --region or the AWS_REGION_CUSTOM environment variable to match your deployment region.
+AWS_REGION_CUSTOM="${AWS_REGION_CUSTOM:-us-east-1}"
 DYNAMODB_TABLE_NAME="${DYNAMODB_TABLE_NAME:-art-management-tool-staging-art-management}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -71,7 +71,7 @@ DEPLOY_LAMBDAS=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e|--environment)      ENVIRONMENT="$2";          shift 2 ;;
-    -r|--region)           AWS_REGION="$2";            shift 2 ;;
+    -r|--region)           AWS_REGION_CUSTOM="$2";            shift 2 ;;
     -t|--table-name)       DYNAMODB_TABLE_NAME="$2";   shift 2 ;;
     -b|--pg-backup)        PG_BACKUP_FILE="$2";        shift 2 ;;
     --staging-db-host)     STAGING_DB_HOST="$2";       shift 2 ;;
@@ -120,7 +120,7 @@ fi
 success "AWS credentials present"
 
 info "Environment  : ${BOLD}$ENVIRONMENT${RESET}"
-info "AWS Region   : ${BOLD}$AWS_REGION${RESET}"
+info "AWS Region   : ${BOLD}$AWS_REGION_CUSTOM${RESET}"
 info "DynamoDB     : ${BOLD}$DYNAMODB_TABLE_NAME${RESET}"
 
 # ---------------------------------------------------------------------------
@@ -200,7 +200,7 @@ if [[ "$SKIP_DYNAMO" == "false" ]]; then
   # Check if table already exists
   if aws dynamodb describe-table \
       --table-name "$DYNAMODB_TABLE_NAME" \
-      --region "$AWS_REGION" \
+      --region "$AWS_REGION_CUSTOM" \
       "${AWS_ENDPOINT_ARGS[@]}" \
       --no-cli-pager &>/dev/null; then
     warn "DynamoDB table '${DYNAMODB_TABLE_NAME}' already exists — skipping creation."
@@ -227,7 +227,7 @@ if [[ "$SKIP_DYNAMO" == "false" ]]; then
         'IndexName=GSI3,KeySchema=[{AttributeName=GSI3PK,KeyType=HASH},{AttributeName=GSI3SK,KeyType=RANGE}],Projection={ProjectionType=ALL}' \
       --billing-mode PAY_PER_REQUEST \
       --sse-specification Enabled=true \
-      --region "$AWS_REGION" \
+      --region "$AWS_REGION_CUSTOM" \
       "${AWS_ENDPOINT_ARGS[@]}" \
       --tags \
         Key=Environment,Value="$ENVIRONMENT" \
@@ -238,14 +238,14 @@ if [[ "$SKIP_DYNAMO" == "false" ]]; then
     info "Waiting for table to become active…"
     aws dynamodb wait table-exists \
       --table-name "$DYNAMODB_TABLE_NAME" \
-      --region "$AWS_REGION" \
+      --region "$AWS_REGION_CUSTOM" \
       "${AWS_ENDPOINT_ARGS[@]}"
 
     info "Enabling point-in-time recovery…"
     aws dynamodb update-continuous-backups \
       --table-name "$DYNAMODB_TABLE_NAME" \
       --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true \
-      --region "$AWS_REGION" \
+      --region "$AWS_REGION_CUSTOM" \
       "${AWS_ENDPOINT_ARGS[@]}" \
       --no-cli-pager || warn "PITR enablement failed (may not be supported by this endpoint)"
 
@@ -263,7 +263,7 @@ if [[ "$DEPLOY_LAMBDAS" == "true" ]]; then
 
   if [[ -x "$SCRIPT_DIR/deploy-all.sh" ]]; then
     info "Running deploy-all.sh for environment=${ENVIRONMENT}…"
-    ENVIRONMENT="$ENVIRONMENT" AWS_REGION="$AWS_REGION" "$SCRIPT_DIR/deploy-all.sh"
+    ENVIRONMENT="$ENVIRONMENT" AWS_REGION_CUSTOM="$AWS_REGION_CUSTOM" "$SCRIPT_DIR/deploy-all.sh"
     success "Lambda functions deployed to staging"
   else
     warn "deploy-all.sh not found or not executable; skipping Lambda deployment."

@@ -208,7 +208,7 @@ resource "aws_lambda_function" "discount_service" {
   environment {
     variables = {
       DYNAMODB_TABLE_NAME = local.discount_dynamodb_table_name
-      AWS_REGION          = var.aws_region
+      AWS_REGION_CUSTOM          = var.aws_region
       AWS_REGION_NAME     = var.aws_region
       ENVIRONMENT         = var.environment
       JWT_SECRET          = local.discount_effective_jwt_secret

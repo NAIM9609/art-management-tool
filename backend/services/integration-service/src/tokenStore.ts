@@ -48,7 +48,7 @@ interface StoredOAuthStateItem {
 
 const tableName = process.env.ETSY_TOKENS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME || '';
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({
-  region: process.env.AWS_REGION_NAME || process.env.AWS_REGION,
+  region: process.env.AWS_REGION_NAME || process.env.AWS_REGION_CUSTOM,
 }));
 
 function ensureTableConfigured(): void {

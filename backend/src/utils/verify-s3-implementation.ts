@@ -80,7 +80,7 @@ console.log('=== All Acceptance Criteria Met ✓ ===\n');
 // Environment variables documentation
 console.log('Required Environment Variables:');
 console.log('  S3_BUCKET_NAME - S3 bucket name for storing images');
-console.log('  AWS_REGION - AWS region (default: us-east-1)');
+console.log('  AWS_REGION_CUSTOM - AWS region (default: us-east-1)');
 console.log('  CDN_URL - CloudFront CDN URL (optional, falls back to S3 URL)\n');
 
 console.log('Usage Example:');
