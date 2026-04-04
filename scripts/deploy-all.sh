@@ -39,7 +39,7 @@ usage() {
   echo "Environment variables:"
   echo "  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY"
   echo "  LAMBDA_BUCKET     S3 bucket for Lambda packages"
-  echo "  JWT_SECRET, ETSY_API_KEY, ETSY_API_SECRET (for infrastructure)"
+  echo "  JWT_SECRET        Optional override for infrastructure"
   echo "  API_GATEWAY_URL   Base URL for smoke tests (optional)"
   echo ""
   echo "Examples:"

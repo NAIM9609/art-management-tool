@@ -65,8 +65,6 @@ jobs:
           terraform plan \
             -var="environment=${{ github.event.inputs.environment }}" \
             -var="jwt_secret=${{ secrets.JWT_SECRET }}" \
-            -var="etsy_api_key=${{ secrets.ETSY_API_KEY }}" \
-            -var="etsy_api_secret=${{ secrets.ETSY_API_SECRET }}" \
             -out=tfplan \
             -no-color
         continue-on-error: false
