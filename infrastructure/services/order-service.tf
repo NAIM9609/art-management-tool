@@ -357,7 +357,7 @@ resource "aws_lambda_function" "order_service" {
   environment {
     variables = {
       DYNAMODB_TABLE_NAME              = local.order_dynamodb_table_name
-      AWS_REGION_CUSTOM                       = var.aws_region
+      AWS_REGION_CUSTOM                = var.aws_region
       AWS_REGION_NAME                  = var.aws_region
       ENVIRONMENT                      = var.environment
       JWT_SECRET                       = local.order_effective_jwt_secret
