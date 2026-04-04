@@ -229,7 +229,7 @@ info "Lambda bucket: ${BOLD}${LAMBDA_BUCKET}${RESET}"
 # Install dependencies
 # ---------------------------------------------------------------------------
 step "Installing dependencies"
-npm ci --prefix "$BACKEND_DIR"
+npm i --prefix "$BACKEND_DIR"
 success "Dependencies installed"
 
 # ---------------------------------------------------------------------------
@@ -265,7 +265,7 @@ mkdir -p "$PACKAGE_DIR"
 cp -r "$SERVICE_PATH/dist" "$PACKAGE_DIR/"
 # Re-install with --omit=dev to produce a production-only node_modules for packaging
 # (removes dev dependencies that were installed for the test step above)
-npm ci --prefix "$BACKEND_DIR" --omit=dev
+npm i --prefix "$BACKEND_DIR" --omit=dev
 cp -r "$BACKEND_DIR/node_modules" "$PACKAGE_DIR/"
 
 LAMBDA_ZIP="/tmp/lambda-${SERVICE_NAME}-$$.zip"

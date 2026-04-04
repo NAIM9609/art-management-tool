@@ -212,7 +212,7 @@ fi
 step "Preparing build for ${SERVICE_NAME}-service"
 if [[ ! -d "$BACKEND_DIR/node_modules" ]]; then
   info "Installing backend dependencies"
-  npm ci --prefix "$BACKEND_DIR"
+  npm i --prefix "$BACKEND_DIR"
 fi
 
 if [[ "$SKIP_BUILD" == "false" ]]; then

@@ -19,7 +19,7 @@ WORKDIR /app
 
 COPY package*.json ./
 # Install all dependencies (including devDependencies) for building
-RUN npm ci --include=dev
+RUN npm i --include=dev
 
 COPY . .
 RUN npm run build
@@ -32,7 +32,7 @@ RUN apk --no-cache add ca-certificates curl
 WORKDIR /app
 
 COPY --from=builder /app/package*.json ./
-RUN npm ci --omit=dev
+RUN npm i --omit=dev
 
 COPY --from=builder /app/dist ./dist
 

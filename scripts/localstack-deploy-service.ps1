@@ -207,8 +207,8 @@ if (-not (Test-Path $serviceDir)) {
 Write-Step "Preparing build for $ServiceName-service"
 if (-not (Test-Path (Join-Path $backendDir 'node_modules'))) {
   Write-Info "Installing backend dependencies"
-  & npm ci --prefix $backendDir
-  if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+  & npm i --prefix $backendDir
+  if ($LASTEXITCODE -ne 0) { throw 'npm i failed' }
 }
 
 if (-not $SkipBuild) {

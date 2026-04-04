@@ -51,7 +51,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm i
 
       - name: Run tests
         working-directory: backend
@@ -65,7 +65,7 @@ jobs:
         run: |
           mkdir -p /tmp/lambda-package
           cp -r ${{ env.SERVICE_PATH }}/dist /tmp/lambda-package/
-          cd backend && npm ci --omit=dev && cd ..
+          cd backend && npm i --omit=dev && cd ..
           cp -r backend/node_modules /tmp/lambda-package/
           cd /tmp/lambda-package && zip -r /tmp/lambda.zip .
           echo "PACKAGE_SIZE=$(du -sh /tmp/lambda.zip | cut -f1)" >> $GITHUB_ENV

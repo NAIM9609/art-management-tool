@@ -42,9 +42,9 @@ jobs:
           cache-dependency-path: './frontend/package-lock.json'
       
       # Step 3: Install dependencies
-      # Using 'npm ci' for clean, reproducible builds (faster than 'npm install')
+      # Using 'npm i' for clean, reproducible builds (faster than 'npm install')
       - name: Install dependencies
-        run: npm ci
+        run: npm i
       
       # Step 4: Build the frontend application
       # Creates production-ready static files in .next directory (Next.js standalone mode)
