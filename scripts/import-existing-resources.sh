@@ -32,13 +32,18 @@ try_import() {
   local tf_addr="$1"
   local aws_id="$2"
   local output
-  if output=$(terraform import "${tf_addr}" "${aws_id}" 2>&1); then
+  # Always pass the environment variable so Terraform uses the correct resource names.
+  if output=$(terraform import -var="environment=${ENVIRONMENT}" "${tf_addr}" "${aws_id}" 2>&1); then
     echo "  ✓ Imported  : ${tf_addr}"
   else
     if echo "${output}" | grep -qE "Resource already managed|already exists in state"; then
       echo "  = In state  : ${tf_addr}"
+    elif echo "${output}" | grep -qiE "does not exist|NoSuchEntity|NotFoundException|not found"; then
+      echo "  ~ Not found : ${tf_addr}  (${aws_id})"
     else
-      echo "  - Skipped   : ${tf_addr}  (${aws_id} not found or already managed)"
+      # Show the actual error so CI logs make it obvious what went wrong.
+      echo "  ! Error     : ${tf_addr}"
+      echo "${output}" | grep -v "^$" | head -8 | sed 's/^/    /'
     fi
   fi
 }
@@ -256,5 +261,9 @@ done
 
 echo ""
 echo "============================================================"
-echo " Import pass complete — re-run terraform plan to verify"
+echo " Import pass complete."
+echo " ✓ Imported   = added to TF state (won't be re-created)"
+echo " = In state   = already managed (no action needed)"
+echo " ~ Not found  = doesn't exist in AWS yet (will be created)"
+echo " ! Error      = investigate the error message above"
 echo "============================================================"
