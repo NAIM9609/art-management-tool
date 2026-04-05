@@ -28,8 +28,8 @@
 
 terraform {
   backend "s3" {
-    # Values supplied via -backend-config at terraform init (see workflow)
+    # All values supplied via -backend-config at terraform init (see workflow).
+    # This keeps the backend portable across regions/accounts with no code change.
     encrypt = true
-    region  = "eu-north-1"
   }
 }

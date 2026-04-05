@@ -56,11 +56,55 @@ jobs:
         with:
           terraform_wrapper: false
 
+      # ---------------------------------------------------------------------------
+      # Auto-provision the S3 state bucket so no manual one-time setup is
+      # needed. Uses TF_BACKEND_BUCKET secret if set; otherwise derives a
+      # deterministic name from the AWS account ID so it is globally unique.
+      # All operations are idempotent — safe to run on every CI invocation.
+      # ---------------------------------------------------------------------------
+      - name: Bootstrap Terraform state backend
+        id: backend
+        working-directory: .
+        run: |
+          REGION="${{ secrets.AWS_REGION_CUSTOM || 'eu-north-1' }}"
+
+          if [ -n "${{ secrets.TF_BACKEND_BUCKET }}" ]; then
+            BUCKET="${{ secrets.TF_BACKEND_BUCKET }}"
+          else
+            ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+            BUCKET="art-management-tfstate-${ACCOUNT_ID}"
+          fi
+
+          if ! aws s3api head-bucket --bucket "${BUCKET}" 2>/dev/null; then
+            echo "Creating state bucket: ${BUCKET} in ${REGION}"
+            if [ "${REGION}" = "us-east-1" ]; then
+              aws s3api create-bucket --bucket "${BUCKET}" --region "${REGION}"
+            else
+              aws s3api create-bucket --bucket "${BUCKET}" --region "${REGION}" \
+                --create-bucket-configuration LocationConstraint="${REGION}"
+            fi
+            aws s3api put-bucket-versioning --bucket "${BUCKET}" \
+              --versioning-configuration Status=Enabled
+            aws s3api put-bucket-encryption --bucket "${BUCKET}" \
+              --server-side-encryption-configuration \
+              '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
+            aws s3api put-public-access-block --bucket "${BUCKET}" \
+              --public-access-block-configuration \
+              'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
+          else
+            echo "State bucket already exists: ${BUCKET}"
+          fi
+
+          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "region=${REGION}"  >> "$GITHUB_OUTPUT"
+          echo "State path: s3://${BUCKET}/services/${{ github.event.inputs.environment }}/terraform.tfstate"
+
       - name: Terraform Init
         run: |
           terraform init \
-            -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
-            -backend-config="key=services/${{ github.event.inputs.environment }}/terraform.tfstate"
+            -backend-config="bucket=${{ steps.backend.outputs.bucket }}" \
+            -backend-config="key=services/${{ github.event.inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ steps.backend.outputs.region }}"
 
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
