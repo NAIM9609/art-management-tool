@@ -60,6 +60,8 @@ export interface Config {
   uploadAllowedTypes: string[];
   uploadBaseDir: string;
   taxRate: number;
+  adminUsername: string;
+  adminPasswordHash: string;
 }
 
 const getEnv = (key: string, defaultValue: string): string => {
@@ -133,6 +135,8 @@ export const config: Config = {
   uploadAllowedTypes: getEnv('UPLOAD_ALLOWED_TYPES', 'image/jpeg,image/jpg,image/png,image/gif,image/webp,image/svg+xml,image/avif').split(','),
   uploadBaseDir: getEnv('UPLOAD_BASE_DIR', './uploads'),
   taxRate: parseFloat(getEnv('TAX_RATE', '0.0')),
+  adminUsername: getEnv('ADMIN_USERNAME', 'artadmin'),
+  adminPasswordHash: getEnv('ADMIN_PASSWORD_HASH', ''),
 };
 
 export const isEtsyEnabled = (): boolean => {

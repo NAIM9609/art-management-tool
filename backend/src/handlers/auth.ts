@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 import { config } from '../config';
 import { AuditService } from '../services/AuditService';
 
@@ -12,11 +13,13 @@ export function createAuthRoutes(auditService?: AuditService): Router {
       const { username, password } = req.body;
       const ipAddress = req.ip || req.socket.remoteAddress;
 
-      // Legacy credentials: artadmin / ArtM@nag3r2025!
-      // Also support admin / admin for backward compatibility
-      if ((username === 'artadmin' && password === 'ArtM@nag3r2025!') ||
-          (username === 'admin' && password === 'admin')) {
-        const userId = username === 'artadmin' ? 1 : 2;
+      const isValidUser =
+        username === config.adminUsername &&
+        config.adminPasswordHash &&
+        (await bcrypt.compare(password, config.adminPasswordHash));
+
+      if (isValidUser) {
+        const userId = 1;
         const token = jwt.sign(
           { id: userId, username },
           config.jwtSecret,
@@ -33,7 +36,6 @@ export function createAuthRoutes(auditService?: AuditService): Router {
           ipAddress
         ).catch(err => console.error('Failed to log audit action:', err));
 
-        // Legacy response format: user is a string, not an object
         res.json({
           token,
           user: username,
