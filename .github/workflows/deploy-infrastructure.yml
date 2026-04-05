@@ -60,8 +60,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" \
-            -backend-config="key=services/${{ github.event.inputs.environment }}/terraform.tfstate" \
-            -backend-config="dynamodb_table=${{ secrets.TF_BACKEND_DYNAMODB_TABLE }}"
+            -backend-config="key=services/${{ github.event.inputs.environment }}/terraform.tfstate"
 
       - name: Terraform Format Check
         run: terraform fmt -check -recursive

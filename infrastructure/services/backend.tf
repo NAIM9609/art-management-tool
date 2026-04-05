@@ -1,21 +1,29 @@
 # ---------------------------------------------------------------------------
-# Remote state backend (S3 + DynamoDB locking)
+# Remote state backend (S3 only — no DynamoDB lock table)
 #
-# The bucket name, key, and DynamoDB table are injected at `terraform init`
-# time via -backend-config flags (see deploy-infrastructure.yml).
-# This keeps credentials out of source control while still locking state.
+# Concurrent apply protection is handled at the GitHub Actions layer via
+# the workflow's `concurrency` block (group: terraform-<env>), which queues
+# runs rather than cancelling them.  A separate DynamoDB lock table is
+# therefore not needed and avoids any additional AWS cost.
 #
-# Required GitHub Actions secrets:
-#   TF_BACKEND_BUCKET          – S3 bucket name  (e.g. art-management-tool-tfstate)
-#   TF_BACKEND_DYNAMODB_TABLE  – DynamoDB table   (e.g. art-management-tool-tfstate-locks)
+# S3 state storage stays well inside the always-free tier:
+#   • 5 GB storage  (state files are a few KB each)
+#   • 20,000 GET / 2,000 PUT requests per month
 #
-# Create the DynamoDB table once (primary key: LockID, type: String):
-#   aws dynamodb create-table \
-#     --table-name art-management-tool-tfstate-locks \
-#     --attribute-definitions AttributeName=LockID,AttributeType=S \
-#     --key-schema AttributeName=LockID,KeyType=HASH \
-#     --billing-mode PAY_PER_REQUEST \
-#     --region eu-north-1
+# The bucket name and key are injected at `terraform init` time via
+# -backend-config flags in the workflow (no credentials in source control).
+#
+# Required GitHub Actions secret:
+#   TF_BACKEND_BUCKET – S3 bucket name (e.g. art-management-tool-tfstate)
+#
+# Create the bucket once (versioning recommended so you can roll back state):
+#   aws s3api create-bucket \
+#     --bucket art-management-tool-tfstate \
+#     --region eu-north-1 \
+#     --create-bucket-configuration LocationConstraint=eu-north-1
+#   aws s3api put-bucket-versioning \
+#     --bucket art-management-tool-tfstate \
+#     --versioning-configuration Status=Enabled
 # ---------------------------------------------------------------------------
 
 terraform {
