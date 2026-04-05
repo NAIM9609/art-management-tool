@@ -41,11 +41,6 @@ resource "aws_apigatewayv2_stage" "product_service" {
   tags = local.common_tags
 }
 
-import {
-  to = aws_cloudwatch_log_group.api_gateway
-  id = "/aws/apigateway/${var.project_name}-${var.environment}-product-service"
-}
-
 resource "aws_cloudwatch_log_group" "api_gateway" {
   name              = "/aws/apigateway/${var.project_name}-${var.environment}-product-service"
   retention_in_days = 14

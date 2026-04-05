@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.7"
+  required_version = ">= 1.0"
 
   required_providers {
     aws = {
@@ -394,16 +394,7 @@ data "archive_file" "product_service_placeholder" {
 
 # ---------------------------------------------------------------------------
 # CloudWatch Log Groups (pre-created so retention is set before first invoke)
-# Import blocks ensure Terraform adopts any log groups already created by
-# Lambda (auto-created on first invocation) instead of failing with
-# ResourceAlreadyExistsException.
 # ---------------------------------------------------------------------------
-
-import {
-  for_each = local.lambda_functions_config
-  to       = aws_cloudwatch_log_group.product_service[each.key]
-  id       = "/aws/lambda/${var.project_name}-${var.environment}-${each.key}"
-}
 
 resource "aws_cloudwatch_log_group" "product_service" {
   for_each = local.lambda_functions_config

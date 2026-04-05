@@ -266,16 +266,7 @@ data "archive_file" "content_service_placeholder" {
 
 # ---------------------------------------------------------------------------
 # CloudWatch Log Groups (pre-created so retention is set before first invoke)
-# Import blocks ensure Terraform adopts any log groups already created by
-# Lambda (auto-created on first invocation) instead of failing with
-# ResourceAlreadyExistsException.
 # ---------------------------------------------------------------------------
-
-import {
-  for_each = local.content_lambda_functions_config
-  to       = aws_cloudwatch_log_group.content_service[each.key]
-  id       = "/aws/lambda/${var.project_name}-${var.environment}-${each.key}"
-}
 
 resource "aws_cloudwatch_log_group" "content_service" {
   for_each = local.content_lambda_functions_config
