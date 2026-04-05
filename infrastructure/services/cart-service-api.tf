@@ -52,6 +52,11 @@ resource "aws_apigatewayv2_stage" "cart_service" {
   tags = local.cart_common_tags
 }
 
+import {
+  to = aws_cloudwatch_log_group.cart_service_api_gateway
+  id = "/aws/apigateway/${var.project_name}-${var.environment}-cart-service"
+}
+
 resource "aws_cloudwatch_log_group" "cart_service_api_gateway" {
   name              = "/aws/apigateway/${var.project_name}-${var.environment}-cart-service"
   retention_in_days = 14

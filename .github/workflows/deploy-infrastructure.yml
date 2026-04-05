@@ -102,6 +102,7 @@ jobs:
       - name: Terraform Init
         run: |
           terraform init \
+            -input=false \
             -backend-config="bucket=${{ steps.backend.outputs.bucket }}" \
             -backend-config="key=services/${{ github.event.inputs.environment }}/terraform.tfstate" \
             -backend-config="region=${{ steps.backend.outputs.region }}"
@@ -111,14 +112,6 @@ jobs:
 
       - name: Terraform Validate
         run: terraform validate -no-color
-
-      # Import pre-existing AWS resources BEFORE planning so the saved plan
-      # matches the state that apply will see.  Each import is idempotent.
-      - name: Import existing AWS resources
-        if: github.event.inputs.action == 'apply'
-        run: |
-          bash ../../scripts/import-existing-resources.sh \
-            "${{ github.event.inputs.environment }}"
 
       - name: Terraform Plan
         id: plan
