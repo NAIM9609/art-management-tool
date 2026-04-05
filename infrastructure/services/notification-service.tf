@@ -31,7 +31,7 @@ locals {
       handler     = "dist/handlers/notification.handler.markAllAsRead"
       description = "Mark all notifications as read"
     }
-    "notification-service-delete-notification" = {
+    "notification-delete-notification" = {
       timeout     = 5
       handler     = "dist/handlers/notification.handler.deleteNotification"
       description = "Permanently delete a notification"
@@ -247,11 +247,11 @@ resource "aws_apigatewayv2_stage" "notification_service" {
     destination_arn = aws_cloudwatch_log_group.notification_service_api_gateway.arn
     format = jsonencode({
       requestId          = "$context.requestId"
-      sourceIp           = "$context.http.sourceIp"
+      sourceIp           = "$context.identity.sourceIp"
       requestTime        = "$context.requestTime"
       protocol           = "$context.protocol"
-      httpMethod         = "$context.http.method"
-      resourcePath       = "$context.http.path"
+      httpMethod         = "$context.httpMethod"
+      resourcePath       = "$context.path"
       routeKey           = "$context.routeKey"
       status             = "$context.status"
       responseLength     = "$context.responseLength"
@@ -298,7 +298,7 @@ locals {
     "GET /api/admin/notifications"                = "notification-service-list-notifications"
     "PATCH /api/admin/notifications/{id}/read"    = "notification-service-mark-as-read"
     "POST /api/admin/notifications/mark-all-read" = "notification-service-mark-all-read"
-    "DELETE /api/admin/notifications/{id}"        = "notification-service-delete-notification"
+    "DELETE /api/admin/notifications/{id}"        = "notification-delete-notification"
   }
 }
 

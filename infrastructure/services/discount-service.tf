@@ -264,11 +264,11 @@ resource "aws_apigatewayv2_stage" "discount_service" {
     destination_arn = aws_cloudwatch_log_group.discount_service_api_gateway.arn
     format = jsonencode({
       requestId          = "$context.requestId"
-      sourceIp           = "$context.http.sourceIp"
+      sourceIp           = "$context.identity.sourceIp"
       requestTime        = "$context.requestTime"
       protocol           = "$context.protocol"
-      httpMethod         = "$context.http.method"
-      resourcePath       = "$context.http.path"
+      httpMethod         = "$context.httpMethod"
+      resourcePath       = "$context.path"
       routeKey           = "$context.routeKey"
       status             = "$context.status"
       responseLength     = "$context.responseLength"

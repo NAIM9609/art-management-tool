@@ -81,7 +81,7 @@ locals {
       handler     = "dist/handlers/etsy.handler.initiateOAuth"
       description = "Initiate Etsy OAuth flow"
     }
-    "integration-service-etsy-handle-callback" = {
+    "integration-etsy-handle-callback" = {
       timeout     = 10
       handler     = "dist/handlers/etsy.handler.handleCallback"
       description = "Handle Etsy OAuth callback and exchange code for tokens"
@@ -335,11 +335,11 @@ resource "aws_apigatewayv2_stage" "integration_service" {
     destination_arn = aws_cloudwatch_log_group.integration_api_gateway.arn
     format = jsonencode({
       requestId          = "$context.requestId"
-      sourceIp           = "$context.http.sourceIp"
+      sourceIp           = "$context.identity.sourceIp"
       requestTime        = "$context.requestTime"
       protocol           = "$context.protocol"
-      httpMethod         = "$context.http.method"
-      resourcePath       = "$context.http.path"
+      httpMethod         = "$context.httpMethod"
+      resourcePath       = "$context.path"
       routeKey           = "$context.routeKey"
       status             = "$context.status"
       responseLength     = "$context.responseLength"
@@ -385,7 +385,7 @@ locals {
   integration_api_routes = {
     # OAuth – public endpoints
     "GET /api/integrations/etsy/auth"     = "integration-service-etsy-initiate-oauth"
-    "GET /api/integrations/etsy/callback" = "integration-service-etsy-handle-callback"
+    "GET /api/integrations/etsy/callback" = "integration-etsy-handle-callback"
 
     # Admin sync endpoints (JWT auth enforced at handler level)
     "POST /api/admin/integrations/etsy/sync/products"  = "integration-service-etsy-sync-products"

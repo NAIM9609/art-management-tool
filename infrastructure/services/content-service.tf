@@ -44,7 +44,7 @@ locals {
       handler     = "dist/handlers/personaggi.handler.deletePersonaggio"
       description = "Delete a personaggio"
     }
-    "content-service-get-personaggio-upload-url" = {
+    "content-personaggio-upload-url" = {
       timeout     = 5
       handler     = "dist/handlers/personaggi.handler.uploadImage"
       description = "Generate presigned S3 URL for personaggio image upload"

@@ -26,11 +26,11 @@ resource "aws_apigatewayv2_stage" "content_service" {
     destination_arn = aws_cloudwatch_log_group.content_service_api_gateway.arn
     format = jsonencode({
       requestId          = "$context.requestId"
-      sourceIp           = "$context.http.sourceIp"
+      sourceIp           = "$context.identity.sourceIp"
       requestTime        = "$context.requestTime"
       protocol           = "$context.protocol"
-      httpMethod         = "$context.http.method"
-      resourcePath       = "$context.http.path"
+      httpMethod         = "$context.httpMethod"
+      resourcePath       = "$context.path"
       routeKey           = "$context.routeKey"
       status             = "$context.status"
       responseLength     = "$context.responseLength"
@@ -81,7 +81,7 @@ locals {
     "POST /api/personaggi"             = "content-service-create-personaggio"
     "PUT /api/personaggi/{id}"         = "content-service-update-personaggio"
     "DELETE /api/personaggi/{id}"      = "content-service-delete-personaggio"
-    "POST /api/personaggi/{id}/upload" = "content-service-get-personaggio-upload-url"
+    "POST /api/personaggi/{id}/upload" = "content-personaggio-upload-url"
 
     # Fumetti
     "GET /api/fumetti"              = "content-service-list-fumetti"
