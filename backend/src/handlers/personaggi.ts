@@ -39,7 +39,7 @@ export function createPersonaggiRoutes(): Router {
   const router = Router();
   const dynamoDB = new DynamoDBOptimized({
     tableName: process.env.CONTENT_TABLE_NAME || 'content',
-    region: process.env.AWS_REGION_CUSTOM || 'us-east-1',
+    region: process.env.AWS_REGION_CUSTOM,
     maxRetries: 3,
     retryDelay: 100,
   });

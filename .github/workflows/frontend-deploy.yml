@@ -19,7 +19,7 @@ on:
 # Define environment variables that can be used across all jobs
 env:
   NODE_VERSION: '20'  # Use Node.js LTS version
-  AWS_REGION_CUSTOM: 'eu-north-1'  # Default AWS region, can be overridden by secrets
+  AWS_REGION_CUSTOM: ${{ secrets.AWS_REGION_CUSTOM }}
 
 jobs:
   build-and-deploy:
@@ -36,6 +36,20 @@ jobs:
         working-directory: ./frontend
     
     steps:
+      # Step 0: Validate required secrets before doing any work
+      - name: Validate required secrets
+        run: |
+          MISSING=""
+          [ -z "${{ secrets.AWS_REGION_CUSTOM }}" ] && MISSING="${MISSING} AWS_REGION_CUSTOM"
+          [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && MISSING="${MISSING} AWS_ACCESS_KEY_ID"
+          [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && MISSING="${MISSING} AWS_SECRET_ACCESS_KEY"
+          [ -z "${{ secrets.BACKEND_API_URL }}" ] && MISSING="${MISSING} BACKEND_API_URL"
+          [ -z "${{ secrets.S3_BUCKET_NAME }}" ] && MISSING="${MISSING} S3_BUCKET_NAME"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required secrets:${MISSING}"
+            exit 1
+          fi
+
       # Step 1: Checkout the repository code
       - name: Checkout code
         uses: actions/checkout@v4

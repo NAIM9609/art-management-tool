@@ -51,6 +51,18 @@ jobs:
         working-directory: infrastructure/services
 
     steps:
+      - name: Validate required secrets
+        run: |
+          MISSING=""
+          [ -z "${{ secrets.AWS_REGION_CUSTOM }}" ] && MISSING="${MISSING} AWS_REGION_CUSTOM"
+          [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && MISSING="${MISSING} AWS_ACCESS_KEY_ID"
+          [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && MISSING="${MISSING} AWS_SECRET_ACCESS_KEY"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required secrets:${MISSING}"
+            exit 1
+          fi
+        working-directory: .
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -59,7 +71,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION_CUSTOM || 'eu-north-1' }}
+          aws-region: ${{ secrets.AWS_REGION_CUSTOM }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -76,7 +88,7 @@ jobs:
         id: backend
         working-directory: .
         run: |
-          REGION="${{ secrets.AWS_REGION_CUSTOM || 'eu-north-1' }}"
+          REGION="${{ secrets.AWS_REGION_CUSTOM }}"
 
           if [ -n "${{ secrets.TF_BACKEND_BUCKET }}" ]; then
             BUCKET="${{ secrets.TF_BACKEND_BUCKET }}"
@@ -139,6 +151,7 @@ jobs:
         id: plan
         run: |
           terraform plan \
+            -var="aws_region=${{ secrets.AWS_REGION_CUSTOM }}" \
             -var="environment=${{ github.event.inputs.environment }}" \
             -var="jwt_secret=${{ secrets.JWT_SECRET }}" \
             -out=tfplan \

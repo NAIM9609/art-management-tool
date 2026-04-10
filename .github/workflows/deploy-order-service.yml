@@ -21,7 +21,7 @@ on:
 
 env:
   NODE_VERSION: '20'
-  AWS_REGION_CUSTOM: ${{ secrets.AWS_REGION_CUSTOM || 'eu-north-1' }}
+  AWS_REGION_CUSTOM: ${{ secrets.AWS_REGION_CUSTOM }}
   PROJECT_NAME: 'art-management-tool'
   SERVICE_NAME: 'order-service'
   SERVICE_PATH: 'backend/services/order-service'
@@ -39,6 +39,18 @@ jobs:
       DEPLOY_ENV: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
 
     steps:
+      - name: Validate required secrets
+        run: |
+          MISSING=""
+          [ -z "${{ secrets.AWS_REGION_CUSTOM }}" ] && MISSING="${MISSING} AWS_REGION_CUSTOM"
+          [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && MISSING="${MISSING} AWS_ACCESS_KEY_ID"
+          [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && MISSING="${MISSING} AWS_SECRET_ACCESS_KEY"
+          [ -z "${{ secrets.LAMBDA_BUCKET }}" ] && MISSING="${MISSING} LAMBDA_BUCKET"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required secrets:${MISSING}"
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
 

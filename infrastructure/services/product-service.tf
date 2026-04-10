@@ -26,9 +26,8 @@ provider "aws" {
 # ---------------------------------------------------------------------------
 
 variable "aws_region" {
-  description = "AWS region to deploy resources"
+  description = "AWS region to deploy resources (set via terraform.tfvars or -var flag)"
   type        = string
-  default     = "us-east-1"
 }
 
 variable "project_name" {

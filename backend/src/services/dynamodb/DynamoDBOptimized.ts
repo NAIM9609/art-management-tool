@@ -111,7 +111,7 @@ export class DynamoDBOptimized {
     this.returnConsumedCapacity = config.returnConsumedCapacity ?? 'TOTAL';
 
     const dynamoConfig: DynamoDBClientConfig = {
-      region: config.region || process.env.AWS_REGION_CUSTOM || 'us-east-1',
+      region: config.region || process.env.AWS_REGION_CUSTOM,
     };
 
     // Support LocalStack endpoint override for local testing
