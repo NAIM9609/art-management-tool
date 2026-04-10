@@ -55,7 +55,7 @@ jobs:
 
       - name: Run tests
         working-directory: backend
-        run: npm test -- --testPathPattern="services/cart-service" --passWithNoTests
+        run: npm test -- --testPathPatterns="services/cart-service" --passWithNoTests
 
       - name: Build service (esbuild)
         working-directory: backend

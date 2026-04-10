@@ -155,7 +155,7 @@ jobs:
 
       - name: Run tests
         working-directory: backend
-        run: npm test -- --testPathPattern="services/${{ matrix.service.name }}" --passWithNoTests
+        run: npm test -- --testPathPatterns="services/${{ matrix.service.name }}" --passWithNoTests
 
       - name: Build service (esbuild)
         working-directory: backend
