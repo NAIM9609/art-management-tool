@@ -57,17 +57,14 @@ jobs:
         working-directory: backend
         run: npm test -- --testPathPattern="services/product-service" --passWithNoTests
 
-      - name: Build service
+      - name: Build service (esbuild)
         working-directory: backend
-        run: npx tsc -p services/product-service/tsconfig.json --outDir services/product-service/dist
+        run: node esbuild.lambda.mjs product
 
       - name: Package Lambda
         run: |
-          mkdir -p /tmp/lambda-package
-          cp -r ${{ env.SERVICE_PATH }}/dist /tmp/lambda-package/
-          cd backend && npm i --omit=dev && cd ..
-          cp -r backend/node_modules /tmp/lambda-package/
-          cd /tmp/lambda-package && zip -r /tmp/lambda.zip .
+          cd backend/dist/lambda/product-service
+          zip -r /tmp/lambda.zip . -q
           echo "PACKAGE_SIZE=$(du -sh /tmp/lambda.zip | cut -f1)" >> $GITHUB_ENV
 
       - name: Configure AWS credentials

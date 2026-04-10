@@ -246,30 +246,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Build (TypeScript compile)
+# Build (esbuild Lambda bundler)
 # ---------------------------------------------------------------------------
 step "Building ${FULL_SERVICE_NAME}"
-npx --prefix "$BACKEND_DIR" tsc \
-  -p "$SERVICE_PATH/tsconfig.json" \
-  --outDir "$SERVICE_PATH/dist"
+node "$BACKEND_DIR/esbuild.lambda.mjs" "$SERVICE_NAME"
 success "Build complete"
 
 # ---------------------------------------------------------------------------
 # Package Lambda
 # ---------------------------------------------------------------------------
 step "Packaging Lambda"
-PACKAGE_DIR="/tmp/lambda-package-${SERVICE_NAME}-$$"
-rm -rf "$PACKAGE_DIR"
-mkdir -p "$PACKAGE_DIR"
-
-cp -r "$SERVICE_PATH/dist" "$PACKAGE_DIR/"
-# Re-install with --omit=dev to produce a production-only node_modules for packaging
-# (removes dev dependencies that were installed for the test step above)
-npm i --prefix "$BACKEND_DIR" --omit=dev
-cp -r "$BACKEND_DIR/node_modules" "$PACKAGE_DIR/"
+BUNDLE_DIR="$BACKEND_DIR/dist/lambda/${FULL_SERVICE_NAME}"
+if [[ ! -d "$BUNDLE_DIR" ]]; then
+  error "Bundle output not found: $BUNDLE_DIR"
+  exit 1
+fi
 
 LAMBDA_ZIP="/tmp/lambda-${SERVICE_NAME}-$$.zip"
-(cd "$PACKAGE_DIR" && zip -r "$LAMBDA_ZIP" . -q)
+(cd "$BUNDLE_DIR" && zip -r "$LAMBDA_ZIP" . -q)
 PACKAGE_SIZE=$(du -sh "$LAMBDA_ZIP" | cut -f1)
 success "Package created: $LAMBDA_ZIP (${PACKAGE_SIZE})"
 

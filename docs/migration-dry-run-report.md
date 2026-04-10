@@ -20,19 +20,14 @@ in Task 11.2 and serves as the basis for the production migration go/no-go decis
 |-----------|---------|
 | PostgreSQL | postgres:16-alpine, seeded with test data covering all entity types |
 | DynamoDB | LocalStack 3.8.1 with single-table design (PK/SK + GSI1/GSI2/GSI3) |
-| Lambda functions | Deployed via `scripts/setup-staging.sh --deploy-lambdas` for end-to-end API testing |
+| Lambda functions | Deployed via GitHub Actions CI/CD workflows for end-to-end API testing |
 | Table name | `art-management-tool-staging-art-management` |
 
 ### Setup procedure
 
 ```bash
-# 1a. Clone production PostgreSQL to staging
-#     Note: backup must be created with `pg_dump -Fc` (custom format) for pg_restore.
-./scripts/setup-staging.sh \
-  --environment staging \
-  --staging-db-host <staging-rds-host> \
-  --staging-db-name art_management_staging \
-  --pg-backup backups/prod-backup.dump
+# 1a. Staging setup is now handled by GitHub Actions CI/CD workflows.
+#     Previously used scripts/setup-staging.sh (removed).
 
 # 1b. For a fully automated dry run (CI), use the workflow:
 #     .github/workflows/data-migration-dry-run.yml

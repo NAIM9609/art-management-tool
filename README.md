@@ -94,117 +94,33 @@ npm run lint
 └── docker-compose.*.yml  # Docker Compose configurations
 ```
 
-## Deployment Scripts
+## Deployment
 
-Helper scripts for manual deployment are located in the `scripts/` directory. All scripts
-require `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` to be set in the environment.
+All deployments are managed via **GitHub Actions** workflows in `.github/workflows/`.
 
-### Prerequisites
+| Workflow | Trigger | Description |
+|----------|---------|-------------|
+| `deploy-product-service.yml` | Push to `main` (product paths) or manual | Build, test, package, and deploy product-service Lambdas |
+| `deploy-cart-service.yml` | Push to `main` (cart paths) or manual | Build, test, package, and deploy cart-service Lambdas |
+| `deploy-order-service.yml` | Push to `main` (order paths) or manual | Build, test, package, and deploy order-service Lambdas |
+| `deploy-content-service.yml` | Push to `main` (content paths) or manual | Build, test, package, and deploy content-service Lambdas |
+| `deploy-audit-service.yml` | Push to `main` (audit paths) or manual | Build, test, package, and deploy audit-service Lambdas |
+| `deploy-discount-service.yml` | Push to `main` (discount paths) or manual | Build, test, package, and deploy discount-service Lambdas |
+| `deploy-notification-service.yml` | Push to `main` (notification paths) or manual | Build, test, package, and deploy notification-service Lambdas |
+| `deploy-integration-service.yml` | Push to `main` (integration paths) or manual | Build, test, package, and deploy integration-service Lambdas |
+| `deploy-infrastructure.yml` | Manual (`workflow_dispatch`) | Terraform plan/apply for AWS infrastructure |
 
-```bash
-# Install required CLI tools
-# - AWS CLI v2: https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html
-# - Terraform 1.x: https://developer.hashicorp.com/terraform/install
-# - Node.js 20+, npm, zip
+Each service workflow: installs deps → runs tests → bundles with esbuild → zips → uploads to S3 → updates Lambda functions → smoke test → auto-rollback on failure.
 
-# Required environment variables
-export AWS_ACCESS_KEY_ID=<your-key>
-export AWS_SECRET_ACCESS_KEY=<your-secret>
-export AWS_REGION=eu-north-1          # or your region
-export LAMBDA_BUCKET=<your-s3-bucket> # S3 bucket for Lambda packages
-export API_GATEWAY_URL=<your-api-url> # optional, enables smoke tests
-```
+### Local Development Scripts
 
-### deploy-all.sh — Full deployment
+LocalStack scripts for local testing are in `scripts/`:
 
-Deploys infrastructure and all services, runs smoke tests, and displays endpoints.
+- `localstack-deploy-service.{sh,ps1}` — Deploy a single service to LocalStack
+- `localstack-deploy-all.{sh,ps1}` — Deploy all services to LocalStack
+- `localstack-invoke.{sh,ps1}` — Invoke a Lambda function on LocalStack
 
-```bash
-./scripts/deploy-all.sh -e dev
-./scripts/deploy-all.sh -e staging --skip-infrastructure
-./scripts/deploy-all.sh -e prod --services product,order
-```
-
-### deploy-service.sh — Deploy a single service
-
-Builds, packages, uploads to S3, updates all Lambda functions for the named service,
-and runs a service-specific smoke test.
-
-```bash
-./scripts/deploy-service.sh product
-./scripts/deploy-service.sh product -e staging
-./scripts/deploy-service.sh order -e prod --skip-tests
-```
-
-Valid service names: `audit`, `cart`, `content`, `discount`, `integration`,
-`notification`, `order`, `product`.
-
-### deploy-infrastructure.sh — Terraform deployment
-
-Runs `terraform init`, `terraform plan`, prompts for confirmation, then applies.
-Saves all Terraform outputs to `terraform-outputs.env`.
-
-```bash
-./scripts/deploy-infrastructure.sh -e dev
-./scripts/deploy-infrastructure.sh -e prod --plan-only
-```
-
-### rollback.sh — Roll back a service
-
-Rolls back a Lambda service to a previous version. Supports `previous` (last
-deployed), a commit SHA, or a full S3 key.
-
-```bash
-./scripts/rollback.sh product previous
-./scripts/rollback.sh product v123 -e staging
-./scripts/rollback.sh order abc1234 -e prod -y
-```
-
-### logs.sh — Stream CloudWatch logs
-
-Tails and filters CloudWatch logs for Lambda functions. Supports follow mode,
-log-level filtering, and pattern matching.
-
-```bash
-./scripts/logs.sh product
-./scripts/logs.sh product --follow
-./scripts/logs.sh product --follow --level ERROR
-./scripts/logs.sh all -e staging --follow
-```
-
-### smoke-test.sh — Verify API endpoints
-
-Tests all API endpoints, verifies expected HTTP responses, and reports failures
-with a colour-coded summary.
-
-```bash
-./scripts/smoke-test.sh -u https://abc123.execute-api.eu-north-1.amazonaws.com/dev
-./scripts/smoke-test.sh -e prod -u https://your-prod-api-url
-```
-
-### DynamoDB backup/restore scripts
-
-Operational scripts are available for backup lifecycle management:
-
-- `backup-dynamodb.sh`: create and tag on-demand backups
-- `restore-dynamodb.sh`: restore from backup ARN to a new table
-- `export-to-s3.sh`: export table snapshots to S3 with lifecycle controls
-- `validate-backup.sh`: restore to a temp table and validate data structure
-
-```bash
-./scripts/backup-dynamodb.sh -e prod -o /tmp/latest-backup-arn.txt
-./scripts/restore-dynamodb.sh arn:aws:dynamodb:eu-north-1:123456789012:table/art-management/backup/01234 -e prod
-./scripts/export-to-s3.sh -e prod -b my-backup-bucket --retention-days 90
-./scripts/validate-backup.sh arn:aws:dynamodb:eu-north-1:123456789012:table/art-management/backup/01234 --sample-size 10
-```
-
-Safeguards and behavior:
-
-- Production confirmation prompts are required for `backup-dynamodb.sh`, `restore-dynamodb.sh`, `export-to-s3.sh`, and `validate-backup.sh`.
-- `backup-dynamodb.sh` timeout is configurable via `BACKUP_MAX_WAIT_SECONDS` (default: `1800`).
-- `export-to-s3.sh --retention-days` must be a positive integer; when lifecycle rules are enabled, it must be at least `60`.
-- `restore-dynamodb.sh` and `validate-backup.sh` use `describe-table` item-count sanity checks by default (avoids costly full scans).
-- `restore-dynamodb.sh` prints Lambda update guidance that warns about preserving existing environment variables.
+See [Local Testing Guide](LOCAL_TESTING.md) for details.
 
 ---
 

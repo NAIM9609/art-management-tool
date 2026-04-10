@@ -57,17 +57,14 @@ jobs:
         working-directory: backend
         run: npm test -- --testPathPattern="services/cart-service" --passWithNoTests
 
-      - name: Build service
+      - name: Build service (esbuild)
         working-directory: backend
-        run: npx tsc -p services/cart-service/tsconfig.json --outDir services/cart-service/dist
+        run: node esbuild.lambda.mjs cart
 
       - name: Package Lambda
         run: |
-          mkdir -p /tmp/lambda-package
-          cp -r ${{ env.SERVICE_PATH }}/dist /tmp/lambda-package/
-          cd backend && npm i --omit=dev && cd ..
-          cp -r backend/node_modules /tmp/lambda-package/
-          cd /tmp/lambda-package && zip -r /tmp/lambda.zip .
+          cd backend/dist/lambda/cart-service
+          zip -r /tmp/lambda.zip . -q
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

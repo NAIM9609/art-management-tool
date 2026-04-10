@@ -216,18 +216,17 @@ if [[ ! -d "$BACKEND_DIR/node_modules" ]]; then
 fi
 
 if [[ "$SKIP_BUILD" == "false" ]]; then
-  npx --prefix "$BACKEND_DIR" tsc -p "$SERVICE_DIR/tsconfig.json" --outDir "$SERVICE_DIR/dist"
+  node "$BACKEND_DIR/esbuild.lambda.mjs" "$SERVICE_NAME"
 fi
 
-PACKAGE_DIR="/tmp/localstack-lambda-package-${SERVICE_NAME}-$$"
-rm -rf "$PACKAGE_DIR"
-mkdir -p "$PACKAGE_DIR"
-
-cp -r "$SERVICE_DIR/dist" "$PACKAGE_DIR/"
-cp -r "$BACKEND_DIR/node_modules" "$PACKAGE_DIR/"
+BUNDLE_DIR="$BACKEND_DIR/dist/lambda/${SERVICE_NAME}-service"
+if [[ ! -d "$BUNDLE_DIR" ]]; then
+  error "Bundle output not found: $BUNDLE_DIR"
+  exit 1
+fi
 
 LAMBDA_ZIP="/tmp/localstack-lambda-${SERVICE_NAME}-$$.zip"
-(cd "$PACKAGE_DIR" && zip -r "$LAMBDA_ZIP" . -q)
+(cd "$BUNDLE_DIR" && zip -r "$LAMBDA_ZIP" . -q)
 success "Package created: $LAMBDA_ZIP"
 
 LAMBDA_ROLE_ARN="arn:aws:iam::000000000000:role/${PROJECT_NAME}-${ENVIRONMENT}-local-lambda-role"
@@ -276,7 +275,7 @@ for FN_SUFFIX in ${SERVICE_FUNCTIONS[$SERVICE_NAME]}; do
   success "${FUNCTION_NAME} ready"
 done
 
-rm -rf "$PACKAGE_DIR" "$LAMBDA_ZIP"
+rm -f "$LAMBDA_ZIP"
 
 if [[ "$FAILED" -ne 0 ]]; then
   error "One or more functions failed to deploy"
