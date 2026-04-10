@@ -1,0 +1,233 @@
+name: Deploy All Services
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      deploy_infrastructure:
+        description: 'Run Terraform apply before deploying services'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  infrastructure:
+    name: Deploy Infrastructure
+    if: inputs.deploy_infrastructure
+    uses: ./.github/workflows/deploy-infrastructure.yml
+    with:
+      environment: ${{ inputs.environment }}
+      action: apply
+    secrets: inherit
+
+  deploy-services:
+    name: Deploy All Lambda Services
+    needs: [infrastructure]
+    if: always() && (needs.infrastructure.result == 'success' || needs.infrastructure.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    env:
+      NODE_VERSION: '20'
+      AWS_REGION_CUSTOM: ${{ secrets.AWS_REGION_CUSTOM || 'eu-north-1' }}
+      PROJECT_NAME: 'art-management-tool'
+      DEPLOY_ENV: ${{ inputs.environment }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: product-service
+            esbuild_arg: product
+            functions: >-
+              product-service-list-products
+              product-service-get-product
+              product-service-create-product
+              product-service-update-product
+              product-service-delete-product
+              product-service-list-categories
+              product-service-get-category
+              product-service-create-category
+              product-service-update-category
+              product-service-delete-category
+              product-service-list-variants
+              product-service-create-variant
+              product-service-update-variant
+              product-service-update-stock
+              product-service-get-upload-url
+              product-service-list-images
+              product-service-delete-image
+          - name: cart-service
+            esbuild_arg: cart
+            functions: >-
+              cart-service-get-cart
+              cart-service-add-item
+              cart-service-update-quantity
+              cart-service-remove-item
+              cart-service-clear-cart
+              cart-service-apply-discount
+              cart-service-remove-discount
+          - name: order-service
+            esbuild_arg: order
+            functions: >-
+              order-service-create-order
+              order-service-get-order
+              order-service-get-customer-orders
+              order-service-list-orders
+              order-service-update-status
+              order-service-process-payment
+              order-service-webhook
+          - name: content-service
+            esbuild_arg: content
+            functions: >-
+              content-service-list-personaggi
+              content-service-get-personaggio
+              content-service-create-personaggio
+              content-service-update-personaggio
+              content-service-delete-personaggio
+              content-service-get-personaggio-upload-url
+              content-service-list-fumetti
+              content-service-get-fumetto
+              content-service-create-fumetto
+              content-service-update-fumetto
+              content-service-delete-fumetto
+              content-service-get-fumetto-upload-url
+          - name: audit-service
+            esbuild_arg: audit
+            functions: >-
+              audit-service-get-entity-history
+              audit-service-get-user-activity
+              audit-service-get-activity-by-date
+          - name: discount-service
+            esbuild_arg: discount
+            functions: >-
+              discount-service-validate-code
+              discount-service-list-discounts
+              discount-service-get-discount
+              discount-service-create-discount
+              discount-service-update-discount
+              discount-service-delete-discount
+              discount-service-get-stats
+          - name: notification-service
+            esbuild_arg: notification
+            functions: >-
+              notification-service-list-notifications
+              notification-service-mark-as-read
+              notification-service-mark-all-read
+              notification-service-delete-notification
+          - name: integration-service
+            esbuild_arg: integration
+            functions: >-
+              integration-service-etsy-initiate-oauth
+              integration-service-etsy-handle-callback
+              integration-service-etsy-sync-products
+              integration-service-etsy-sync-inventory
+              integration-service-etsy-sync-orders
+              integration-service-etsy-webhook
+              integration-service-etsy-scheduled-sync
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run tests
+        working-directory: backend
+        run: npm test -- --testPathPattern="services/${{ matrix.service.name }}" --passWithNoTests
+
+      - name: Build service (esbuild)
+        working-directory: backend
+        run: node esbuild.lambda.mjs ${{ matrix.service.esbuild_arg }}
+
+      - name: Package Lambda
+        run: |
+          cd backend/dist/lambda/${{ matrix.service.name }}
+          zip -r /tmp/lambda.zip . -q
+          echo "PACKAGE_SIZE=$(du -sh /tmp/lambda.zip | cut -f1)" >> $GITHUB_ENV
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION_CUSTOM }}
+
+      - name: Upload Lambda package to S3
+        run: |
+          S3_KEY="${{ matrix.service.name }}/${{ env.DEPLOY_ENV }}/${{ github.sha }}.zip"
+          aws s3 cp /tmp/lambda.zip "s3://${{ secrets.LAMBDA_BUCKET }}/${S3_KEY}"
+          echo "S3_KEY=${S3_KEY}" >> $GITHUB_ENV
+
+      - name: Update Lambda functions
+        id: update_lambda
+        run: |
+          FUNCTIONS="${{ matrix.service.functions }}"
+          set +e
+          FAILED=0
+          ANY_UPDATED=false
+          for FN_SUFFIX in $FUNCTIONS; do
+            FN="${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-${FN_SUFFIX}"
+            echo "Updating ${FN}..."
+            if aws lambda update-function-code \
+              --function-name "$FN" \
+              --s3-bucket "${{ secrets.LAMBDA_BUCKET }}" \
+              --s3-key "${{ env.S3_KEY }}" \
+              --no-cli-pager; then
+              aws lambda wait function-updated --function-name "$FN"
+              ANY_UPDATED=true
+            else
+              echo "::error::Failed to update ${FN}"
+              FAILED=1
+            fi
+          done
+          echo "any_updated=${ANY_UPDATED}" >> $GITHUB_OUTPUT
+          exit $FAILED
+
+      - name: Tag previous version in S3
+        if: success()
+        run: |
+          aws s3 cp \
+            "s3://${{ secrets.LAMBDA_BUCKET }}/${{ env.S3_KEY }}" \
+            "s3://${{ secrets.LAMBDA_BUCKET }}/${{ matrix.service.name }}/${{ env.DEPLOY_ENV }}/previous.zip" || true
+
+      - name: Rollback on failure
+        if: failure() && steps.update_lambda.outputs.any_updated == 'true'
+        run: |
+          echo "Rolling back ${{ matrix.service.name }}..."
+          PREV_S3_KEY="${{ matrix.service.name }}/${{ env.DEPLOY_ENV }}/previous.zip"
+          if aws s3 ls "s3://${{ secrets.LAMBDA_BUCKET }}/${PREV_S3_KEY}" 2>/dev/null; then
+            FUNCTIONS="${{ matrix.service.functions }}"
+            for FN_SUFFIX in $FUNCTIONS; do
+              FN="${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-${FN_SUFFIX}"
+              aws lambda update-function-code \
+                --function-name "$FN" \
+                --s3-bucket "${{ secrets.LAMBDA_BUCKET }}" \
+                --s3-key "${PREV_S3_KEY}" \
+                --no-cli-pager || true
+            done
+            echo "Rollback completed"
+          else
+            echo "No previous version found for rollback"
+          fi

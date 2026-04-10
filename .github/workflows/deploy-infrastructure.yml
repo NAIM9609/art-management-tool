@@ -20,6 +20,16 @@ on:
         options:
           - plan
           - apply
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: string
+      action:
+        description: 'Terraform action (plan or apply)'
+        required: true
+        type: string
 
 # Only one run per environment at a time; queue rather than cancel so a
 # queued apply is never silently dropped.
