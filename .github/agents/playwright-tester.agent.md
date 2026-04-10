@@ -1,7 +1,7 @@
 ---
 description: "Testing mode for Playwright tests"
 name: "Playwright Tester Mode"
-tools: ["changes", "codebase", "edit/editFiles", "fetch", "findTestFiles", "problems", "runCommands", "runTasks", "runTests", "search", "searchResults", "terminalLastCommand", "terminalSelection", "testFailure", "playwright"]
+tools: ["search/changes", "search/codebase", "edit/editFiles", "web/fetch", "findTestFiles", "read/problems", "execute/getTerminalOutput", "execute/runInTerminal", "read/terminalLastCommand", "read/terminalSelection", "execute/createAndRunTask", "execute/runTests", "search", "searchResults", "read/terminalLastCommand", "read/terminalSelection", "execute/testFailure", "playwright"]
 model: Claude Sonnet 4
 ---
 

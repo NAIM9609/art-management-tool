@@ -20,6 +20,8 @@ on:
 env:
   NODE_VERSION: '20'  # Use Node.js LTS version
   AWS_REGION_CUSTOM: ${{ secrets.AWS_REGION_CUSTOM }}
+  AMPLIFY_APP_ID: ${{ secrets.AMPLIFY_APP_ID }}
+  AMPLIFY_BRANCH_NAME: ${{ secrets.AMPLIFY_BRANCH_NAME }}
 
 jobs:
   build-and-deploy:
@@ -146,14 +148,13 @@ jobs:
       - name: Deploy to Amplify
         if: github.event_name != 'pull_request'
         run: |
-          if [ -n "${{ secrets.AMPLIFY_APP_ID }}" ]; then
-            BRANCH_NAME="${{ secrets.AMPLIFY_BRANCH_NAME }}"
-            BRANCH_NAME="${BRANCH_NAME:-main}"
-            echo "Creating Amplify deployment for app: ${{ secrets.AMPLIFY_APP_ID }}, branch: ${BRANCH_NAME}"
+          if [ -n "$AMPLIFY_APP_ID" ]; then
+            BRANCH_NAME="${AMPLIFY_BRANCH_NAME:-main}"
+            echo "Creating Amplify deployment for app: ${AMPLIFY_APP_ID}, branch: ${BRANCH_NAME}"
 
             # Step 8a: Create a deployment to get a pre-signed upload URL
             DEPLOYMENT=$(aws amplify create-deployment \
-              --app-id ${{ secrets.AMPLIFY_APP_ID }} \
+              --app-id "$AMPLIFY_APP_ID" \
               --branch-name "${BRANCH_NAME}" \
               --output json)
 
@@ -172,21 +173,14 @@ jobs:
 
             # Step 8c: Start the deployment with the uploaded artifact
             aws amplify start-deployment \
-              --app-id ${{ secrets.AMPLIFY_APP_ID }} \
+              --app-id "$AMPLIFY_APP_ID" \
               --branch-name "${BRANCH_NAME}" \
               --job-id "${JOB_ID}"
 
             echo "Amplify deployment started successfully (job: ${JOB_ID})"
             echo "AMPLIFY_TRIGGERED=api" >> $GITHUB_ENV
-          elif [ -n "${{ secrets.AMPLIFY_WEBHOOK_URL }}" ]; then
-            echo "Triggering Amplify via webhook"
-            curl -X POST "${{ secrets.AMPLIFY_WEBHOOK_URL }}" \
-              -H "Content-Type: application/json" \
-              -d "{\"source\":\"github-actions\",\"commit\":\"${{ github.sha }}\"}"
-            echo "Amplify deployment triggered successfully via webhook"
-            echo "AMPLIFY_TRIGGERED=webhook" >> $GITHUB_ENV
           else
-            echo "AMPLIFY_APP_ID and AMPLIFY_WEBHOOK_URL not set, skipping Amplify deployment"
+            echo "AMPLIFY_APP_ID not set, skipping Amplify deployment"
             echo "AMPLIFY_TRIGGERED=none" >> $GITHUB_ENV
           fi
       
@@ -202,7 +196,7 @@ jobs:
           
           # Conditionally report Amplify deployment status
           if [ "$AMPLIFY_TRIGGERED" = "api" ]; then
-            echo "🚀 Amplify deployment triggered via API (app: ${{ secrets.AMPLIFY_APP_ID }})"
+            echo "🚀 Amplify deployment triggered via API (app: $AMPLIFY_APP_ID)"
           elif [ "$AMPLIFY_TRIGGERED" = "webhook" ]; then
             echo "🚀 Amplify deployment triggered via webhook"
           elif [ "${{ github.event_name }}" = "pull_request" ]; then

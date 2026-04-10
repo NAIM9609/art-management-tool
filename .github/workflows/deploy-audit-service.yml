@@ -25,6 +25,7 @@ env:
   PROJECT_NAME: 'art-management-tool'
   SERVICE_NAME: 'audit-service'
   SERVICE_PATH: 'backend/services/audit-service'
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
 permissions:
   contents: read
@@ -86,10 +87,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION_CUSTOM }}
 
       - name: Upload Lambda package to S3
+        id: upload_package
         run: |
           S3_KEY="${{ env.SERVICE_NAME }}/${{ env.DEPLOY_ENV }}/${{ github.sha }}.zip"
           aws s3 cp /tmp/lambda.zip "s3://${{ secrets.LAMBDA_BUCKET }}/${S3_KEY}"
           echo "S3_KEY=${S3_KEY}" >> $GITHUB_ENV
+          echo "s3_key=${S3_KEY}" >> "$GITHUB_OUTPUT"
 
       - name: Update Lambda function code
         id: update_lambda
@@ -107,7 +110,7 @@ jobs:
             if aws lambda update-function-code \
               --function-name "$FN" \
               --s3-bucket "${{ secrets.LAMBDA_BUCKET }}" \
-              --s3-key "${{ env.S3_KEY }}" \
+              --s3-key "${{ steps.upload_package.outputs.s3_key }}" \
               --no-cli-pager; then
               aws lambda wait function-updated --function-name "$FN"
               ANY_UPDATED=true
@@ -165,11 +168,11 @@ jobs:
         if: success()
         run: |
           aws s3 cp \
-            "s3://${{ secrets.LAMBDA_BUCKET }}/${{ env.S3_KEY }}" \
+            "s3://${{ secrets.LAMBDA_BUCKET }}/${{ steps.upload_package.outputs.s3_key }}" \
             "s3://${{ secrets.LAMBDA_BUCKET }}/${{ env.SERVICE_NAME }}/${{ env.DEPLOY_ENV }}/previous.zip" || true
 
       - name: Notify Slack on success
-        if: success() && ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        if: success() && env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1
         with:
           payload: |
@@ -188,7 +191,7 @@ jobs:
           SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
 
       - name: Notify Slack on failure
-        if: failure() && ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1
         with:
           payload: |

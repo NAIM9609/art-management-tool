@@ -19,7 +19,7 @@ on:
       run_rollback_test:
         description: 'Execute rollback procedure after migration'
         required: false
-        default: 'true'
+        default: true
         type: boolean
 
 env:

@@ -187,10 +187,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION_CUSTOM }}
 
       - name: Upload Lambda package to S3
+        id: upload_package
         run: |
           S3_KEY="${{ matrix.service.name }}/${{ env.DEPLOY_ENV }}/${{ github.sha }}.zip"
           aws s3 cp /tmp/lambda.zip "s3://${{ secrets.LAMBDA_BUCKET }}/${S3_KEY}"
           echo "S3_KEY=${S3_KEY}" >> $GITHUB_ENV
+          echo "s3_key=${S3_KEY}" >> "$GITHUB_OUTPUT"
 
       - name: Update Lambda functions
         id: update_lambda
@@ -205,7 +207,7 @@ jobs:
             if aws lambda update-function-code \
               --function-name "$FN" \
               --s3-bucket "${{ secrets.LAMBDA_BUCKET }}" \
-              --s3-key "${{ env.S3_KEY }}" \
+              --s3-key "${{ steps.upload_package.outputs.s3_key }}" \
               --no-cli-pager; then
               aws lambda wait function-updated --function-name "$FN"
               ANY_UPDATED=true
@@ -221,7 +223,7 @@ jobs:
         if: success()
         run: |
           aws s3 cp \
-            "s3://${{ secrets.LAMBDA_BUCKET }}/${{ env.S3_KEY }}" \
+            "s3://${{ secrets.LAMBDA_BUCKET }}/${{ steps.upload_package.outputs.s3_key }}" \
             "s3://${{ secrets.LAMBDA_BUCKET }}/${{ matrix.service.name }}/${{ env.DEPLOY_ENV }}/previous.zip" || true
 
       - name: Rollback on failure
