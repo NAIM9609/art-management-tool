@@ -34,17 +34,21 @@ on:
 # Only one run per environment at a time; queue rather than cancel so a
 # queued apply is never silently dropped.
 concurrency:
-  group: terraform-${{ github.event.inputs.environment }}
+  group: terraform-${{ inputs.environment || github.event.inputs.environment }}
   cancel-in-progress: false
+
+env:
+  TARGET_ENV: ${{ inputs.environment || github.event.inputs.environment }}
+  TF_ACTION: ${{ inputs.action || github.event.inputs.action }}
 
 permissions:
   contents: read
 
 jobs:
   terraform:
-    name: Terraform ${{ github.event.inputs.action }} (${{ github.event.inputs.environment }})
+    name: Terraform ${{ inputs.action || github.event.inputs.action }} (${{ inputs.environment || github.event.inputs.environment }})
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
+    environment: ${{ inputs.environment || github.event.inputs.environment }}
 
     defaults:
       run:
@@ -119,14 +123,14 @@ jobs:
 
           echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
           echo "region=${REGION}"  >> "$GITHUB_OUTPUT"
-          echo "State path: s3://${BUCKET}/services/${{ github.event.inputs.environment }}/terraform.tfstate"
+          echo "State path: s3://${BUCKET}/services/${{ env.TARGET_ENV }}/terraform.tfstate"
 
       - name: Terraform Init
         run: |
           terraform init \
             -input=false \
             -backend-config="bucket=${{ steps.backend.outputs.bucket }}" \
-            -backend-config="key=services/${{ github.event.inputs.environment }}/terraform.tfstate" \
+            -backend-config="key=services/${{ env.TARGET_ENV }}/terraform.tfstate" \
             -backend-config="region=${{ steps.backend.outputs.region }}"
 
       - name: Terraform Format Check
@@ -140,11 +144,11 @@ jobs:
       # for each resource first — it skips resources that don't exist yet
       # (fresh deployment) and skips those already in state (idempotent).
       - name: Import existing AWS resources
-        if: github.event.inputs.action == 'apply'
+        if: env.TF_ACTION == 'apply'
         working-directory: infrastructure/services
         run: |
           bash ../../scripts/import-existing-resources.sh \
-            "${{ github.event.inputs.environment }}"
+            "${{ env.TARGET_ENV }}"
         continue-on-error: true
 
       - name: Terraform Plan
@@ -152,16 +156,16 @@ jobs:
         run: |
           terraform plan \
             -var="aws_region=${{ secrets.AWS_REGION_CUSTOM }}" \
-            -var="environment=${{ github.event.inputs.environment }}" \
+            -var="environment=${{ env.TARGET_ENV }}" \
             -var="jwt_secret=${{ secrets.JWT_SECRET }}" \
             -out=tfplan \
             -no-color
         continue-on-error: false
 
       - name: Terraform Apply
-        if: github.event.inputs.action == 'apply'
+        if: env.TF_ACTION == 'apply'
         run: terraform apply -auto-approve tfplan
 
       - name: Output endpoint URLs
-        if: github.event.inputs.action == 'apply'
+        if: env.TF_ACTION == 'apply'
         run: terraform output -no-color

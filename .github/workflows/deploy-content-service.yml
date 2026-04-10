@@ -140,13 +140,14 @@ jobs:
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-create-personaggio"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-update-personaggio"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-delete-personaggio"
-            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-get-personaggio-upload-url"
+            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-personaggio-upload-url"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-list-fumetti"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-get-fumetto"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-create-fumetto"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-update-fumetto"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-delete-fumetto"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-get-fumetto-upload-url"
+            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-temp-upload-presign"
           )
           set +e
           FAILED=0
@@ -198,13 +199,14 @@ jobs:
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-create-personaggio"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-update-personaggio"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-delete-personaggio"
-              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-get-personaggio-upload-url"
+              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-personaggio-upload-url"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-list-fumetti"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-get-fumetto"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-create-fumetto"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-update-fumetto"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-delete-fumetto"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-get-fumetto-upload-url"
+              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-content-service-temp-upload-presign"
             )
             for FN in "${FUNCTIONS[@]}"; do
               aws lambda update-function-code \

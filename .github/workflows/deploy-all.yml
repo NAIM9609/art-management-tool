@@ -13,9 +13,9 @@ on:
           - staging
           - prod
       deploy_infrastructure:
-        description: 'Run Terraform apply before deploying services'
+        description: 'Run Terraform apply before deploying services (recommended for new or changed environments)'
         required: false
-        default: false
+        default: true
         type: boolean
 
 permissions:
@@ -97,13 +97,14 @@ jobs:
               content-service-create-personaggio
               content-service-update-personaggio
               content-service-delete-personaggio
-              content-service-get-personaggio-upload-url
+              content-personaggio-upload-url
               content-service-list-fumetti
               content-service-get-fumetto
               content-service-create-fumetto
               content-service-update-fumetto
               content-service-delete-fumetto
               content-service-get-fumetto-upload-url
+              content-service-temp-upload-presign
           - name: audit-service
             esbuild_arg: audit
             functions: >-
