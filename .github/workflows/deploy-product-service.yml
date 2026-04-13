@@ -64,7 +64,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm i
+        run: npm ci
 
       - name: Run tests
         working-directory: backend
@@ -136,6 +136,7 @@ jobs:
         id: update_lambda
         run: |
           FUNCTIONS=(
+            "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-product-service-health"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-product-service-list-products"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-product-service-get-product"
             "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-product-service-create-product"
@@ -198,6 +199,7 @@ jobs:
           PREV_S3_KEY="${{ env.SERVICE_NAME }}/${{ env.DEPLOY_ENV }}/previous.zip"
           if aws s3 ls "s3://${{ secrets.LAMBDA_BUCKET }}/${PREV_S3_KEY}" 2>/dev/null; then
             FUNCTIONS=(
+              "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-product-service-health"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-product-service-list-products"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-product-service-get-product"
               "${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-product-service-create-product"

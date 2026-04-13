@@ -31,7 +31,7 @@ locals {
       handler     = "dist/handlers/notification.handler.markAllAsRead"
       description = "Mark all notifications as read"
     }
-    "notification-delete-notification" = {
+    "notification-service-delete-notification" = {
       timeout     = 5
       handler     = "dist/handlers/notification.handler.deleteNotification"
       description = "Permanently delete a notification"
@@ -284,7 +284,7 @@ locals {
     "GET /api/admin/notifications"                = "notification-service-list-notifications"
     "PATCH /api/admin/notifications/{id}/read"    = "notification-service-mark-as-read"
     "POST /api/admin/notifications/mark-all-read" = "notification-service-mark-all-read"
-    "DELETE /api/admin/notifications/{id}"        = "notification-delete-notification"
+    "DELETE /api/admin/notifications/{id}"        = "notification-service-delete-notification"
   }
 }
 

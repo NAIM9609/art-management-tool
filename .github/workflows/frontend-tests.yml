@@ -34,7 +34,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm i
+        run: npm ci
 
       - name: Run ESLint
         working-directory: frontend
@@ -56,7 +56,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm i
+        run: npm ci
 
       - name: Run unit tests
         working-directory: frontend
@@ -78,7 +78,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm i
+        run: npm ci
 
       - name: Build frontend
         working-directory: frontend
@@ -108,7 +108,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm i
+        run: npm ci
 
       - name: Install Playwright browsers
         working-directory: frontend

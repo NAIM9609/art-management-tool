@@ -1,14 +1,14 @@
 # Art Management Tool
 
-A full-stack art management application with e-commerce capabilities, built with Next.js (frontend) and Node.js/Express (backend).
+A full-stack art management application with e-commerce capabilities, built with Next.js on the frontend and TypeScript/Node.js services on the backend.
 
 ## Tech Stack
 
-- **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS
-- **Backend**: Node.js, Express, TypeScript
+- **Frontend**: Next.js 16, React 19, TypeScript
+- **Backend**: TypeScript services and local Express API runtime
 - **Database**: PostgreSQL (primary), DynamoDB (auxiliary)
 - **Storage**: AWS S3 with CloudFront CDN
-- **Infrastructure**: Docker, Terraform, AWS ECS
+- **Infrastructure**: Docker, Terraform, AWS Lambda, API Gateway, Amplify
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ A full-stack art management application with e-commerce capabilities, built with
 
 3. **Start development environment**
    ```bash
-   docker-compose -f docker-compose.development.yml up -d
+   docker compose -f docker-compose.development.yml up -d
    ```
 
 4. **Access the application**
@@ -96,7 +96,7 @@ npm run lint
 
 ## Deployment
 
-All deployments are managed via **GitHub Actions** workflows in `.github/workflows/`.
+All deployments are managed via GitHub Actions workflows in `.github/workflows/`.
 
 | Workflow | Trigger | Description |
 |----------|---------|-------------|
@@ -108,9 +108,12 @@ All deployments are managed via **GitHub Actions** workflows in `.github/workflo
 | `deploy-discount-service.yml` | Push to `main` (discount paths) or manual | Build, test, package, and deploy discount-service Lambdas |
 | `deploy-notification-service.yml` | Push to `main` (notification paths) or manual | Build, test, package, and deploy notification-service Lambdas |
 | `deploy-integration-service.yml` | Push to `main` (integration paths) or manual | Build, test, package, and deploy integration-service Lambdas |
-| `deploy-infrastructure.yml` | Manual (`workflow_dispatch`) | Terraform plan/apply for AWS infrastructure |
+| `deploy-infrastructure.yml` | Manual (`workflow_dispatch`) or reusable call | Terraform plan/apply for infrastructure in `infrastructure/services` |
+| `deploy-all.yml` | Manual (`workflow_dispatch`) | Optional Terraform apply followed by matrix deployment for all Lambda services |
+| `frontend-deploy.yml` | Push to `main` (frontend paths) or manual | Static-export frontend build, S3 upload, optional Amplify deployment |
+| `backend-tests.yml` / `frontend-tests.yml` / `terraform-validate.yml` | Push and PR path filters | CI validation for backend, frontend, and Terraform |
 
-Each service workflow: installs deps → runs tests → bundles with esbuild → zips → uploads to S3 → updates Lambda functions → smoke test → auto-rollback on failure.
+Each service workflow installs from the lockfile, runs targeted tests, bundles with esbuild, uploads artifacts to S3, updates Lambda functions, runs smoke checks when configured, and rolls back to `previous.zip` on failure.
 
 ### Local Development Scripts
 
@@ -129,6 +132,9 @@ See [Local Testing Guide](LOCAL_TESTING.md) for details.
 - [Local Testing Guide](LOCAL_TESTING.md) - Testing with LocalStack
 - [Implementation Summary](IMPLEMENTATION_SUMMARY.md) - Implementation details
 - [Infrastructure README](infrastructure/README.md) - Terraform setup
+- [TERRAFORM_GITHUB_ACTIONS_GUIDE.md](TERRAFORM_GITHUB_ACTIONS_GUIDE.md) - Deployment and Terraform flow
+- [INFRA_COMPARISON_CHECKLIST.md](INFRA_COMPARISON_CHECKLIST.md) - Blank comparison checklist
+- [INFRA_COMPARISON_CHECKLIST_PREFILLED.md](INFRA_COMPARISON_CHECKLIST_PREFILLED.md) - Repo-specific baseline checklist
 
 ## Contributing
 

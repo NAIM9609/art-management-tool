@@ -21,9 +21,6 @@ const nextConfig: NextConfig = {
     // Static export cannot use Next.js image optimization
     ...(isExportMode ? { unoptimized: true } : {}),
     formats: ['image/avif', 'image/webp'],
-    // Keep domains for backward compatibility with host validation in some
-    // Next.js runtime paths; remotePatterns remains the primary allow-list.
-    domains: ['localhost'],
     remotePatterns: [
       {
         protocol: 'http',

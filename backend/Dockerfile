@@ -4,7 +4,7 @@ FROM node:20-alpine AS development
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 
@@ -19,7 +19,7 @@ WORKDIR /app
 
 COPY package*.json ./
 # Install all dependencies (including devDependencies) for building
-RUN npm i --include=dev
+RUN npm ci
 
 COPY . .
 RUN npm run build
@@ -32,7 +32,7 @@ RUN apk --no-cache add ca-certificates curl
 WORKDIR /app
 
 COPY --from=builder /app/package*.json ./
-RUN npm i --omit=dev
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 

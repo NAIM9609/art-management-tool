@@ -91,7 +91,7 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: backend
-        run: npm i
+        run: npm ci
 
       # ── 1. Setup Staging Environment ─────────────────────────────────────
       - name: Wait for LocalStack

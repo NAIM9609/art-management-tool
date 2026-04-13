@@ -66,9 +66,9 @@ jobs:
           cache-dependency-path: './frontend/package-lock.json'
       
       # Step 3: Install dependencies
-      # Using 'npm i' for clean, reproducible builds (faster than 'npm install')
+      # Use the lockfile for reproducible CI builds.
       - name: Install dependencies
-        run: npm i
+        run: npm ci
       
       # Step 4: Prepare for static export build
       # Remove API routes (not supported with output: 'export') and build static site

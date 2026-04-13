@@ -52,6 +52,7 @@ jobs:
           - name: product-service
             esbuild_arg: product
             functions: >-
+              product-service-health
               product-service-list-products
               product-service-get-product
               product-service-create-product

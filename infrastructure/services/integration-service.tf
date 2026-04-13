@@ -81,7 +81,7 @@ locals {
       handler     = "dist/handlers/etsy.handler.initiateOAuth"
       description = "Initiate Etsy OAuth flow"
     }
-    "integration-etsy-handle-callback" = {
+    "integration-service-etsy-handle-callback" = {
       timeout     = 10
       handler     = "dist/handlers/etsy.handler.handleCallback"
       description = "Handle Etsy OAuth callback and exchange code for tokens"
@@ -371,7 +371,7 @@ locals {
   integration_api_routes = {
     # OAuth – public endpoints
     "GET /api/integrations/etsy/auth"     = "integration-service-etsy-initiate-oauth"
-    "GET /api/integrations/etsy/callback" = "integration-etsy-handle-callback"
+    "GET /api/integrations/etsy/callback" = "integration-service-etsy-handle-callback"
 
     # Admin sync endpoints (JWT auth enforced at handler level)
     "POST /api/admin/integrations/etsy/sync/products"  = "integration-service-etsy-sync-products"

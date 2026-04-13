@@ -1,4 +1,23 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: art-postgres-dev
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=artmanagement
+      - POSTGRES_USER=artuser
+      - POSTGRES_PASSWORD=dbpass
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U artuser -d artmanagement"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - art-network-dev
+
   # LocalStack - Local AWS Services Emulation
   localstack:
     image: localstack/localstack:latest
@@ -14,7 +33,7 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
-      - LOCALSTACK_AUTH_TOKEN=ls-JoMO5116-YIQi-Jepa-0038-vilAZunaad17
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:-}
     volumes:
       - localstack_data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
@@ -34,13 +53,21 @@ services:
       dockerfile: Dockerfile
       target: development
     container_name: art-backend-dev
-    command: sh -c "[ -x node_modules/.bin/ts-node-dev ] || npm install && npm run dev"
+    command: sh -c "[ -x node_modules/.bin/ts-node-dev ] || npm ci; npm run dev"
     ports:
       - "8080:8080"
     environment:
       # Application Configuration
       - PORT=8080
       - ENVIRONMENT=development
+
+      # Database Configuration
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=artuser
+      - DB_PASSWORD=dbpass
+      - DB_NAME=artmanagement
+      - DB_SSLMODE=disable
 
       # AWS Configuration (LocalStack)
       - AWS_REGION_CUSTOM=us-east-1
@@ -85,6 +112,8 @@ services:
       - ./backend/src:/app/src
       - /app/node_modules
     depends_on:
+      postgres:
+        condition: service_healthy
       localstack:
         condition: service_healthy
     networks:
@@ -97,7 +126,7 @@ services:
       dockerfile: Dockerfile
       target: development
     container_name: art-frontend-dev
-    command: sh -c "[ -x node_modules/.bin/next ] || npm install && npm run dev"
+    command: sh -c "[ -x node_modules/.bin/next ] || npm ci; npm run dev"
     ports:
       - "3000:3000"
     environment:
@@ -120,4 +149,6 @@ networks:
 
 volumes:
   localstack_data:
+    driver: local
+  postgres_dev_data:
     driver: local

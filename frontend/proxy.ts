@@ -1,13 +1,12 @@
 import createMiddleware from 'next-intl/middleware';
-import {routing} from './src/i18n/routing';
 import { NextRequest } from 'next/server';
- 
-const intlMiddleware = createMiddleware(routing);
+import { routing } from './src/i18n/routing';
 
-export default function middleware(request: NextRequest) {
+const intlProxy = createMiddleware(routing);
+
+export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  
-  // Skip middleware for static files
+
   if (
     pathname.startsWith('/personaggi/') ||
     pathname.startsWith('/fumetti/') ||
@@ -17,11 +16,10 @@ export default function middleware(request: NextRequest) {
   ) {
     return;
   }
-  
-  return intlMiddleware(request);
+
+  return intlProxy(request);
 }
- 
+
 export const config = {
-  // Apply middleware to all routes except static files
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)']
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
