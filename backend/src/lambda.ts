@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { DynamoDBOptimized } from './services/dynamodb/DynamoDBOptimized';
 import { CategoryRepository } from './services/dynamodb/repositories/CategoryRepository';
 import { ProductService } from './services/ProductService';
-import { OrderService, OrderStatus } from './services/OrderService';
+import { OrderService } from './services/OrderService';
 import { NotificationService } from './services/NotificationService';
 import { AuditService } from './services/AuditService';
 import { S3Service } from './services/s3/S3Service';
@@ -15,7 +15,6 @@ import * as productHandlers from '../services/product-service/src/handlers/produ
 import * as variantHandlers from '../services/product-service/src/handlers/variant.handler';
 import * as imageHandlers from '../services/product-service/src/handlers/image.handler';
 import * as cartHandlers from '../services/cart-service/src/handlers/cart.handler';
-import * as orderHandlers from '../services/order-service/src/handlers/order.handler';
 import * as discountHandlers from '../services/discount-service/src/handlers/discount.handler';
 import * as notificationHandlers from '../services/notification-service/src/handlers/notification.handler';
 import * as personaggiHandlers from '../services/content-service/src/handlers/personaggi.handler';
@@ -308,7 +307,7 @@ async function createCategory(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 		name: String(body.name || ''),
 		slug: String(body.slug || ''),
 		description: typeof body.description === 'string' ? body.description : undefined,
-		parent_id: typeof body.parent_id === 'number' ? body.parent_id : null,
+		parent_id: typeof body.parent_id === 'number' ? body.parent_id : undefined,
 	});
 	return successResponse(category, 201);
 }
@@ -322,7 +321,7 @@ async function updateCategory(event: APIGatewayProxyEvent, id: number): Promise<
 		name: typeof body.name === 'string' ? body.name : undefined,
 		slug: typeof body.slug === 'string' ? body.slug : undefined,
 		description: typeof body.description === 'string' ? body.description : undefined,
-		parent_id: body.parent_id === null ? null : (typeof body.parent_id === 'number' ? body.parent_id : undefined),
+		parent_id: typeof body.parent_id === 'number' ? body.parent_id : undefined,
 	});
 
 	return category ? successResponse(category) : errorResponse('Category not found', 404);
@@ -459,12 +458,6 @@ async function handleProductImageUpload(event: APIGatewayProxyEvent, productId: 
 	);
 
 	return successResponse({ message: 'Image uploaded', image }, 201);
-}
-
-function parseNumericId(value: string | undefined): number | null {
-	if (!value) return null;
-	const parsed = parseInt(value, 10);
-	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 export async function handler(rawEvent: HttpApiV2Event): Promise<APIGatewayProxyResult> {
