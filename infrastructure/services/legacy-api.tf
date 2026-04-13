@@ -1,16 +1,3 @@
-variable "admin_username" {
-  description = "Admin username for the legacy-compatible API login endpoint."
-  type        = string
-  default     = "artadmin"
-}
-
-variable "admin_password_hash" {
-  description = "bcrypt hash for the admin password used by the legacy-compatible API login endpoint."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
 locals {
   legacy_dynamodb_table_name = var.dynamodb_table_name != "" ? var.dynamodb_table_name : "${var.project_name}-${var.environment}-art-management"
   legacy_s3_bucket_name      = var.s3_bucket_name != "" ? var.s3_bucket_name : "art-management-images-${var.environment}"

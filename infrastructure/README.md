@@ -108,6 +108,46 @@ terraform apply -var="environment=dev"
 terraform destroy -var="environment=dev"
 ```
 
+## Services Module (Frontend Contract API)
+
+The service-based Terraform root lives in `infrastructure/services` and includes the legacy compatibility API used by frontend `BACKEND_API_URL`.
+
+Required variables for the services root:
+
+- `aws_region`
+- `environment`
+- `jwt_secret`
+- `admin_username`
+- `admin_password_hash`
+
+`admin_password_hash` is validated as bcrypt and cannot be empty.
+
+Generate a bcrypt hash (PowerShell + Node.js):
+
+```powershell
+node -e "const bcrypt=require('bcrypt'); bcrypt.hash(process.argv[1], 12).then(h=>console.log(h));" "YourStrongPasswordHere"
+```
+
+## Pre-merge Terraform Validation
+
+Run these checks before merging to `main`.
+
+Root infrastructure module:
+
+```bash
+terraform -chdir=infrastructure fmt -check -recursive
+terraform -chdir=infrastructure init -backend=false
+terraform -chdir=infrastructure validate
+```
+
+Services infrastructure module:
+
+```bash
+terraform -chdir=infrastructure/services fmt -check -recursive
+terraform -chdir=infrastructure/services init -backend=false
+terraform -chdir=infrastructure/services validate
+```
+
 ## Using Different Environments
 
 To deploy to different environments, specify the environment variable:
