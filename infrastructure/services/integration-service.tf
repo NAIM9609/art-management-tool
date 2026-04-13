@@ -81,7 +81,7 @@ locals {
       handler     = "dist/handlers/etsy.handler.initiateOAuth"
       description = "Initiate Etsy OAuth flow"
     }
-    "integration-service-etsy-handle-callback" = {
+    "integration-etsy-callback" = {
       timeout     = 10
       handler     = "dist/handlers/etsy.handler.handleCallback"
       description = "Handle Etsy OAuth callback and exchange code for tokens"
@@ -375,7 +375,7 @@ locals {
   integration_api_routes = {
     # OAuth – public endpoints
     "GET /api/integrations/etsy/auth"     = "integration-service-etsy-initiate-oauth"
-    "GET /api/integrations/etsy/callback" = "integration-service-etsy-handle-callback"
+    "GET /api/integrations/etsy/callback" = "integration-etsy-callback"
 
     # Admin sync endpoints (JWT auth enforced at handler level)
     "POST /api/admin/integrations/etsy/sync/products"  = "integration-service-etsy-sync-products"
@@ -446,13 +446,19 @@ resource "aws_lambda_permission" "etsy_scheduled_sync_eventbridge" {
   source_arn    = aws_cloudwatch_event_rule.etsy_scheduled_sync[0].arn
 }
 
+
 # ---------------------------------------------------------------------------
-# Moved – key rename (keeps same AWS integration ID; avoids route 409 on apply)
+# Moved – key renames (integration and lambda)
 # ---------------------------------------------------------------------------
 
 moved {
-  from = aws_apigatewayv2_integration.integration_service["integration-etsy-handle-callback"]
-  to   = aws_apigatewayv2_integration.integration_service["integration-service-etsy-handle-callback"]
+  from = aws_apigatewayv2_integration.integration_service["integration-service-etsy-handle-callback"]
+  to   = aws_apigatewayv2_integration.integration_service["integration-etsy-callback"]
+}
+
+moved {
+  from = aws_lambda_function.integration_service["integration-service-etsy-handle-callback"]
+  to   = aws_lambda_function.integration_service["integration-etsy-callback"]
 }
 
 # ---------------------------------------------------------------------------

@@ -31,7 +31,7 @@ locals {
       handler     = "dist/handlers/notification.handler.markAllAsRead"
       description = "Mark all notifications as read"
     }
-    "notification-service-delete-notification" = {
+    "notification-delete" = {
       timeout     = 5
       handler     = "dist/handlers/notification.handler.deleteNotification"
       description = "Permanently delete a notification"
@@ -288,7 +288,7 @@ locals {
     "GET /api/admin/notifications"                = "notification-service-list-notifications"
     "PATCH /api/admin/notifications/{id}/read"    = "notification-service-mark-as-read"
     "POST /api/admin/notifications/mark-all-read" = "notification-service-mark-all-read"
-    "DELETE /api/admin/notifications/{id}"        = "notification-service-delete-notification"
+    "DELETE /api/admin/notifications/{id}"        = "notification-delete"
   }
 }
 
@@ -316,13 +316,19 @@ resource "aws_lambda_permission" "notification_service" {
   source_arn    = "${aws_apigatewayv2_api.notification_service.execution_arn}/*/*"
 }
 
+
 # ---------------------------------------------------------------------------
-# Moved – key rename (keeps same AWS integration ID; avoids route 409 on apply)
+# Moved – key renames (integration and lambda)
 # ---------------------------------------------------------------------------
 
 moved {
-  from = aws_apigatewayv2_integration.notification_service["notification-delete-notification"]
-  to   = aws_apigatewayv2_integration.notification_service["notification-service-delete-notification"]
+  from = aws_apigatewayv2_integration.notification_service["notification-service-delete-notification"]
+  to   = aws_apigatewayv2_integration.notification_service["notification-delete"]
+}
+
+moved {
+  from = aws_lambda_function.notification_service["notification-service-delete-notification"]
+  to   = aws_lambda_function.notification_service["notification-delete"]
 }
 
 # ---------------------------------------------------------------------------
