@@ -23,7 +23,6 @@
     "lambda:build:audit": "node esbuild.lambda.mjs audit",
     "lambda:build:content": "node esbuild.lambda.mjs content",
     "lambda:build:discount": "node esbuild.lambda.mjs discount",
-    "lambda:build:legacy": "node esbuild.lambda.mjs legacy-api",
     "lambda:build:notification": "node esbuild.lambda.mjs notification",
     "lambda:build:integration": "node esbuild.lambda.mjs integration",
     "lambda:local:deploy": "pwsh -NoProfile -ExecutionPolicy Bypass -File ../scripts/localstack-deploy-service.ps1",

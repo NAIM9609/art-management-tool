@@ -19,6 +19,8 @@ on:
 # Define environment variables that can be used across all jobs
 env:
   NODE_VERSION: '20'  # Use Node.js LTS version
+  PROJECT_NAME: 'art-management-tool'
+  DEPLOY_ENV: 'prod'
   AWS_REGION_CUSTOM: ${{ secrets.AWS_REGION_CUSTOM }}
   AMPLIFY_APP_ID: ${{ secrets.AMPLIFY_APP_ID }}
   AMPLIFY_BRANCH_NAME: ${{ secrets.AMPLIFY_BRANCH_NAME }}
@@ -40,21 +42,80 @@ jobs:
           [ -z "${{ secrets.AWS_REGION_CUSTOM }}" ] && MISSING="${MISSING} AWS_REGION_CUSTOM"
           [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && MISSING="${MISSING} AWS_ACCESS_KEY_ID"
           [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && MISSING="${MISSING} AWS_SECRET_ACCESS_KEY"
-          [ -z "${{ secrets.BACKEND_API_URL }}" ] && MISSING="${MISSING} BACKEND_API_URL"
           [ -z "${{ secrets.S3_BUCKET_NAME }}" ] && MISSING="${MISSING} S3_BUCKET_NAME"
           if [ -n "$MISSING" ]; then
             echo "::error::Missing required secrets:${MISSING}"
             exit 1
           fi
 
-      - name: Validate backend endpoint reachability
+      - name: Configure AWS credentials (endpoint discovery)
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION_CUSTOM || env.AWS_REGION_CUSTOM }}
+
+      - name: Discover service API endpoints
+        if: github.event_name != 'pull_request'
+        shell: bash
         run: |
-          BASE_URL="${{ secrets.BACKEND_API_URL }}"
-          BASE_URL="${BASE_URL%/}"
+          discover_url() {
+            local service_name="$1"
+            local api_name="${PROJECT_NAME}-${DEPLOY_ENV}-${service_name}"
+            local api_id
+            api_id=$(aws apigatewayv2 get-apis \
+              --region "${AWS_REGION_CUSTOM}" \
+              --query "Items[?Name=='${api_name}'].ApiId | [0]" \
+              --output text)
+
+            if [ -z "${api_id}" ] || [ "${api_id}" = "None" ]; then
+              echo "::error::API not found: ${api_name}"
+              exit 1
+            fi
+
+            echo "https://${api_id}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}"
+          }
+
+          PRODUCT_API_URL=$(discover_url "product-service")
+          CART_API_URL=$(discover_url "cart-service")
+          ORDER_API_URL=$(discover_url "order-service")
+          CONTENT_API_URL=$(discover_url "content-service")
+          DISCOUNT_API_URL=$(discover_url "discount-service")
+          NOTIFICATION_API_URL=$(discover_url "notification-service")
+          INTEGRATION_API_URL=$(discover_url "integration-service")
+
+          echo "PRODUCT_API_URL=${PRODUCT_API_URL}" >> "$GITHUB_ENV"
+          echo "CART_API_URL=${CART_API_URL}" >> "$GITHUB_ENV"
+          echo "ORDER_API_URL=${ORDER_API_URL}" >> "$GITHUB_ENV"
+          echo "CONTENT_API_URL=${CONTENT_API_URL}" >> "$GITHUB_ENV"
+          echo "DISCOUNT_API_URL=${DISCOUNT_API_URL}" >> "$GITHUB_ENV"
+          echo "NOTIFICATION_API_URL=${NOTIFICATION_API_URL}" >> "$GITHUB_ENV"
+          echo "INTEGRATION_API_URL=${INTEGRATION_API_URL}" >> "$GITHUB_ENV"
+
+      - name: Validate backend endpoint reachability
+        if: github.event_name != 'pull_request'
+        run: |
+          PRODUCT_BASE_URL="${PRODUCT_API_URL}"
+          CART_BASE_URL="${CART_API_URL}"
+          ORDER_BASE_URL="${ORDER_API_URL}"
+          CONTENT_BASE_URL="${CONTENT_API_URL}"
+          DISCOUNT_BASE_URL="${DISCOUNT_API_URL}"
+          NOTIFICATION_BASE_URL="${NOTIFICATION_API_URL}"
+          INTEGRATION_BASE_URL="${INTEGRATION_API_URL}"
+
+          PRODUCT_BASE_URL="${PRODUCT_BASE_URL%/}"
+          CART_BASE_URL="${CART_BASE_URL%/}"
+          ORDER_BASE_URL="${ORDER_BASE_URL%/}"
+          CONTENT_BASE_URL="${CONTENT_BASE_URL%/}"
+          DISCOUNT_BASE_URL="${DISCOUNT_BASE_URL%/}"
+          NOTIFICATION_BASE_URL="${NOTIFICATION_BASE_URL%/}"
+          INTEGRATION_BASE_URL="${INTEGRATION_BASE_URL%/}"
 
           check_status() {
-            local path="$1"
-            local url="${BASE_URL}${path}"
+            local base_url="$1"
+            local path="$2"
+            local url="${base_url}${path}"
             local status
             status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
             echo "${url} -> ${status}"
@@ -64,14 +125,14 @@ jobs:
             fi
           }
 
-          # Health should be reachable on the API Gateway stage URL.
-          check_status "/health"
-          # Auth route should exist even if credentials are invalid.
-          check_status "/api/auth/login"
-          # Shop products route should exist on the frontend contract endpoint.
-          check_status "/api/shop/products"
-          # Admin products route should exist (auth can fail, route must not be missing).
-          check_status "/api/admin/shop/products"
+          check_status "${PRODUCT_BASE_URL}" "/health"
+          check_status "${PRODUCT_BASE_URL}" "/api/products"
+          check_status "${CART_BASE_URL}" "/api/cart"
+          check_status "${ORDER_BASE_URL}" "/api/orders"
+          check_status "${CONTENT_BASE_URL}" "/api/personaggi"
+          check_status "${DISCOUNT_BASE_URL}" "/api/discounts/validate"
+          check_status "${NOTIFICATION_BASE_URL}" "/api/admin/notifications"
+          check_status "${INTEGRATION_BASE_URL}" "/api/integrations/etsy/auth"
 
       # Step 1: Checkout the repository code
       - name: Checkout code
@@ -98,14 +159,23 @@ jobs:
           # In static export, the frontend calls the backend directly via NEXT_PUBLIC_API_URL.
           rm -rf app/api
 
+          # Service-specific API base URLs for split API Gateway architecture.
+          # For pull requests, discovery is skipped and these fall back to placeholder values.
+          export NEXT_PUBLIC_API_URL="${PRODUCT_API_URL:-https://example.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}}"
+          export NEXT_PUBLIC_PRODUCT_API_URL="${PRODUCT_API_URL:-https://example.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}}"
+          export NEXT_PUBLIC_CART_API_URL="${CART_API_URL:-https://example.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}}"
+          export NEXT_PUBLIC_ORDER_API_URL="${ORDER_API_URL:-https://example.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}}"
+          export NEXT_PUBLIC_CONTENT_API_URL="${CONTENT_API_URL:-https://example.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}}"
+          export NEXT_PUBLIC_DISCOUNT_API_URL="${DISCOUNT_API_URL:-https://example.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}}"
+          export NEXT_PUBLIC_NOTIFICATION_API_URL="${NOTIFICATION_API_URL:-https://example.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}}"
+          export NEXT_PUBLIC_INTEGRATION_API_URL="${INTEGRATION_API_URL:-https://example.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}}"
+
           # Build with static export mode
           npm run build
         env:
           NODE_ENV: production
           # Tell next.config.ts to use output: 'export'
           NEXT_OUTPUT_MODE: export
-          # Set the backend URL so client-side API calls go directly to it
-          NEXT_PUBLIC_API_URL: ${{ secrets.BACKEND_API_URL }}
       
       # Step 5: Create ZIP archive of static build artifacts
       # The 'out/' directory contains all static HTML, CSS, JS files ready for hosting

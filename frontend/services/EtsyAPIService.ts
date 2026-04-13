@@ -3,7 +3,7 @@
  * Handles Etsy product and inventory synchronization operations
  */
 
-import { fetchWithAuth, getApiBaseUrl } from './apiUtils';
+import { fetchWithAuth } from './apiUtils';
 import type {
   EtsyProduct,
   EtsyProductListResponse,
@@ -48,7 +48,7 @@ class EtsyAPIService {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = `${getApiBaseUrl()}/api/admin/etsy`;
+    this.baseUrl = '/api/admin/integrations/etsy';
   }
 
   // ==================== Sync Management ====================

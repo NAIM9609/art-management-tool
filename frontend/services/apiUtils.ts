@@ -166,13 +166,63 @@ export function getAuthHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export function getApiBaseUrl(): string {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (!baseUrl) {
-    throw new Error('NEXT_PUBLIC_API_URL is required and must point to the API Gateway endpoint');
+type ServiceName =
+  | 'product'
+  | 'cart'
+  | 'order'
+  | 'content'
+  | 'discount'
+  | 'notification'
+  | 'integration';
+
+function normalizeBaseUrl(baseUrl: string | undefined): string {
+  const value = baseUrl?.trim();
+  if (!value) return '';
+  return value.endsWith('/') ? value.slice(0, -1) : value;
+}
+
+function serviceFromPath(path: string): ServiceName {
+  if (path.startsWith('/api/cart')) return 'cart';
+  if (path.startsWith('/api/orders') || path.startsWith('/api/admin/orders') || path.startsWith('/api/webhooks/payment')) return 'order';
+  if (path.startsWith('/api/personaggi') || path.startsWith('/api/fumetti') || path.startsWith('/api/upload')) return 'content';
+  if (path.startsWith('/api/discounts') || path.startsWith('/api/admin/discounts')) return 'discount';
+  if (path.startsWith('/api/admin/notifications')) return 'notification';
+  if (path.startsWith('/api/integrations/etsy') || path.startsWith('/api/admin/integrations/etsy') || path.startsWith('/api/webhooks/etsy')) return 'integration';
+  return 'product';
+}
+
+function baseUrlForService(service: ServiceName): string {
+  const defaultBase = normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL);
+
+  const serviceBaseMap: Record<ServiceName, string> = {
+    product: normalizeBaseUrl(process.env.NEXT_PUBLIC_PRODUCT_API_URL) || defaultBase,
+    cart: normalizeBaseUrl(process.env.NEXT_PUBLIC_CART_API_URL) || defaultBase,
+    order: normalizeBaseUrl(process.env.NEXT_PUBLIC_ORDER_API_URL) || defaultBase,
+    content: normalizeBaseUrl(process.env.NEXT_PUBLIC_CONTENT_API_URL) || defaultBase,
+    discount: normalizeBaseUrl(process.env.NEXT_PUBLIC_DISCOUNT_API_URL) || defaultBase,
+    notification: normalizeBaseUrl(process.env.NEXT_PUBLIC_NOTIFICATION_API_URL) || defaultBase,
+    integration: normalizeBaseUrl(process.env.NEXT_PUBLIC_INTEGRATION_API_URL) || defaultBase,
+  };
+
+  const resolved = serviceBaseMap[service];
+  if (!resolved) {
+    throw new Error('Missing API base URL configuration. Set NEXT_PUBLIC_API_URL or service-specific NEXT_PUBLIC_*_API_URL variables.');
   }
 
-  return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  return resolved;
+}
+
+export function getApiBaseUrl(path = '/api/products'): string {
+  return baseUrlForService(serviceFromPath(path));
+}
+
+export function resolveApiUrl(pathOrUrl: string): string {
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    return pathOrUrl;
+  }
+
+  const path = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+  return `${getApiBaseUrl(path)}${path}`;
 }
 
 async function parseSuccessResponse<T>(response: Response): Promise<T> {
@@ -224,7 +274,7 @@ export async function fetchWithAuth<T>(
     Object.assign(headers, getAuthHeaders());
   }
 
-  const fullUrl = `${getApiBaseUrl()}${url}`;
+  const fullUrl = resolveApiUrl(url);
   logDev(`fetchWithAuth url=${fullUrl} useAuth=${useAuth}`);
   const response = await fetchWithRetry(fullUrl, { ...options, headers });
   logDev(`fetchWithAuth response status=${response.status} ok=${response.ok}`);
@@ -244,7 +294,7 @@ export async function uploadFile(
   useAuth = true
 ): Promise<Response> {
   const headers: HeadersInit = useAuth ? getAuthHeaders() : {};
-  const fullUrl = `${getApiBaseUrl()}${url}`;
+  const fullUrl = resolveApiUrl(url);
 
   logDev(`POST (upload) ${fullUrl}`);
 

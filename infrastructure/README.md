@@ -110,23 +110,13 @@ terraform destroy -var="environment=dev"
 
 ## Services Module (Frontend Contract API)
 
-The service-based Terraform root lives in `infrastructure/services` and includes the legacy compatibility API used by frontend `BACKEND_API_URL`.
+The service-based Terraform root lives in `infrastructure/services` and provisions dedicated API Gateways per backend Lambda service.
 
 Required variables for the services root:
 
 - `aws_region`
 - `environment`
 - `jwt_secret`
-- `admin_username`
-- `admin_password_hash`
-
-`admin_password_hash` is validated as bcrypt and cannot be empty.
-
-Generate a bcrypt hash (PowerShell + Node.js):
-
-```powershell
-node -e "const bcrypt=require('bcrypt'); bcrypt.hash(process.argv[1], 12).then(h=>console.log(h));" "YourStrongPasswordHere"
-```
 
 ## Pre-merge Terraform Validation
 

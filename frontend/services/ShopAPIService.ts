@@ -3,9 +3,7 @@
  * Handles public shop API interactions (products, cart, checkout)
  */
 
-import { getCached, setCached, CACHE_TTL, fetchWithRetry, parseErrorResponse, getApiBaseUrl } from './apiUtils';
-
-const API_BASE_URL = getApiBaseUrl();
+import { getCached, setCached, CACHE_TTL, fetchWithRetry, parseErrorResponse, resolveApiUrl } from './apiUtils';
 
 // ==================== Types ====================
 
@@ -133,10 +131,12 @@ export interface DiscountResponse {
 // ==================== Shop API Service ====================
 
 class ShopAPIService {
-  private baseUrl: string;
-
-  constructor() {
-    this.baseUrl = `${API_BASE_URL}/api/shop`;
+  private toApiPath(endpoint: string): string {
+    if (endpoint === '/health') return '/health';
+    if (endpoint.startsWith('/products')) return `/api${endpoint}`;
+    if (endpoint.startsWith('/cart')) return `/api${endpoint}`;
+    if (endpoint === '/checkout') return '/api/orders';
+    return `/api${endpoint}`;
   }
 
   /**
@@ -196,7 +196,7 @@ class ShopAPIService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const url = resolveApiUrl(this.toApiPath(endpoint));
     const method = (options.method || 'GET').toUpperCase();
 
     // Get session token for header fallback

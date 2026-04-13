@@ -108,15 +108,15 @@ export class DiscountAPIService {
 
   /**
    * Validate a discount code against a given cart total without applying it to the cart.
-   * POST /api/shop/discounts/validate
+   * POST /api/discounts/validate
    */
   static async validateDiscount(
     code: string,
     cartTotal: number
   ): Promise<DiscountValidationResponse> {
-    return fetchWithAuth<DiscountValidationResponse>('/api/shop/discounts/validate', {
+    return fetchWithAuth<DiscountValidationResponse>('/api/discounts/validate', {
       method: 'POST',
-      body: JSON.stringify({ code, cart_total: cartTotal }),
+      body: JSON.stringify({ code, cartTotal }),
     });
   }
 }

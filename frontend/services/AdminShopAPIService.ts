@@ -45,39 +45,42 @@ class AdminShopAPIService {
     per_page?: number;
   }): Promise<ProductListResponse> {
     const query = buildQueryParams(params);
-    return fetchWithAuth<ProductListResponse>(`/api/admin/shop/products${query}`, {}, true);
+    return fetchWithAuth<ProductListResponse>(`/api/products${query}`, {}, true);
   }
 
   async getProduct(id: number): Promise<Product> {
-    return fetchWithAuth<Product>(`/api/admin/shop/products/${id}`, {}, true);
+    return fetchWithAuth<Product>(`/api/products/${id}`, {}, true);
   }
 
   async createProduct(data: CreateProductRequest): Promise<Product> {
-    return fetchWithAuth<Product>('/api/admin/shop/products', { method: 'POST', body: JSON.stringify(data) }, true);
+    return fetchWithAuth<Product>('/api/products', { method: 'POST', body: JSON.stringify(data) }, true);
   }
 
   async updateProduct(id: number, data: UpdateProductRequest): Promise<void> {
-    await fetchWithAuth<void>(`/api/admin/shop/products/${id}`, { method: 'PATCH', body: JSON.stringify(data) }, true);
+    await fetchWithAuth<void>(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(data) }, true);
   }
 
   async deleteProduct(id: number): Promise<void> {
-    await fetchWithAuth<void>(`/api/admin/shop/products/${id}`, { method: 'DELETE' }, true);
+    await fetchWithAuth<void>(`/api/products/${id}`, { method: 'DELETE' }, true);
   }
 
   async addVariant(productId: number, data: CreateVariantRequest): Promise<ProductVariant> {
     return fetchWithAuth<ProductVariant>(
-      `/api/admin/shop/products/${productId}/variants`,
+      `/api/products/${productId}/variants`,
       { method: 'POST', body: JSON.stringify(data) },
       true
     );
   }
 
   async updateVariant(variantId: number, data: Partial<CreateVariantRequest>): Promise<void> {
-    await fetchWithAuth<void>(`/api/admin/shop/variants/${variantId}`, { method: 'PATCH', body: JSON.stringify(data) }, true);
+    await fetchWithAuth<void>(`/api/variants/${variantId}`, { method: 'PUT', body: JSON.stringify(data) }, true);
   }
 
   async adjustInventory(data: InventoryAdjustRequest): Promise<void> {
-    await fetchWithAuth<void>('/api/admin/shop/inventory/adjust', { method: 'POST', body: JSON.stringify(data) }, true);
+    await fetchWithAuth<void>(`/api/variants/${data.variant_id}/stock`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quantity: data.quantity, operation: data.operation }),
+    }, true);
   }
 
   // ==================== Orders ====================
@@ -92,19 +95,19 @@ class AdminShopAPIService {
     per_page?: number;
   }): Promise<OrderListResponse> {
     const query = buildQueryParams(params);
-    return fetchWithAuth<OrderListResponse>(`/api/admin/shop/orders${query}`, {}, true);
+    return fetchWithAuth<OrderListResponse>(`/api/admin/orders${query}`, {}, true);
   }
 
   async getOrder(id: number): Promise<Order> {
-    return fetchWithAuth<Order>(`/api/admin/shop/orders/${id}`, {}, true);
+    return fetchWithAuth<Order>(`/api/orders/${id}`, {}, true);
   }
 
   async updateFulfillmentStatus(
     id: number,
-    status: 'unfulfilled' | 'fulfilled' | 'partially_fulfilled'
+    status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded'
   ): Promise<void> {
     await fetchWithAuth<void>(
-      `/api/admin/shop/orders/${id}/fulfillment`,
+      `/api/admin/orders/${id}/status`,
       { method: 'PATCH', body: JSON.stringify({ status }) },
       true
     );
@@ -112,8 +115,8 @@ class AdminShopAPIService {
 
   async refundOrder(id: number, amount?: number): Promise<void> {
     await fetchWithAuth<void>(
-      `/api/admin/shop/orders/${id}/refund`,
-      { method: 'POST', body: JSON.stringify(amount ? { amount } : {}) },
+      `/api/admin/orders/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify({ status: 'refunded', ...(amount ? { amount } : {}) }) },
       true
     );
   }
@@ -136,7 +139,7 @@ class AdminShopAPIService {
   }
 
   async markAllAsRead(): Promise<void> {
-    await fetchWithAuth<void>('/api/admin/notifications/read-all', { method: 'POST' }, true);
+    await fetchWithAuth<void>('/api/admin/notifications/mark-all-read', { method: 'POST' }, true);
   }
 
   async deleteNotification(id: number): Promise<void> {
@@ -156,12 +159,12 @@ class AdminShopAPIService {
     if (altText) formData.append('alt_text', altText);
     if (position !== undefined) formData.append('position', position.toString());
 
-    const response = await uploadFile(`/api/admin/shop/products/${productId}/images`, formData);
+    const response = await uploadFile(`/api/products/${productId}/images`, formData);
     return response.json();
   }
 
   async listProductImages(productId: number): Promise<{ images: ProductImage[] }> {
-    return fetchWithAuth<{ images: ProductImage[] }>(`/api/admin/shop/products/${productId}/images`, {}, true);
+    return fetchWithAuth<{ images: ProductImage[] }>(`/api/products/${productId}/images`, {}, true);
   }
 
   async updateProductImage(
@@ -170,7 +173,7 @@ class AdminShopAPIService {
     data: { position?: number; alt_text?: string }
   ): Promise<{ message: string }> {
     return fetchWithAuth<{ message: string }>(
-      `/api/admin/shop/products/${productId}/images/${imageId}`,
+      `/api/products/${productId}/images/${imageId}`,
       { method: 'PATCH', body: JSON.stringify(data) },
       true
     );
@@ -178,7 +181,7 @@ class AdminShopAPIService {
 
   async deleteProductImage(productId: number, imageId: number): Promise<{ message: string }> {
     return fetchWithAuth<{ message: string }>(
-      `/api/admin/shop/products/${productId}/images/${imageId}`,
+      `/api/products/${productId}/images/${imageId}`,
       { method: 'DELETE' },
       true
     );

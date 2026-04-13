@@ -139,10 +139,6 @@ jobs:
               integration-service-etsy-sync-orders
               integration-service-etsy-webhook
               integration-service-etsy-scheduled-sync
-          - name: legacy-api
-            esbuild_arg: legacy-api
-            functions: >-
-              legacy-api-router
 
     steps:
       - name: Validate required secrets
@@ -317,8 +313,8 @@ jobs:
             echo "No previous version found for rollback"
           fi
 
-  verify-legacy-api:
-    name: Verify Legacy API Contract
+  verify-service-apis:
+    name: Verify Service API Endpoints
     needs: [deploy-services]
     if: needs.deploy-services.result == 'success'
     runs-on: ubuntu-latest
@@ -348,60 +344,78 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION_CUSTOM }}
 
-      - name: Discover legacy API endpoint
+      - name: Discover product and cart API endpoints
         id: discover
         shell: bash
         run: |
-          API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-legacy-api"
-          API_ID=$(aws apigatewayv2 get-apis \
+          PRODUCT_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-product-service"
+          PRODUCT_API_ID=$(aws apigatewayv2 get-apis \
             --region "${AWS_REGION_CUSTOM}" \
-            --query "Items[?Name=='${API_NAME}'].ApiId | [0]" \
+            --query "Items[?Name=='${PRODUCT_API_NAME}'].ApiId | [0]" \
             --output text)
 
-          if [ -z "${API_ID}" ] || [ "${API_ID}" = "None" ]; then
-            echo "::error::Legacy API not found: ${API_NAME}"
+          CART_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-cart-service"
+          CART_API_ID=$(aws apigatewayv2 get-apis \
+            --region "${AWS_REGION_CUSTOM}" \
+            --query "Items[?Name=='${CART_API_NAME}'].ApiId | [0]" \
+            --output text)
+
+          if [ -z "${PRODUCT_API_ID}" ] || [ "${PRODUCT_API_ID}" = "None" ]; then
+            echo "::error::Product API not found: ${PRODUCT_API_NAME}"
             exit 1
           fi
 
-          BASE_URL="https://${API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}"
-          echo "api_id=${API_ID}" >> "$GITHUB_OUTPUT"
-          echo "base_url=${BASE_URL}" >> "$GITHUB_OUTPUT"
-          echo "Discovered legacy API endpoint: ${BASE_URL}"
+          if [ -z "${CART_API_ID}" ] || [ "${CART_API_ID}" = "None" ]; then
+            echo "::error::Cart API not found: ${CART_API_NAME}"
+            exit 1
+          fi
 
-      - name: Smoke test legacy API routes
+          PRODUCT_BASE_URL="https://${PRODUCT_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}"
+          CART_BASE_URL="https://${CART_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}"
+          echo "product_api_id=${PRODUCT_API_ID}" >> "$GITHUB_OUTPUT"
+          echo "cart_api_id=${CART_API_ID}" >> "$GITHUB_OUTPUT"
+          echo "product_base_url=${PRODUCT_BASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "cart_base_url=${CART_BASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "Discovered product API endpoint: ${PRODUCT_BASE_URL}"
+          echo "Discovered cart API endpoint: ${CART_BASE_URL}"
+
+      - name: Smoke test service API routes
         shell: bash
         env:
-          BASE_URL: ${{ steps.discover.outputs.base_url }}
+          PRODUCT_BASE_URL: ${{ steps.discover.outputs.product_base_url }}
+          CART_BASE_URL: ${{ steps.discover.outputs.cart_base_url }}
         run: |
           check_status() {
-            local path="$1"
-            local url="${BASE_URL}${path}"
+            local base_url="$1"
+            local path="$2"
+            local url="${base_url}${path}"
             local status
             status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
             echo "${url} -> ${status}"
             if [ "$status" = "000" ] || [ "$status" = "404" ]; then
-              echo "::error::Legacy API contract check failed for ${url} (status ${status})."
+              echo "::error::Service API check failed for ${url} (status ${status})."
               exit 1
             fi
           }
 
-          check_status "/health"
-          check_status "/api/auth/login"
-          check_status "/api/shop/products"
+          check_status "${PRODUCT_BASE_URL}" "/health"
+          check_status "${PRODUCT_BASE_URL}" "/api/products"
+          check_status "${CART_BASE_URL}" "/api/cart"
 
       - name: Deployment summary
         shell: bash
         env:
-          BASE_URL: ${{ steps.discover.outputs.base_url }}
-          API_ID: ${{ steps.discover.outputs.api_id }}
+          PRODUCT_BASE_URL: ${{ steps.discover.outputs.product_base_url }}
+          PRODUCT_API_ID: ${{ steps.discover.outputs.product_api_id }}
+          CART_BASE_URL: ${{ steps.discover.outputs.cart_base_url }}
+          CART_API_ID: ${{ steps.discover.outputs.cart_api_id }}
         run: |
-          echo "✅ Legacy API contract verified"
-          echo "BACKEND_API_URL=${BASE_URL}"
+          echo "✅ Service API endpoints verified"
           {
-            echo "## Legacy API Verification"
+            echo "## Service API Verification"
             echo ''
-            echo "- API ID: ${API_ID}"
-            echo "- BACKEND_API_URL: ${BASE_URL}"
-            echo ''
-            echo "Set GitHub secret BACKEND_API_URL to the value above before frontend deployment."
+            echo "- product API ID: ${PRODUCT_API_ID}"
+            echo "- product endpoint: ${PRODUCT_BASE_URL}"
+            echo "- cart API ID: ${CART_API_ID}"
+            echo "- cart endpoint: ${CART_BASE_URL}"
           } >> "$GITHUB_STEP_SUMMARY"

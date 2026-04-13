@@ -61,8 +61,6 @@ jobs:
           [ -z "${{ secrets.AWS_REGION_CUSTOM }}" ] && MISSING="${MISSING} AWS_REGION_CUSTOM"
           [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && MISSING="${MISSING} AWS_ACCESS_KEY_ID"
           [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && MISSING="${MISSING} AWS_SECRET_ACCESS_KEY"
-          [ -z "${{ secrets.ADMIN_USERNAME }}" ] && MISSING="${MISSING} ADMIN_USERNAME"
-          [ -z "${{ secrets.ADMIN_PASSWORD_HASH }}" ] && MISSING="${MISSING} ADMIN_PASSWORD_HASH"
           if [ -n "$MISSING" ]; then
             echo "::error::Missing required secrets:${MISSING}"
             exit 1
@@ -160,8 +158,6 @@ jobs:
             -var="aws_region=${{ secrets.AWS_REGION_CUSTOM }}" \
             -var="environment=${{ env.TARGET_ENV }}" \
             -var="jwt_secret=${{ secrets.JWT_SECRET }}" \
-            -var="admin_username=${{ secrets.ADMIN_USERNAME }}" \
-            -var="admin_password_hash=${{ secrets.ADMIN_PASSWORD_HASH }}" \
             -out=tfplan \
             -no-color
         continue-on-error: false
@@ -178,20 +174,31 @@ jobs:
         if: env.TF_ACTION == 'apply'
         shell: bash
         run: |
-          LEGACY_API_ENDPOINT=$(terraform output -raw legacy_api_endpoint)
+          PRODUCT_API_URL=$(terraform output -json service_api_endpoints | jq -r '.product')
+          CART_API_URL=$(terraform output -json service_api_endpoints | jq -r '.cart')
+          ORDER_API_URL=$(terraform output -json service_api_endpoints | jq -r '.order')
+          CONTENT_API_URL=$(terraform output -json service_api_endpoints | jq -r '.content')
+          DISCOUNT_API_URL=$(terraform output -json service_api_endpoints | jq -r '.discount')
+          NOTIFICATION_API_URL=$(terraform output -json service_api_endpoints | jq -r '.notification')
+          INTEGRATION_API_URL=$(terraform output -json service_api_endpoints | jq -r '.integration')
 
-          echo "Primary frontend BACKEND_API_URL: ${LEGACY_API_ENDPOINT}"
           echo "Service API endpoints (copy values into deployment secrets as needed):"
           terraform output -json service_api_endpoints
           echo ""
           echo "Service API Gateway IDs:"
           terraform output -json service_api_gateway_ids
+          echo ""
+          echo "Frontend secrets mapping:"
+          echo "PRODUCT_API_URL=${PRODUCT_API_URL}"
+          echo "CART_API_URL=${CART_API_URL}"
+          echo "ORDER_API_URL=${ORDER_API_URL}"
+          echo "CONTENT_API_URL=${CONTENT_API_URL}"
+          echo "DISCOUNT_API_URL=${DISCOUNT_API_URL}"
+          echo "NOTIFICATION_API_URL=${NOTIFICATION_API_URL}"
+          echo "INTEGRATION_API_URL=${INTEGRATION_API_URL}"
+          echo "BACKEND_API_URL=${PRODUCT_API_URL}"
 
           {
-            echo "## Primary Frontend Backend URL"
-            echo ''
-            echo "Set BACKEND_API_URL to: ${LEGACY_API_ENDPOINT}"
-            echo ''
             echo "## Service API Endpoints"
             echo ''
             echo '```json'
@@ -202,5 +209,18 @@ jobs:
             echo ''
             echo '```json'
             terraform output -json service_api_gateway_ids
+            echo '```'
+            echo ''
+            echo '## Frontend Secret Values'
+            echo ''
+            echo '```bash'
+            echo "PRODUCT_API_URL=${PRODUCT_API_URL}"
+            echo "CART_API_URL=${CART_API_URL}"
+            echo "ORDER_API_URL=${ORDER_API_URL}"
+            echo "CONTENT_API_URL=${CONTENT_API_URL}"
+            echo "DISCOUNT_API_URL=${DISCOUNT_API_URL}"
+            echo "NOTIFICATION_API_URL=${NOTIFICATION_API_URL}"
+            echo "INTEGRATION_API_URL=${INTEGRATION_API_URL}"
+            echo "BACKEND_API_URL=${PRODUCT_API_URL}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
