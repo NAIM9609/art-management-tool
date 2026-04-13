@@ -7,6 +7,7 @@ import { InputText } from 'primereact/inputtext';
 import { Image } from 'primereact/image';
 import { Toast } from 'primereact/toast';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
+import { getApiBaseUrl } from '@/services/apiUtils';
 
 const IMAGE_UPLOAD_CONFIRM_GROUP = 'image-upload-confirm';
 
@@ -36,7 +37,7 @@ export default function ImageUpload({
   const [urlInput, setUrlInput] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+  const API_BASE_URL = getApiBaseUrl();
 
   const getUploadEndpoint = (): 'personaggi' | 'fumetti' => {
     if (uploadEntity) {

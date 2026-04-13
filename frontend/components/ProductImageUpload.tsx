@@ -27,8 +27,6 @@ export default function ProductImageUpload({
   const [uploading, setUploading] = useState(false);
   const [editingAltText, setEditingAltText] = useState<{ [key: number]: string }>({});
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
-
   // Handle file upload (supporta multipli)
   const handleUpload = async (event: FileUploadHandlerEvent) => {
     if (!productId) {

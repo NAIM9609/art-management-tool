@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Card } from 'primereact/card';
 import { Chart } from 'primereact/chart';
 import { useLocale } from 'next-intl';
+import { getApiBaseUrl } from '@/services/apiUtils';
 
 interface Stats {
   totalProducts: number;
@@ -93,42 +94,44 @@ export default function AdminDashboard() {
   const fetchDashboardStats = async () => {
     try {
       const token = localStorage.getItem('adminToken');
-      const response = await fetch('/api/admin/stats', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const headers = { Authorization: `Bearer ${token}` };
+      const apiBaseUrl = getApiBaseUrl();
+
+      const [productsRes, ordersRes, personaggiRes] = await Promise.all([
+        fetch(`${apiBaseUrl}/api/admin/shop/products`, { headers }),
+        fetch(`${apiBaseUrl}/api/admin/shop/orders`, { headers }),
+        fetch(`${apiBaseUrl}/api/personaggi`, { headers }),
+      ]);
+
+      const productsData = productsRes.ok ? await productsRes.json() : { products: [] };
+      const ordersData = ordersRes.ok ? await ordersRes.json() : { orders: [] };
+      const personaggiData = personaggiRes.ok ? await personaggiRes.json() : [];
+
+      const products = Array.isArray(productsData?.products) ? productsData.products : [];
+      const orders = Array.isArray(ordersData?.orders) ? ordersData.orders : [];
+      const personaggi = Array.isArray(personaggiData) ? personaggiData : [];
+      const totalRevenue = orders.reduce(
+        (sum: number, order: { total?: number | string }) =>
+          sum + (typeof order.total === 'string' ? parseFloat(order.total) : (order.total || 0)),
+        0
+      );
+
+      setStats({
+        totalProducts: products.length,
+        totalOrders: orders.length,
+        totalPersonaggi: personaggi.length,
+        totalRevenue,
       });
 
-      if (response.ok) {
-        const data: DashboardData = await response.json();
-        setStats({
-          totalProducts: data.totalProducts,
-          totalOrders: data.totalOrders,
-          totalPersonaggi: data.totalPersonaggi,
-          totalRevenue: data.totalRevenue,
-        });
+      const recentOrders = orders
+        .slice(0, 5)
+        .map((order: { id?: string; created_at?: string }) => ({
+          type: 'order',
+          description: `Order ${order.id || ''} created`,
+          time: order.created_at || new Date().toISOString(),
+        }));
 
-        // Update chart data
-        if (data.salesData && data.salesData.length > 0) {
-          setChartData({
-            labels: data.salesData.map((d) => d.month),
-            datasets: [
-              {
-                label: 'Sales',
-                data: data.salesData.map((d) => d.sales),
-                fill: false,
-                borderColor: '#8B5CF6',
-                tension: 0.4,
-              },
-            ],
-          });
-        }
-
-        // Update recent activity
-        if (data.recentActivity) {
-          setRecentActivity(data.recentActivity);
-        }
-      }
+      setRecentActivity(recentOrders);
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
     } finally {

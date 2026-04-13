@@ -28,6 +28,9 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 // Each value is an array of handler TS files relative to the service src/.
 
 const SERVICE_HANDLERS = {
+  'legacy-api': [
+    'src/lambda.ts',
+  ],
   'product-service': [
     'src/handlers/product.handler.ts',
     'src/handlers/category.handler.ts',
@@ -63,6 +66,14 @@ const SERVICE_HANDLERS = {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function resolveEntryPoints(serviceName) {
+  if (serviceName === 'legacy-api') {
+    const fullPath = resolve(__dirname, 'src', 'lambda.ts');
+    if (!existsSync(fullPath)) {
+      throw new Error(`Handler not found: ${fullPath}`);
+    }
+    return [fullPath];
+  }
+
   const serviceDir = resolve(__dirname, 'services', serviceName);
   if (!existsSync(serviceDir)) {
     throw new Error(`Service directory not found: ${serviceDir}`);
@@ -127,7 +138,9 @@ async function main() {
   let serviceNames;
   if (args.length > 0) {
     serviceNames = args.map((arg) => {
-      const normalised = arg.endsWith('-service') ? arg : `${arg}-service`;
+      const normalised = SERVICE_HANDLERS[arg]
+        ? arg
+        : (arg.endsWith('-service') ? arg : `${arg}-service`);
       if (!SERVICE_HANDLERS[normalised]) {
         console.error(`Unknown service: ${arg}`);
         console.error(`Available: ${Object.keys(SERVICE_HANDLERS).join(', ')}`);

@@ -47,34 +47,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  
-  // Rewrites and headers are only supported in standalone/server mode
   ...(isExportMode ? {} : {
-    // Proxy API requests to backend to avoid CORS issues
-    async rewrites() {
-      const backendUrl = 
-        process.env.BACKEND_URL || 
-        process.env.NEXT_PUBLIC_API_URL || 
-        (process.env.NODE_ENV === 'production' 
-          ? 'http://giorgiopriviteralab.com:8080' 
-          : 'http://localhost:8080');
-      
-      return [
-        {
-          source: '/api/:path*',
-          destination: `${backendUrl}/api/:path*`,
-        },
-        {
-          source: '/health',
-          destination: `${backendUrl}/health`,
-        },
-        {
-          source: '/uploads/:path*',
-          destination: `${backendUrl}/uploads/:path*`,
-        },
-      ];
-    },
-    
     // Remove strict-origin-when-cross-origin in development
     async headers() {
       return [

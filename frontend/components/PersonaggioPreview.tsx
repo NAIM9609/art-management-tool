@@ -4,6 +4,7 @@ import { PersonaggioDTO } from '@/services/PersonaggiAPIService';
 import { Galleria } from 'primereact/galleria';
 import { useState, useEffect } from 'react';
 import OptimizedImage from '@/components/OptimizedImage';
+import { getApiBaseUrl } from '@/services/apiUtils';
 
 interface PersonaggioPreviewProps {
   personaggio: Partial<PersonaggioDTO>;
@@ -16,7 +17,7 @@ interface GalleriaImage {
 }
 
 export default function PersonaggioPreview({ personaggio }: PersonaggioPreviewProps) {
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+  const API_BASE_URL = getApiBaseUrl();
   const [images, setImages] = useState<GalleriaImage[]>([]);
 
   const getImageUrl = (url: string | undefined) => {

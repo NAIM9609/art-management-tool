@@ -139,6 +139,10 @@ jobs:
               integration-service-etsy-sync-orders
               integration-service-etsy-webhook
               integration-service-etsy-scheduled-sync
+          - name: legacy-api
+            esbuild_arg: legacy-api
+            functions: >-
+              legacy-api-router
 
     steps:
       - name: Validate required secrets
@@ -312,3 +316,92 @@ jobs:
           else
             echo "No previous version found for rollback"
           fi
+
+  verify-legacy-api:
+    name: Verify Legacy API Contract
+    needs: [deploy-services]
+    if: needs.deploy-services.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    env:
+      AWS_REGION_CUSTOM: ${{ secrets.AWS_REGION_CUSTOM }}
+      PROJECT_NAME: art-management-tool
+      DEPLOY_ENV: ${{ inputs.environment }}
+
+    steps:
+      - name: Validate required secrets
+        run: |
+          MISSING=""
+          [ -z "${{ secrets.AWS_REGION_CUSTOM }}" ] && MISSING="${MISSING} AWS_REGION_CUSTOM"
+          [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && MISSING="${MISSING} AWS_ACCESS_KEY_ID"
+          [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && MISSING="${MISSING} AWS_SECRET_ACCESS_KEY"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required secrets:${MISSING}"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION_CUSTOM }}
+
+      - name: Discover legacy API endpoint
+        id: discover
+        shell: bash
+        run: |
+          API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-legacy-api"
+          API_ID=$(aws apigatewayv2 get-apis \
+            --region "${AWS_REGION_CUSTOM}" \
+            --query "Items[?Name=='${API_NAME}'].ApiId | [0]" \
+            --output text)
+
+          if [ -z "${API_ID}" ] || [ "${API_ID}" = "None" ]; then
+            echo "::error::Legacy API not found: ${API_NAME}"
+            exit 1
+          fi
+
+          BASE_URL="https://${API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}"
+          echo "api_id=${API_ID}" >> "$GITHUB_OUTPUT"
+          echo "base_url=${BASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "Discovered legacy API endpoint: ${BASE_URL}"
+
+      - name: Smoke test legacy API routes
+        shell: bash
+        env:
+          BASE_URL: ${{ steps.discover.outputs.base_url }}
+        run: |
+          check_status() {
+            local path="$1"
+            local url="${BASE_URL}${path}"
+            local status
+            status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+            echo "${url} -> ${status}"
+            if [ "$status" = "000" ] || [ "$status" = "404" ]; then
+              echo "::error::Legacy API contract check failed for ${url} (status ${status})."
+              exit 1
+            fi
+          }
+
+          check_status "/health"
+          check_status "/api/auth/login"
+          check_status "/api/shop/products"
+
+      - name: Deployment summary
+        shell: bash
+        env:
+          BASE_URL: ${{ steps.discover.outputs.base_url }}
+          API_ID: ${{ steps.discover.outputs.api_id }}
+        run: |
+          echo "✅ Legacy API contract verified"
+          echo "BACKEND_API_URL=${BASE_URL}"
+          {
+            echo "## Legacy API Verification"
+            echo ''
+            echo "- API ID: ${API_ID}"
+            echo "- BACKEND_API_URL: ${BASE_URL}"
+            echo ''
+            echo "Set GitHub secret BACKEND_API_URL to the value above before frontend deployment."
+          } >> "$GITHUB_STEP_SUMMARY"

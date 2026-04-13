@@ -11,6 +11,7 @@ import PageHeader from '@/components/admin/PageHeader';
 import FormDialog from '@/components/admin/FormDialog';
 import { ProductForm } from '@/components/admin/ProductForm';
 import { ProductColumns } from '@/components/admin/ProductColumns';
+import { getApiBaseUrl } from '@/services/apiUtils';
 
 interface Product {
   id: string;
@@ -30,6 +31,7 @@ const initialFormData = {
 };
 
 export default function ProductsManagement() {
+  const apiBaseUrl = getApiBaseUrl();
   const { toast, showSuccess, showError } = useToast();
   const { showDialog, formData, isEditing, editingItem, openDialog, closeDialog, setFormData } = 
     useFormDialog<typeof initialFormData>(initialFormData);
@@ -38,7 +40,7 @@ export default function ProductsManagement() {
   const { items: products, loading, refresh } = useDataTable<Product>({
     fetchData: async () => {
       const token = localStorage.getItem('adminToken');
-      const response = await fetch('/api/admin/shop/products', {
+      const response = await fetch(`${apiBaseUrl}/api/admin/shop/products`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       
@@ -81,8 +83,8 @@ export default function ProductsManagement() {
     const token = localStorage.getItem('adminToken');
     try {
       const url = editingProduct
-        ? `/api/admin/shop/products/${editingProduct.id}`
-        : '/api/admin/shop/products';
+        ? `${apiBaseUrl}/api/admin/shop/products/${editingProduct.id}`
+        : `${apiBaseUrl}/api/admin/shop/products`;
       
       const response = await fetch(url, {
         method: editingProduct ? 'PATCH' : 'POST',
@@ -114,7 +116,7 @@ export default function ProductsManagement() {
       accept: async () => {
         const token = localStorage.getItem('adminToken');
         try {
-          const response = await fetch(`/api/admin/shop/products/${product.id}`, {
+          const response = await fetch(`${apiBaseUrl}/api/admin/shop/products/${product.id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` },
           });

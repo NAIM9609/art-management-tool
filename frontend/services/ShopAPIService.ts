@@ -3,9 +3,9 @@
  * Handles public shop API interactions (products, cart, checkout)
  */
 
-import { getCached, setCached, CACHE_TTL, fetchWithRetry, parseErrorResponse } from './apiUtils';
+import { getCached, setCached, CACHE_TTL, fetchWithRetry, parseErrorResponse, getApiBaseUrl } from './apiUtils';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE_URL = getApiBaseUrl();
 
 // ==================== Types ====================
 

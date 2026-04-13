@@ -167,7 +167,12 @@ export function getAuthHeaders(): HeadersInit {
 }
 
 export function getApiBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_API_URL || '';
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (!baseUrl) {
+    throw new Error('NEXT_PUBLIC_API_URL is required and must point to the API Gateway endpoint');
+  }
+
+  return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 }
 
 async function parseSuccessResponse<T>(response: Response): Promise<T> {

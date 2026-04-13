@@ -8,6 +8,7 @@ import { Tag } from 'primereact/tag';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
+import { getApiBaseUrl } from '@/services/apiUtils';
 
 interface Order {
   id: string;
@@ -38,7 +39,7 @@ export default function OrdersPage() {
   const fetchOrders = async () => {
     try {
       const token = localStorage.getItem('adminToken');
-      const response = await fetch('/api/admin/orders', {
+      const response = await fetch(`${getApiBaseUrl()}/api/admin/shop/orders`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -46,7 +47,10 @@ export default function OrdersPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setOrders(data || []);
+        const normalized = Array.isArray(data)
+          ? data
+          : (Array.isArray(data?.orders) ? data.orders : []);
+        setOrders(normalized);
       } else {
         console.error('Failed to fetch orders');
       }

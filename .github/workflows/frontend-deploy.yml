@@ -47,6 +47,32 @@ jobs:
             exit 1
           fi
 
+      - name: Validate backend endpoint reachability
+        run: |
+          BASE_URL="${{ secrets.BACKEND_API_URL }}"
+          BASE_URL="${BASE_URL%/}"
+
+          check_status() {
+            local path="$1"
+            local url="${BASE_URL}${path}"
+            local status
+            status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+            echo "${url} -> ${status}"
+            if [ "$status" = "000" ] || [ "$status" = "404" ]; then
+              echo "::error::Backend endpoint check failed for ${url} (status ${status})."
+              exit 1
+            fi
+          }
+
+          # Health should be reachable on the API Gateway stage URL.
+          check_status "/health"
+          # Auth route should exist even if credentials are invalid.
+          check_status "/api/auth/login"
+          # Shop products route should exist on the frontend contract endpoint.
+          check_status "/api/shop/products"
+          # Admin products route should exist (auth can fail, route must not be missing).
+          check_status "/api/admin/shop/products"
+
       # Step 1: Checkout the repository code
       - name: Checkout code
         uses: actions/checkout@v4
