@@ -26,7 +26,7 @@ provider "aws" {
 # ---------------------------------------------------------------------------
 
 variable "aws_region" {
-  description = "AWS region to deploy resources (set via terraform.tfvars or -var flag)"
+  description = "AWS region to deploy resources (provided by CI via TF_VAR_aws_region)"
   type        = string
 }
 

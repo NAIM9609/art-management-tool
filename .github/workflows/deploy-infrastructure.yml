@@ -77,6 +77,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION_CUSTOM }}
 
+      - name: Set Terraform variables
+        run: |
+          echo "TF_VAR_aws_region=${{ secrets.AWS_REGION_CUSTOM }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_environment=${{ env.TARGET_ENV }}" >> "$GITHUB_ENV"
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -155,7 +160,6 @@ jobs:
         id: plan
         run: |
           terraform plan \
-            -var="aws_region=${{ secrets.AWS_REGION_CUSTOM }}" \
             -var="environment=${{ env.TARGET_ENV }}" \
             -var="jwt_secret=${{ secrets.JWT_SECRET }}" \
             -out=tfplan \

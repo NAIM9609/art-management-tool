@@ -72,6 +72,10 @@ resource "aws_apigatewayv2_integration" "cart_service" {
   integration_method = "POST"
 
   payload_format_version = "2.0"
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -98,6 +102,12 @@ resource "aws_apigatewayv2_route" "cart_service" {
   api_id    = aws_apigatewayv2_api.cart_service.id
   route_key = each.key
   target    = "integrations/${aws_apigatewayv2_integration.cart_service[each.value].id}"
+
+  depends_on = [aws_apigatewayv2_integration.cart_service]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # ---------------------------------------------------------------------------

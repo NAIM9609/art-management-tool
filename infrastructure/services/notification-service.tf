@@ -273,6 +273,10 @@ resource "aws_apigatewayv2_integration" "notification_service" {
   integration_method = "POST"
 
   payload_format_version = "2.0"
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -294,6 +298,12 @@ resource "aws_apigatewayv2_route" "notification_service" {
   api_id    = aws_apigatewayv2_api.notification_service.id
   route_key = each.key
   target    = "integrations/${aws_apigatewayv2_integration.notification_service[each.value].id}"
+
+  depends_on = [aws_apigatewayv2_integration.notification_service]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # ---------------------------------------------------------------------------
