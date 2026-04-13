@@ -317,6 +317,15 @@ resource "aws_lambda_permission" "notification_service" {
 }
 
 # ---------------------------------------------------------------------------
+# Moved – key rename (keeps same AWS integration ID; avoids route 409 on apply)
+# ---------------------------------------------------------------------------
+
+moved {
+  from = aws_apigatewayv2_integration.notification_service["notification-delete-notification"]
+  to   = aws_apigatewayv2_integration.notification_service["notification-service-delete-notification"]
+}
+
+# ---------------------------------------------------------------------------
 # Outputs
 # ---------------------------------------------------------------------------
 

@@ -447,6 +447,15 @@ resource "aws_lambda_permission" "etsy_scheduled_sync_eventbridge" {
 }
 
 # ---------------------------------------------------------------------------
+# Moved – key rename (keeps same AWS integration ID; avoids route 409 on apply)
+# ---------------------------------------------------------------------------
+
+moved {
+  from = aws_apigatewayv2_integration.integration_service["integration-etsy-handle-callback"]
+  to   = aws_apigatewayv2_integration.integration_service["integration-service-etsy-handle-callback"]
+}
+
+# ---------------------------------------------------------------------------
 # Outputs
 # ---------------------------------------------------------------------------
 
