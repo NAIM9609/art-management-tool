@@ -97,10 +97,6 @@ resource "aws_apigatewayv2_route" "order_service" {
   target    = "integrations/${aws_apigatewayv2_integration.order_service[each.value].id}"
 
   depends_on = [aws_apigatewayv2_integration.order_service]
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
 # ---------------------------------------------------------------------------

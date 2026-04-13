@@ -104,10 +104,6 @@ resource "aws_apigatewayv2_route" "cart_service" {
   target    = "integrations/${aws_apigatewayv2_integration.cart_service[each.value].id}"
 
   depends_on = [aws_apigatewayv2_integration.cart_service]
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
 # ---------------------------------------------------------------------------

@@ -300,10 +300,6 @@ resource "aws_apigatewayv2_route" "notification_service" {
   target    = "integrations/${aws_apigatewayv2_integration.notification_service[each.value].id}"
 
   depends_on = [aws_apigatewayv2_integration.notification_service]
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
 # ---------------------------------------------------------------------------

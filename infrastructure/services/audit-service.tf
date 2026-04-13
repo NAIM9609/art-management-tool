@@ -293,10 +293,6 @@ resource "aws_apigatewayv2_route" "audit_service" {
   target    = "integrations/${aws_apigatewayv2_integration.audit_service[each.value].id}"
 
   depends_on = [aws_apigatewayv2_integration.audit_service]
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
 # ---------------------------------------------------------------------------

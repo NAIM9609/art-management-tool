@@ -323,10 +323,6 @@ resource "aws_apigatewayv2_route" "discount_service" {
   target    = "integrations/${aws_apigatewayv2_integration.discount_service[each.value].id}"
 
   depends_on = [aws_apigatewayv2_integration.discount_service]
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
 # ---------------------------------------------------------------------------
