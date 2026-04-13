@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { getApiBaseUrl } from '@/services/apiUtils';
 
 export default function AdminLogin() {
   const [username, setUsername] = useState('');
@@ -10,6 +11,7 @@ export default function AdminLogin() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const authLoginUrl = `${getApiBaseUrl()}/api/auth/login`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,7 +19,7 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch(authLoginUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

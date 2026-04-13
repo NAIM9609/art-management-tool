@@ -169,3 +169,27 @@ jobs:
       - name: Output endpoint URLs
         if: env.TF_ACTION == 'apply'
         run: terraform output -no-color
+
+      - name: Summarize API Gateway endpoints
+        if: env.TF_ACTION == 'apply'
+        shell: bash
+        run: |
+          echo "Service API endpoints (copy values into deployment secrets as needed):"
+          terraform output -json service_api_endpoints
+          echo ""
+          echo "Service API Gateway IDs:"
+          terraform output -json service_api_gateway_ids
+
+          {
+            echo "## Service API Endpoints"
+            echo ''
+            echo '```json'
+            terraform output -json service_api_endpoints
+            echo '```'
+            echo ''
+            echo '## Service API Gateway IDs'
+            echo ''
+            echo '```json'
+            terraform output -json service_api_gateway_ids
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
