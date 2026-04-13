@@ -32,7 +32,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Run ESLint (core)
         working-directory: backend
@@ -58,7 +58,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Run unit tests
         working-directory: backend
@@ -101,7 +101,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Run ${{ matrix.service }} unit tests
         working-directory: backend
@@ -152,6 +152,8 @@ jobs:
 
       # AWS Configuration (LocalStack)
       AWS_REGION_CUSTOM: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       AWS_ENDPOINT_URL: http://localhost:4566
@@ -178,7 +180,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Wait for LocalStack
         run: |
@@ -186,8 +188,13 @@ jobs:
 
       - name: Initialize LocalStack resources
         run: |
-          # Create S3 bucket
-          aws --endpoint-url=http://localhost:4566 s3 mb s3://art-images-test
+          # Create S3 bucket. Using s3api with an explicit region avoids the
+          # aws-global region bug in LocalStack's S3 implementation.
+          if ! aws --endpoint-url=http://localhost:4566 s3api head-bucket --bucket art-images-test >/dev/null 2>&1; then
+            aws --endpoint-url=http://localhost:4566 s3api create-bucket \
+              --bucket art-images-test \
+              --region us-east-1
+          fi
 
           # Create DynamoDB tables
           aws --endpoint-url=http://localhost:4566 dynamodb create-table \
@@ -273,7 +280,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Run ${{ matrix.service }} integration tests
         working-directory: backend
@@ -295,7 +302,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build
         working-directory: backend

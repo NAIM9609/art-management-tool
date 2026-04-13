@@ -165,7 +165,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Run tests
         working-directory: backend
@@ -232,6 +232,36 @@ jobs:
           aws s3 cp /tmp/lambda.zip "s3://${{ secrets.LAMBDA_BUCKET }}/${S3_KEY}"
           echo "S3_KEY=${S3_KEY}" >> $GITHUB_ENV
           echo "s3_key=${S3_KEY}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Lambda functions to become available
+        run: |
+          FUNCTIONS="${{ matrix.service.functions }}"
+          MISSING=""
+
+          for FN_SUFFIX in $FUNCTIONS; do
+            FN="${{ env.PROJECT_NAME }}-${{ env.DEPLOY_ENV }}-${FN_SUFFIX}"
+            READY=false
+
+            for attempt in 1 2 3 4 5 6; do
+              if aws lambda get-function --function-name "$FN" >/dev/null 2>&1; then
+                READY=true
+                break
+              fi
+
+              echo "Waiting for ${FN} to become available (attempt ${attempt}/6)..."
+              sleep 10
+            done
+
+            if [ "$READY" != "true" ]; then
+              MISSING="${MISSING} ${FN}"
+            fi
+          done
+
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing Lambda functions:${MISSING}"
+            echo "Deploy infrastructure for ${{ env.DEPLOY_ENV }} and rerun once the functions exist."
+            exit 1
+          fi
 
       - name: Update Lambda functions
         id: update_lambda

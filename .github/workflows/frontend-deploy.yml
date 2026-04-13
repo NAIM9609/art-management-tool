@@ -32,11 +32,6 @@ jobs:
     permissions:
       contents: read  # Required to checkout the repository
     
-    # Set working directory for all run steps in this job
-    defaults:
-      run:
-        working-directory: ./frontend
-    
     steps:
       # Step 0: Validate required secrets before doing any work
       - name: Validate required secrets
@@ -66,13 +61,14 @@ jobs:
           cache-dependency-path: './frontend/package-lock.json'
       
       # Step 3: Install dependencies
-      # Use the lockfile for reproducible CI builds.
       - name: Install dependencies
-        run: npm ci
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
       
       # Step 4: Prepare for static export build
       # Remove API routes (not supported with output: 'export') and build static site
       - name: Build frontend (static export)
+        working-directory: frontend
         run: |
           # Remove API routes - they only work in standalone/server mode.
           # In static export, the frontend calls the backend directly via NEXT_PUBLIC_API_URL.
@@ -90,6 +86,7 @@ jobs:
       # Step 5: Create ZIP archive of static build artifacts
       # The 'out/' directory contains all static HTML, CSS, JS files ready for hosting
       - name: Create build archive
+        working-directory: frontend
         run: |
           # Verify the static export output exists
           if [ ! -d "out" ]; then
@@ -130,6 +127,7 @@ jobs:
       # Required secret: S3_BUCKET_NAME
       - name: Upload to S3
         if: github.event_name != 'pull_request'
+        working-directory: frontend
         run: |
           # Upload timestamped version with metadata
           aws s3 cp ../frontend-build-${BUILD_TIMESTAMP}.zip \
@@ -147,6 +145,7 @@ jobs:
       # Required secrets: AMPLIFY_APP_ID, AMPLIFY_BRANCH_NAME (optional, defaults to 'main')
       - name: Deploy to Amplify
         if: github.event_name != 'pull_request'
+        working-directory: frontend
         run: |
           if [ -n "$AMPLIFY_APP_ID" ]; then
             BRANCH_NAME="${AMPLIFY_BRANCH_NAME:-main}"

@@ -1,12 +1,6 @@
 name: Deploy Content Service
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'backend/services/content-service/**'
-      - 'backend/src/**'
-      - '.github/workflows/deploy-content-service.yml'
   workflow_dispatch:
     inputs:
       environment:
@@ -32,12 +26,12 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy Content Service (${{ github.event_name == 'push' && 'dev' || inputs.environment }})
+    name: Deploy Content Service (${{ inputs.environment }})
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
+    environment: ${{ inputs.environment }}
 
     env:
-      DEPLOY_ENV: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
+      DEPLOY_ENV: ${{ inputs.environment }}
 
     steps:
       - name: Validate required secrets
@@ -64,7 +58,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Run tests
         working-directory: backend
@@ -228,7 +222,7 @@ jobs:
             "s3://${{ secrets.LAMBDA_BUCKET }}/${{ env.SERVICE_NAME }}/${{ env.DEPLOY_ENV }}/previous.zip" || true
 
       - name: Notify Slack on success
-        if: success() && env.SLACK_WEBHOOK_URL != ''
+        if: success() && startsWith(env.SLACK_WEBHOOK_URL, 'https://')
         uses: slackapi/slack-github-action@v1
         with:
           payload: |
@@ -247,7 +241,7 @@ jobs:
           SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
 
       - name: Notify Slack on failure
-        if: failure() && env.SLACK_WEBHOOK_URL != ''
+        if: failure() && startsWith(env.SLACK_WEBHOOK_URL, 'https://')
         uses: slackapi/slack-github-action@v1
         with:
           payload: |
