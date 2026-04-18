@@ -12,47 +12,30 @@ on:
           - dev
           - staging
           - prod
-      action:
-        description: 'Terraform action'
-        required: true
-        default: 'plan'
-        type: choice
-        options:
-          - plan
-          - apply
   workflow_call:
     inputs:
       environment:
         description: 'Target environment'
         required: true
         type: string
-      action:
-        description: 'Terraform action (plan or apply)'
-        required: true
-        type: string
 
-# Only one run per environment at a time; queue rather than cancel so a
-# queued apply is never silently dropped.
 concurrency:
-  group: terraform-${{ inputs.environment || github.event.inputs.environment }}
+  group: cloudformation-${{ inputs.environment || github.event.inputs.environment }}
   cancel-in-progress: false
 
 env:
   TARGET_ENV: ${{ inputs.environment || github.event.inputs.environment }}
-  TF_ACTION: ${{ inputs.action || github.event.inputs.action }}
+  STACK_NAME: art-management-tool-${{ inputs.environment || github.event.inputs.environment }}
+  TEMPLATES_BUCKET: art-management-cfn-templates
 
 permissions:
   contents: read
 
 jobs:
-  terraform:
-    name: Terraform ${{ inputs.action || github.event.inputs.action }} (${{ inputs.environment || github.event.inputs.environment }})
+  deploy:
+    name: CloudFormation Deploy (${{ inputs.environment || github.event.inputs.environment }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || github.event.inputs.environment }}
-
-    defaults:
-      run:
-        working-directory: infrastructure/services
 
     steps:
       - name: Validate required secrets
@@ -61,11 +44,12 @@ jobs:
           [ -z "${{ secrets.AWS_REGION_CUSTOM }}" ] && MISSING="${MISSING} AWS_REGION_CUSTOM"
           [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && MISSING="${MISSING} AWS_ACCESS_KEY_ID"
           [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && MISSING="${MISSING} AWS_SECRET_ACCESS_KEY"
+          [ -z "${{ secrets.JWT_SECRET }}" ] && MISSING="${MISSING} JWT_SECRET"
+          [ -z "${{ secrets.LAMBDA_BUCKET }}" ] && MISSING="${MISSING} LAMBDA_BUCKET"
           if [ -n "$MISSING" ]; then
             echo "::error::Missing required secrets:${MISSING}"
             exit 1
           fi
-        working-directory: .
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -77,37 +61,17 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION_CUSTOM }}
 
-      - name: Set Terraform variables
-        run: |
-          echo "TF_VAR_aws_region=${{ secrets.AWS_REGION_CUSTOM }}" >> "$GITHUB_ENV"
-          echo "TF_VAR_environment=${{ env.TARGET_ENV }}" >> "$GITHUB_ENV"
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-
-      # ---------------------------------------------------------------------------
-      # Auto-provision the S3 state bucket so no manual one-time setup is
-      # needed. Uses TF_BACKEND_BUCKET secret if set; otherwise derives a
-      # deterministic name from the AWS account ID so it is globally unique.
-      # All operations are idempotent — safe to run on every CI invocation.
-      # ---------------------------------------------------------------------------
-      - name: Bootstrap Terraform state backend
-        id: backend
-        working-directory: .
+      # -------------------------------------------------------------------
+      # Ensure CFN templates S3 bucket exists
+      # -------------------------------------------------------------------
+      - name: Bootstrap templates bucket
+        id: bucket
         run: |
           REGION="${{ secrets.AWS_REGION_CUSTOM }}"
-
-          if [ -n "${{ secrets.TF_BACKEND_BUCKET }}" ]; then
-            BUCKET="${{ secrets.TF_BACKEND_BUCKET }}"
-          else
-            ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-            BUCKET="art-management-tfstate-${ACCOUNT_ID}"
-          fi
+          BUCKET="${{ env.TEMPLATES_BUCKET }}"
 
           if ! aws s3api head-bucket --bucket "${BUCKET}" 2>/dev/null; then
-            echo "Creating state bucket: ${BUCKET} in ${REGION}"
+            echo "Creating templates bucket: ${BUCKET} in ${REGION}"
             if [ "${REGION}" = "us-east-1" ]; then
               aws s3api create-bucket --bucket "${BUCKET}" --region "${REGION}"
             else
@@ -123,108 +87,183 @@ jobs:
               --public-access-block-configuration \
               'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
           else
-            echo "State bucket already exists: ${BUCKET}"
+            echo "Templates bucket already exists: ${BUCKET}"
           fi
 
-          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
-          echo "region=${REGION}"  >> "$GITHUB_OUTPUT"
-          echo "State path: s3://${BUCKET}/services/${{ env.TARGET_ENV }}/terraform.tfstate"
+          BUCKET_URL="https://s3.${{ secrets.AWS_REGION_CUSTOM }}.amazonaws.com/${BUCKET}"
+          echo "bucket_url=${BUCKET_URL}" >> "$GITHUB_OUTPUT"
+          echo "Templates URL prefix: ${BUCKET_URL}"
 
-      - name: Terraform Init
+      # -------------------------------------------------------------------
+      # Upload nested templates to S3
+      # -------------------------------------------------------------------
+      - name: Upload nested templates
         run: |
-          terraform init \
-            -input=false \
-            -backend-config="bucket=${{ steps.backend.outputs.bucket }}" \
-            -backend-config="key=services/${{ env.TARGET_ENV }}/terraform.tfstate" \
-            -backend-config="region=${{ steps.backend.outputs.region }}"
+          aws s3 sync infrastructure/nested/ \
+            "s3://${{ env.TEMPLATES_BUCKET }}/nested/" \
+            --delete
 
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Validate
-        run: terraform validate -no-color
-
-      # Import pre-existing AWS resources BEFORE planning so the saved plan
-      # matches the state Terraform will see on apply. The script checks AWS
-      # for each resource first — it skips resources that don't exist yet
-      # (fresh deployment) and skips those already in state (idempotent).
-      - name: Import existing AWS resources
-        if: env.TF_ACTION == 'apply'
-        working-directory: infrastructure/services
+      # -------------------------------------------------------------------
+      # Create Lambda placeholder ZIP if needed
+      # -------------------------------------------------------------------
+      - name: Create Lambda placeholder
         run: |
-          bash ../../scripts/import-existing-resources.sh \
-            "${{ env.TARGET_ENV }}"
-        continue-on-error: true
+          if ! aws s3 ls "s3://${{ secrets.LAMBDA_BUCKET }}/lambda-placeholder.zip" 2>/dev/null; then
+            echo 'exports.handler = async (event) => ({ statusCode: 200, body: JSON.stringify({ message: "placeholder - deploy via CI/CD" }) });' > /tmp/index.js
+            cd /tmp && zip lambda-placeholder.zip index.js
+            aws s3 cp /tmp/lambda-placeholder.zip "s3://${{ secrets.LAMBDA_BUCKET }}/lambda-placeholder.zip"
+            echo "Uploaded lambda-placeholder.zip"
+          else
+            echo "lambda-placeholder.zip already exists"
+          fi
 
-      - name: Terraform Plan
-        id: plan
+      # -------------------------------------------------------------------
+      # Validate all templates
+      # -------------------------------------------------------------------
+      - name: Validate templates
         run: |
-          terraform plan \
-            -var="environment=${{ env.TARGET_ENV }}" \
-            -var="jwt_secret=${{ secrets.JWT_SECRET }}" \
-            -out=tfplan \
-            -no-color
-        continue-on-error: false
+          echo "Validating root-stack.yaml..."
+          aws cloudformation validate-template \
+            --template-body file://infrastructure/root-stack.yaml \
+            --no-cli-pager
 
-      - name: Terraform Apply
-        if: env.TF_ACTION == 'apply'
-        run: terraform apply -auto-approve tfplan
+          for tmpl in infrastructure/nested/*.yaml; do
+            echo "Validating ${tmpl}..."
+            aws cloudformation validate-template \
+              --template-body "file://${tmpl}" \
+              --no-cli-pager
+          done
 
-      - name: Output endpoint URLs
-        if: env.TF_ACTION == 'apply'
-        run: terraform output -no-color
+      # -------------------------------------------------------------------
+      # Handle ROLLBACK_COMPLETE state
+      # -------------------------------------------------------------------
+      - name: Clean up failed stack if needed
+        run: |
+          STACK_STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --query "Stacks[0].StackStatus" \
+            --output text 2>/dev/null || echo "DOES_NOT_EXIST")
 
-      - name: Summarize API Gateway endpoints
-        if: env.TF_ACTION == 'apply'
+          if [ "$STACK_STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STACK_STATUS" = "DELETE_FAILED" ]; then
+            echo "Stack is in ${STACK_STATUS} state. Deleting before re-deploy..."
+            aws cloudformation delete-stack --stack-name "${{ env.STACK_NAME }}"
+            aws cloudformation wait stack-delete-complete --stack-name "${{ env.STACK_NAME }}"
+            echo "Stack deleted successfully."
+          else
+            echo "Stack status: ${STACK_STATUS} — proceeding."
+          fi
+
+      # -------------------------------------------------------------------
+      # Build parameter overrides
+      # -------------------------------------------------------------------
+      - name: Build parameter overrides
+        id: params
+        run: |
+          OVERRIDES="ParameterKey=JwtSecret,ParameterValue=${{ secrets.JWT_SECRET }}"
+          OVERRIDES="${OVERRIDES} ParameterKey=TemplatesBucketUrl,ParameterValue=${{ steps.bucket.outputs.bucket_url }}"
+          OVERRIDES="${OVERRIDES} ParameterKey=LambdaCodeS3Bucket,ParameterValue=${{ secrets.LAMBDA_BUCKET }}"
+          OVERRIDES="${OVERRIDES} ParameterKey=AdminEmail,ParameterValue=${{ secrets.ADMIN_EMAIL || 'samuel.haddar96@gmail.com' }}"
+          OVERRIDES="${OVERRIDES} ParameterKey=Environment,ParameterValue=${{ env.TARGET_ENV }}"
+
+          # Load additional params from file if it exists
+          PARAMS_FILE="infrastructure/params/${{ env.TARGET_ENV }}.json"
+          if [ -f "${PARAMS_FILE}" ]; then
+            # Extract param overrides from JSON, skipping keys already set above
+            SKIP_KEYS="JwtSecret|TemplatesBucketUrl|LambdaCodeS3Bucket|AdminEmail|Environment"
+            EXTRA=$(python3 -c "
+          import json, sys, re
+          skip = set(re.split(r'\|', '${SKIP_KEYS}'))
+          with open('${PARAMS_FILE}') as f:
+              params = json.load(f)
+          for p in params:
+              if p['ParameterKey'] not in skip:
+                  print(f\"ParameterKey={p['ParameterKey']},ParameterValue={p['ParameterValue']}\")
+          " 2>/dev/null || true)
+            if [ -n "${EXTRA}" ]; then
+              OVERRIDES="${OVERRIDES} ${EXTRA}"
+            fi
+          fi
+
+          echo "overrides=${OVERRIDES}" >> "$GITHUB_OUTPUT"
+
+      # -------------------------------------------------------------------
+      # Deploy CloudFormation stack
+      # -------------------------------------------------------------------
+      - name: Deploy stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infrastructure/root-stack.yaml \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --parameter-overrides ${{ steps.params.outputs.overrides }} \
+            --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+            --tags "Project=art-management-tool" "Environment=${{ env.TARGET_ENV }}" "ManagedBy=cloudformation" \
+            --no-fail-on-empty-changeset
+
+      # -------------------------------------------------------------------
+      # Validate outputs
+      # -------------------------------------------------------------------
+      - name: Output stack values
+        if: success()
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --query "Stacks[0].Outputs" \
+            --output table \
+            --no-cli-pager
+
+      - name: Summarize API endpoints
+        if: success()
         shell: bash
         run: |
-          PRODUCT_API_URL=$(terraform output -json service_api_endpoints | jq -r '.product')
-          CART_API_URL=$(terraform output -json service_api_endpoints | jq -r '.cart')
-          ORDER_API_URL=$(terraform output -json service_api_endpoints | jq -r '.order')
-          CONTENT_API_URL=$(terraform output -json service_api_endpoints | jq -r '.content')
-          DISCOUNT_API_URL=$(terraform output -json service_api_endpoints | jq -r '.discount')
-          NOTIFICATION_API_URL=$(terraform output -json service_api_endpoints | jq -r '.notification')
-          INTEGRATION_API_URL=$(terraform output -json service_api_endpoints | jq -r '.integration')
+          OUTPUTS=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --query "Stacks[0].Outputs" \
+            --output json --no-cli-pager)
 
-          echo "Service API endpoints (copy values into deployment secrets as needed):"
-          terraform output -json service_api_endpoints
-          echo ""
-          echo "Service API Gateway IDs:"
-          terraform output -json service_api_gateway_ids
-          echo ""
-          echo "Frontend secrets mapping:"
-          echo "PRODUCT_API_URL=${PRODUCT_API_URL}"
-          echo "CART_API_URL=${CART_API_URL}"
-          echo "ORDER_API_URL=${ORDER_API_URL}"
-          echo "CONTENT_API_URL=${CONTENT_API_URL}"
-          echo "DISCOUNT_API_URL=${DISCOUNT_API_URL}"
-          echo "NOTIFICATION_API_URL=${NOTIFICATION_API_URL}"
-          echo "INTEGRATION_API_URL=${INTEGRATION_API_URL}"
-          echo "BACKEND_API_URL=${PRODUCT_API_URL}"
+          get_output() {
+            echo "${OUTPUTS}" | python3 -c "
+          import json, sys
+          outputs = json.load(sys.stdin)
+          for o in (outputs or []):
+              if o['OutputKey'] == '$1':
+                  print(o['OutputValue'])
+                  break
+          " 2>/dev/null || echo "N/A"
+          }
+
+          PRODUCT_URL=$(get_output ProductServiceApiEndpoint)
+          CART_URL=$(get_output CartServiceApiEndpoint)
+          ORDER_URL=$(get_output OrderServiceApiEndpoint)
+          CONTENT_URL=$(get_output ContentServiceApiEndpoint)
+          DISCOUNT_URL=$(get_output DiscountServiceApiEndpoint)
+          NOTIFICATION_URL=$(get_output NotificationServiceApiEndpoint)
+          INTEGRATION_URL=$(get_output IntegrationServiceApiEndpoint)
+          AUDIT_URL=$(get_output AuditServiceApiEndpoint)
 
           {
             echo "## Service API Endpoints"
-            echo ''
-            echo '```json'
-            terraform output -json service_api_endpoints
-            echo '```'
-            echo ''
-            echo '## Service API Gateway IDs'
-            echo ''
-            echo '```json'
-            terraform output -json service_api_gateway_ids
-            echo '```'
-            echo ''
-            echo '## Frontend Secret Values'
-            echo ''
-            echo '```bash'
-            echo "PRODUCT_API_URL=${PRODUCT_API_URL}"
-            echo "CART_API_URL=${CART_API_URL}"
-            echo "ORDER_API_URL=${ORDER_API_URL}"
-            echo "CONTENT_API_URL=${CONTENT_API_URL}"
-            echo "DISCOUNT_API_URL=${DISCOUNT_API_URL}"
-            echo "NOTIFICATION_API_URL=${NOTIFICATION_API_URL}"
-            echo "INTEGRATION_API_URL=${INTEGRATION_API_URL}"
-            echo "BACKEND_API_URL=${PRODUCT_API_URL}"
-            echo '```'
+            echo ""
+            echo "| Service | Endpoint |"
+            echo "|---------|----------|"
+            echo "| Product | ${PRODUCT_URL} |"
+            echo "| Cart | ${CART_URL} |"
+            echo "| Order | ${ORDER_URL} |"
+            echo "| Content | ${CONTENT_URL} |"
+            echo "| Discount | ${DISCOUNT_URL} |"
+            echo "| Notification | ${NOTIFICATION_URL} |"
+            echo "| Integration | ${INTEGRATION_URL} |"
+            echo "| Audit | ${AUDIT_URL} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # -------------------------------------------------------------------
+      # Failure diagnostics
+      # -------------------------------------------------------------------
+      - name: Diagnose failure
+        if: failure()
+        run: |
+          echo "Stack events (last 20):"
+          aws cloudformation describe-stack-events \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --query "StackEvents[:20].[Timestamp,ResourceStatus,ResourceType,LogicalResourceId,ResourceStatusReason]" \
+            --output table \
+            --no-cli-pager 2>/dev/null || echo "Unable to fetch stack events"

@@ -1,0 +1,23 @@
+[
+  { "ParameterKey": "Environment", "ParameterValue": "prod" },
+  { "ParameterKey": "AdminEmail", "ParameterValue": "samuel.haddar96@gmail.com" },
+  { "ParameterKey": "AllowedOrigins", "ParameterValue": "https://test.giorgiopriviteralab.com,https://giorgiopriviteralab.com" },
+  { "ParameterKey": "LambdaReservedConcurrency", "ParameterValue": "10" },
+  { "ParameterKey": "MonthlyBudgetLimitUsd", "ParameterValue": "10" },
+  { "ParameterKey": "BudgetStopThresholdUsd", "ParameterValue": "20" },
+  { "ParameterKey": "PaymentProvider", "ParameterValue": "mock" },
+  { "ParameterKey": "ScheduledSyncEnabled", "ParameterValue": "true" },
+  { "ParameterKey": "EnableNetworking", "ParameterValue": "true" },
+  { "ParameterKey": "EnableDynamoDB", "ParameterValue": "true" },
+  { "ParameterKey": "EnableS3", "ParameterValue": "true" },
+  { "ParameterKey": "EnableCloudFront", "ParameterValue": "true" },
+  { "ParameterKey": "EnableProductService", "ParameterValue": "true" },
+  { "ParameterKey": "EnableCartService", "ParameterValue": "true" },
+  { "ParameterKey": "EnableOrderService", "ParameterValue": "true" },
+  { "ParameterKey": "EnableContentService", "ParameterValue": "true" },
+  { "ParameterKey": "EnableDiscountService", "ParameterValue": "true" },
+  { "ParameterKey": "EnableIntegrationService", "ParameterValue": "true" },
+  { "ParameterKey": "EnableNotificationService", "ParameterValue": "true" },
+  { "ParameterKey": "EnableAuditService", "ParameterValue": "true" },
+  { "ParameterKey": "EnableMonitoring", "ParameterValue": "true" }
+]

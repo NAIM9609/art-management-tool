@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DynamoDB single-table with 3 GSIs'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+  TableName:
+    Type: String
+    Default: ''
+
+Conditions:
+  UseCustomTableName: !Not [!Equals [!Ref TableName, '']]
+  IsProd: !Equals [!Ref Environment, prod]
+
+Resources:
+  ArtManagementTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !If
+        - UseCustomTableName
+        - !Ref TableName
+        - !Sub '${ProjectName}-${Environment}-art-management'
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: S
+        - AttributeName: GSI3PK
+          AttributeType: S
+        - AttributeName: GSI3SK
+          AttributeType: S
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+        - IndexName: GSI3
+          KeySchema:
+            - AttributeName: GSI3PK
+              KeyType: HASH
+            - AttributeName: GSI3SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [IsProd, true, false]
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: cloudformation
+
+Outputs:
+  TableName:
+    Value: !Ref ArtManagementTable
+  TableArn:
+    Value: !GetAtt ArtManagementTable.Arn

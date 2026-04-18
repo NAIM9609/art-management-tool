@@ -1,0 +1,845 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Content Service - Lambda functions and API Gateway for personaggi and fumetti management
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+  DynamoDBTableName:
+    Type: String
+  DynamoDBTableArn:
+    Type: String
+  S3BucketName:
+    Type: String
+  S3BucketArn:
+    Type: String
+  CdnUrl:
+    Type: String
+    Default: ''
+  JwtSecret:
+    Type: String
+    NoEcho: true
+  AllowedOrigins:
+    Type: CommaDelimitedList
+  LambdaReservedConcurrency:
+    Type: Number
+    Default: 10
+  LambdaCodeS3Bucket:
+    Type: String
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-placeholder.zip
+
+Resources:
+  # ============================================================
+  # IAM Role
+  # ============================================================
+  ContentServiceLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-content-service-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:TransactWriteItems
+                  - dynamodb:TransactGetItems
+                Resource:
+                  - !Ref DynamoDBTableArn
+                  - !Sub '${DynamoDBTableArn}/index/*'
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub '${S3BucketArn}/personaggi/*'
+                  - !Sub '${S3BucketArn}/fumetti/*'
+
+  # ============================================================
+  # Lambda Log Groups
+  # ============================================================
+  ListPersonaggiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-list-personaggi'
+      RetentionInDays: 14
+
+  GetPersonaggioLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-get-personaggio'
+      RetentionInDays: 14
+
+  CreatePersonaggioLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-create-personaggio'
+      RetentionInDays: 14
+
+  UpdatePersonaggioLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-update-personaggio'
+      RetentionInDays: 14
+
+  DeletePersonaggioLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-delete-personaggio'
+      RetentionInDays: 14
+
+  UploadPersonaggioImageLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-personaggio-upload-url'
+      RetentionInDays: 14
+
+  ListFumettiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-list-fumetti'
+      RetentionInDays: 14
+
+  GetFumettoLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-get-fumetto'
+      RetentionInDays: 14
+
+  CreateFumettoLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-create-fumetto'
+      RetentionInDays: 14
+
+  UpdateFumettoLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-update-fumetto'
+      RetentionInDays: 14
+
+  DeleteFumettoLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-delete-fumetto'
+      RetentionInDays: 14
+
+  GetFumettoUploadUrlLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-get-fumetto-upload-url'
+      RetentionInDays: 14
+
+  TempUploadPresignLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-content-service-temp-upload-presign'
+      RetentionInDays: 14
+
+  # ============================================================
+  # Lambda Functions
+  # ============================================================
+  ListPersonaggiFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ListPersonaggiLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-list-personaggi'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/personaggi.handler.listPersonaggi
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  GetPersonaggioFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetPersonaggioLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-get-personaggio'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/personaggi.handler.getPersonaggio
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  CreatePersonaggioFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CreatePersonaggioLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-create-personaggio'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/personaggi.handler.createPersonaggio
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  UpdatePersonaggioFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UpdatePersonaggioLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-update-personaggio'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/personaggi.handler.updatePersonaggio
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  DeletePersonaggioFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DeletePersonaggioLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-delete-personaggio'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/personaggi.handler.deletePersonaggio
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  UploadPersonaggioImageFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UploadPersonaggioImageLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-personaggio-upload-url'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/personaggi.handler.uploadImage
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  ListFumettiFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ListFumettiLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-list-fumetti'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/fumetti.handler.listFumetti
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  GetFumettoFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetFumettoLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-get-fumetto'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/fumetti.handler.getFumetto
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  CreateFumettoFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CreateFumettoLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-create-fumetto'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/fumetti.handler.createFumetto
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  UpdateFumettoFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UpdateFumettoLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-update-fumetto'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/fumetti.handler.updateFumetto
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  DeleteFumettoFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DeleteFumettoLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-delete-fumetto'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/fumetti.handler.deleteFumetto
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  GetFumettoUploadUrlFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetFumettoUploadUrlLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-get-fumetto-upload-url'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/fumetti.handler.uploadPage
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  TempUploadPresignFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: TempUploadPresignLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-content-service-temp-upload-presign'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/upload.handler.tempUploadPresign
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ContentServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  # ============================================================
+  # API Gateway
+  # ============================================================
+  ContentServiceApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-content-service-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+        MaxAge: 300
+
+  ContentServiceApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-content-service-api'
+      RetentionInDays: 14
+
+  ContentServiceApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      StageName: '$default'
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt ContentServiceApiLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","sourceIp":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","path":"$context.path","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationLatency":"$context.integrationLatency"}'
+
+  # ============================================================
+  # Integrations
+  # ============================================================
+  ListPersonaggiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ListPersonaggiFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetPersonaggioIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetPersonaggioFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  CreatePersonaggioIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CreatePersonaggioFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  UpdatePersonaggioIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UpdatePersonaggioFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  DeletePersonaggioIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt DeletePersonaggioFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  UploadPersonaggioImageIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UploadPersonaggioImageFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  ListFumettiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ListFumettiFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetFumettoIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetFumettoFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  CreateFumettoIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CreateFumettoFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  UpdateFumettoIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UpdateFumettoFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  DeleteFumettoIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt DeleteFumettoFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetFumettoUploadUrlIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetFumettoUploadUrlFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  TempUploadPresignIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt TempUploadPresignFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  # ============================================================
+  # Routes
+  # ============================================================
+  ListPersonaggiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'GET /api/personaggi'
+      Target: !Sub 'integrations/${ListPersonaggiIntegration}'
+
+  GetPersonaggioRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'GET /api/personaggi/{id}'
+      Target: !Sub 'integrations/${GetPersonaggioIntegration}'
+
+  CreatePersonaggioRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'POST /api/personaggi'
+      Target: !Sub 'integrations/${CreatePersonaggioIntegration}'
+
+  UpdatePersonaggioRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'PUT /api/personaggi/{id}'
+      Target: !Sub 'integrations/${UpdatePersonaggioIntegration}'
+
+  DeletePersonaggioRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'DELETE /api/personaggi/{id}'
+      Target: !Sub 'integrations/${DeletePersonaggioIntegration}'
+
+  UploadPersonaggioImageRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'POST /api/personaggi/{id}/upload'
+      Target: !Sub 'integrations/${UploadPersonaggioImageIntegration}'
+
+  ListFumettiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'GET /api/fumetti'
+      Target: !Sub 'integrations/${ListFumettiIntegration}'
+
+  GetFumettoRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'GET /api/fumetti/{id}'
+      Target: !Sub 'integrations/${GetFumettoIntegration}'
+
+  CreateFumettoRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'POST /api/fumetti'
+      Target: !Sub 'integrations/${CreateFumettoIntegration}'
+
+  UpdateFumettoRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'PUT /api/fumetti/{id}'
+      Target: !Sub 'integrations/${UpdateFumettoIntegration}'
+
+  DeleteFumettoRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'DELETE /api/fumetti/{id}'
+      Target: !Sub 'integrations/${DeleteFumettoIntegration}'
+
+  GetFumettoUploadUrlRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'POST /api/fumetti/{id}/upload'
+      Target: !Sub 'integrations/${GetFumettoUploadUrlIntegration}'
+
+  TempUploadPresignRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ContentServiceApi
+      RouteKey: 'POST /api/upload/temp'
+      Target: !Sub 'integrations/${TempUploadPresignIntegration}'
+
+  # ============================================================
+  # Lambda Permissions
+  # ============================================================
+  ListPersonaggiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ListPersonaggiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  GetPersonaggioPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetPersonaggioFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  CreatePersonaggioPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CreatePersonaggioFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  UpdatePersonaggioPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdatePersonaggioFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  DeletePersonaggioPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DeletePersonaggioFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  UploadPersonaggioImagePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UploadPersonaggioImageFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  ListFumettiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ListFumettiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  GetFumettoPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetFumettoFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  CreateFumettoPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CreateFumettoFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  UpdateFumettoPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateFumettoFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  DeleteFumettoPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DeleteFumettoFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  GetFumettoUploadUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetFumettoUploadUrlFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+  TempUploadPresignPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TempUploadPresignFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+
+Outputs:
+  ApiEndpoint:
+    Description: Content Service API endpoint URL
+    Value: !GetAtt ContentServiceApi.ApiEndpoint
+
+  ApiId:
+    Description: Content Service API ID
+    Value: !Ref ContentServiceApi
+
+  IamRoleArn:
+    Description: Content Service Lambda IAM Role ARN
+    Value: !GetAtt ContentServiceLambdaRole.Arn
+
+  IamRoleName:
+    Description: Content Service Lambda IAM Role Name
+    Value: !Ref ContentServiceLambdaRole

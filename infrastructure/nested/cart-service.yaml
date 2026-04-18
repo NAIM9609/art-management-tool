@@ -1,0 +1,510 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cart Service - Lambda functions, API Gateway, and IAM roles
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  DynamoDBTableName:
+    Type: String
+
+  DynamoDBTableArn:
+    Type: String
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+
+  AllowedOrigins:
+    Type: CommaDelimitedList
+
+  LambdaReservedConcurrency:
+    Type: Number
+    Default: 10
+
+  LambdaCodeS3Bucket:
+    Type: String
+
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-placeholder.zip
+
+Resources:
+  # ============================================================
+  # IAM Role
+  # ============================================================
+  CartServiceLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-cart-service-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:TransactWriteItems
+                  - dynamodb:TransactGetItems
+                Resource:
+                  - !Ref DynamoDBTableArn
+                  - !Sub '${DynamoDBTableArn}/index/*'
+
+  # ============================================================
+  # Lambda Functions
+  # ============================================================
+  GetCartFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetCartLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-get-cart'
+      Runtime: nodejs20.x
+      Handler: dist/handlers/cart.handler.getCart
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt CartServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  AddItemFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: AddItemLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-add-item'
+      Runtime: nodejs20.x
+      Handler: dist/handlers/cart.handler.addItem
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt CartServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  UpdateQuantityFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UpdateQuantityLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-update-quantity'
+      Runtime: nodejs20.x
+      Handler: dist/handlers/cart.handler.updateQuantity
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt CartServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  RemoveItemFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: RemoveItemLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-remove-item'
+      Runtime: nodejs20.x
+      Handler: dist/handlers/cart.handler.removeItem
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt CartServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  ClearCartFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ClearCartLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-clear-cart'
+      Runtime: nodejs20.x
+      Handler: dist/handlers/cart.handler.clearCart
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt CartServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  ApplyDiscountFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ApplyDiscountLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-apply-discount'
+      Runtime: nodejs20.x
+      Handler: dist/handlers/cart.handler.applyDiscount
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt CartServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  RemoveDiscountFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: RemoveDiscountLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-remove-discount'
+      Runtime: nodejs20.x
+      Handler: dist/handlers/cart.handler.removeDiscount
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt CartServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  # ============================================================
+  # CloudWatch Log Groups - Lambda Functions
+  # ============================================================
+  GetCartLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-cart-service-get-cart'
+      RetentionInDays: 14
+
+  AddItemLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-cart-service-add-item'
+      RetentionInDays: 14
+
+  UpdateQuantityLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-cart-service-update-quantity'
+      RetentionInDays: 14
+
+  RemoveItemLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-cart-service-remove-item'
+      RetentionInDays: 14
+
+  ClearCartLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-cart-service-clear-cart'
+      RetentionInDays: 14
+
+  ApplyDiscountLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-cart-service-apply-discount'
+      RetentionInDays: 14
+
+  RemoveDiscountLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-cart-service-remove-discount'
+      RetentionInDays: 14
+
+  # ============================================================
+  # API Gateway
+  # ============================================================
+  CartApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-cart-service-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+          - X-Cart-Session
+          - X-Session-Id
+        ExposeHeaders:
+          - Set-Cookie
+        AllowCredentials: true
+        MaxAge: 300
+
+  # CloudWatch Log Group - API Gateway
+  CartApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-cart-service-api'
+      RetentionInDays: 14
+
+  CartApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref CartApi
+      StageName: '$default'
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt CartApiLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","sourceIp":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","path":"$context.path","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationLatency":"$context.integrationLatency"}'
+
+  # ============================================================
+  # Lambda Integrations
+  # ============================================================
+  GetCartIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref CartApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetCartFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  AddItemIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref CartApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt AddItemFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  UpdateQuantityIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref CartApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UpdateQuantityFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  RemoveItemIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref CartApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt RemoveItemFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  ClearCartIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref CartApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ClearCartFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  ApplyDiscountIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref CartApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApplyDiscountFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  RemoveDiscountIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref CartApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt RemoveDiscountFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  # ============================================================
+  # API Gateway Routes
+  # ============================================================
+  GetCartRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CartApi
+      RouteKey: 'GET /api/cart'
+      Target: !Sub 'integrations/${GetCartIntegration}'
+
+  AddItemRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CartApi
+      RouteKey: 'POST /api/cart/items'
+      Target: !Sub 'integrations/${AddItemIntegration}'
+
+  UpdateQuantityRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CartApi
+      RouteKey: 'PATCH /api/cart/items/{id}'
+      Target: !Sub 'integrations/${UpdateQuantityIntegration}'
+
+  RemoveItemRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CartApi
+      RouteKey: 'DELETE /api/cart/items/{id}'
+      Target: !Sub 'integrations/${RemoveItemIntegration}'
+
+  ClearCartRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CartApi
+      RouteKey: 'DELETE /api/cart'
+      Target: !Sub 'integrations/${ClearCartIntegration}'
+
+  ApplyDiscountRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CartApi
+      RouteKey: 'POST /api/cart/discount'
+      Target: !Sub 'integrations/${ApplyDiscountIntegration}'
+
+  RemoveDiscountRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CartApi
+      RouteKey: 'DELETE /api/cart/discount'
+      Target: !Sub 'integrations/${RemoveDiscountIntegration}'
+
+  # ============================================================
+  # Lambda Permissions for API Gateway
+  # ============================================================
+  GetCartPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetCartFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+
+  AddItemPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AddItemFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+
+  UpdateQuantityPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateQuantityFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+
+  RemoveItemPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RemoveItemFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+
+  ClearCartPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ClearCartFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+
+  ApplyDiscountPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApplyDiscountFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+
+  RemoveDiscountPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RemoveDiscountFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+
+Outputs:
+  ApiEndpoint:
+    Description: Cart Service API endpoint
+    Value: !GetAtt CartApi.ApiEndpoint
+
+  ApiId:
+    Description: Cart Service API ID
+    Value: !Ref CartApi
+
+  IamRoleArn:
+    Description: Cart Service Lambda IAM Role ARN
+    Value: !GetAtt CartServiceLambdaRole.Arn
+
+  IamRoleName:
+    Description: Cart Service Lambda IAM Role Name
+    Value: !Ref CartServiceLambdaRole

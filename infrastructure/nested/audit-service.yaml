@@ -1,0 +1,279 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Audit service - Lambda functions, API Gateway, and IAM roles'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+  DynamoDBTableName:
+    Type: String
+  DynamoDBTableArn:
+    Type: String
+  JwtSecret:
+    Type: String
+    NoEcho: true
+  AllowedOrigins:
+    Type: CommaDelimitedList
+  LambdaReservedConcurrency:
+    Type: Number
+    Default: 10
+  LambdaCodeS3Bucket:
+    Type: String
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-placeholder.zip
+
+Resources:
+  # -------------------------------------------------------
+  # IAM Role
+  # -------------------------------------------------------
+  AuditServiceLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-audit-service-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBReadOnlyAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:BatchGetItem
+                Resource:
+                  - !Ref DynamoDBTableArn
+                  - !Sub '${DynamoDBTableArn}/index/*'
+
+  # -------------------------------------------------------
+  # CloudWatch Log Groups
+  # -------------------------------------------------------
+  GetEntityHistoryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-audit-service-get-entity-history'
+      RetentionInDays: 14
+
+  GetUserActivityLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-audit-service-get-user-activity'
+      RetentionInDays: 14
+
+  GetActivityByDateLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-audit-service-get-activity-by-date'
+      RetentionInDays: 14
+
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-audit-service'
+      RetentionInDays: 14
+
+  # -------------------------------------------------------
+  # Lambda Functions
+  # -------------------------------------------------------
+  GetEntityHistoryFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetEntityHistoryLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-audit-service-get-entity-history'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/audit.handler.getEntityHistory
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt AuditServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  GetUserActivityFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetUserActivityLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-audit-service-get-user-activity'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/audit.handler.getUserActivity
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt AuditServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  GetActivityByDateFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetActivityByDateLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-audit-service-get-activity-by-date'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/audit.handler.getActivityByDate
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt AuditServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  # -------------------------------------------------------
+  # API Gateway
+  # -------------------------------------------------------
+  AuditApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-audit-service-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods:
+          - GET
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+        ExposeHeaders:
+          - Content-Length
+          - Content-Type
+        MaxAge: 3600
+        AllowCredentials: true
+
+  AuditApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref AuditApi
+      StageName: '$default'
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","sourceIp":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","path":"$context.path","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationLatency":"$context.integrationLatency"}'
+
+  # -------------------------------------------------------
+  # Integrations
+  # -------------------------------------------------------
+  GetEntityHistoryIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref AuditApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetEntityHistoryFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetUserActivityIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref AuditApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetUserActivityFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetActivityByDateIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref AuditApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetActivityByDateFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  # -------------------------------------------------------
+  # Routes
+  # -------------------------------------------------------
+  GetEntityHistoryRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AuditApi
+      RouteKey: 'GET /api/admin/audit/entity/{type}/{id}'
+      Target: !Sub 'integrations/${GetEntityHistoryIntegration}'
+
+  GetUserActivityRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AuditApi
+      RouteKey: 'GET /api/admin/audit/user/{userId}'
+      Target: !Sub 'integrations/${GetUserActivityIntegration}'
+
+  GetActivityByDateRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AuditApi
+      RouteKey: 'GET /api/admin/audit/date-range'
+      Target: !Sub 'integrations/${GetActivityByDateIntegration}'
+
+  # -------------------------------------------------------
+  # Lambda Permissions for API Gateway
+  # -------------------------------------------------------
+  GetEntityHistoryPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetEntityHistoryFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${AuditApi}/*'
+
+  GetUserActivityPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetUserActivityFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${AuditApi}/*'
+
+  GetActivityByDatePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetActivityByDateFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${AuditApi}/*'
+
+Outputs:
+  ApiEndpoint:
+    Description: Audit service API endpoint
+    Value: !GetAtt AuditApi.ApiEndpoint
+  ApiId:
+    Description: Audit service API ID
+    Value: !Ref AuditApi
+  IamRoleArn:
+    Description: Audit service Lambda role ARN
+    Value: !GetAtt AuditServiceLambdaRole.Arn
+  IamRoleName:
+    Description: Audit service Lambda role name
+    Value: !Ref AuditServiceLambdaRole

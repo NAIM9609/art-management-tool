@@ -1,0 +1,490 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Discount Service - Lambda functions and API Gateway for discount code management
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+  DynamoDBTableName:
+    Type: String
+  DynamoDBTableArn:
+    Type: String
+  JwtSecret:
+    Type: String
+    NoEcho: true
+  AllowedOrigins:
+    Type: CommaDelimitedList
+  LambdaReservedConcurrency:
+    Type: Number
+    Default: 10
+  LambdaCodeS3Bucket:
+    Type: String
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-placeholder.zip
+
+Resources:
+  # ============================================================
+  # IAM Role
+  # ============================================================
+  DiscountServiceLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-discount-service-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                Resource:
+                  - !Ref DynamoDBTableArn
+                  - !Sub '${DynamoDBTableArn}/index/*'
+
+  # ============================================================
+  # Lambda Log Groups
+  # ============================================================
+  ValidateCodeLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-discount-service-validate-code'
+      RetentionInDays: 14
+
+  ListDiscountsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-discount-service-list-discounts'
+      RetentionInDays: 14
+
+  GetDiscountLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-discount-service-get-discount'
+      RetentionInDays: 14
+
+  CreateDiscountLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-discount-service-create-discount'
+      RetentionInDays: 14
+
+  UpdateDiscountLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-discount-service-update-discount'
+      RetentionInDays: 14
+
+  DeleteDiscountLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-discount-service-delete-discount'
+      RetentionInDays: 14
+
+  GetStatsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-discount-service-get-stats'
+      RetentionInDays: 14
+
+  # ============================================================
+  # Lambda Functions
+  # ============================================================
+  ValidateCodeFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ValidateCodeLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-validate-code'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/discount.handler.validateCode
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt DiscountServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  ListDiscountsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ListDiscountsLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-list-discounts'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/discount.handler.listDiscounts
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt DiscountServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  GetDiscountFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetDiscountLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-get-discount'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/discount.handler.getDiscount
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt DiscountServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  CreateDiscountFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CreateDiscountLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-create-discount'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/discount.handler.createDiscount
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt DiscountServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  UpdateDiscountFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UpdateDiscountLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-update-discount'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/discount.handler.updateDiscount
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt DiscountServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  DeleteDiscountFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DeleteDiscountLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-delete-discount'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/discount.handler.deleteDiscount
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt DiscountServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  GetStatsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetStatsLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-get-stats'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/discount.handler.getStats
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt DiscountServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  # ============================================================
+  # API Gateway
+  # ============================================================
+  DiscountServiceApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-discount-service-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+        MaxAge: 300
+
+  DiscountServiceApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-discount-service-api'
+      RetentionInDays: 14
+
+  DiscountServiceApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      StageName: '$default'
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt DiscountServiceApiLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","sourceIp":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","path":"$context.path","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationLatency":"$context.integrationLatency"}'
+
+  # ============================================================
+  # Integrations
+  # ============================================================
+  ValidateCodeIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ValidateCodeFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  ListDiscountsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ListDiscountsFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetDiscountIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetDiscountFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  CreateDiscountIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CreateDiscountFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  UpdateDiscountIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UpdateDiscountFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  DeleteDiscountIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt DeleteDiscountFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetStatsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetStatsFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  # ============================================================
+  # Routes
+  # ============================================================
+  ValidateCodeRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      RouteKey: 'POST /api/discounts/validate'
+      Target: !Sub 'integrations/${ValidateCodeIntegration}'
+
+  ListDiscountsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      RouteKey: 'GET /api/admin/discounts'
+      Target: !Sub 'integrations/${ListDiscountsIntegration}'
+
+  GetDiscountRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      RouteKey: 'GET /api/admin/discounts/{id}'
+      Target: !Sub 'integrations/${GetDiscountIntegration}'
+
+  CreateDiscountRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      RouteKey: 'POST /api/admin/discounts'
+      Target: !Sub 'integrations/${CreateDiscountIntegration}'
+
+  UpdateDiscountRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      RouteKey: 'PUT /api/admin/discounts/{id}'
+      Target: !Sub 'integrations/${UpdateDiscountIntegration}'
+
+  DeleteDiscountRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      RouteKey: 'DELETE /api/admin/discounts/{id}'
+      Target: !Sub 'integrations/${DeleteDiscountIntegration}'
+
+  GetStatsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref DiscountServiceApi
+      RouteKey: 'GET /api/admin/discounts/{id}/stats'
+      Target: !Sub 'integrations/${GetStatsIntegration}'
+
+  # ============================================================
+  # Lambda Permissions
+  # ============================================================
+  ValidateCodePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ValidateCodeFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+
+  ListDiscountsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ListDiscountsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+
+  GetDiscountPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetDiscountFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+
+  CreateDiscountPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CreateDiscountFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+
+  UpdateDiscountPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateDiscountFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+
+  DeleteDiscountPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DeleteDiscountFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+
+  GetStatsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetStatsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+
+Outputs:
+  ApiEndpoint:
+    Description: Discount Service API endpoint URL
+    Value: !GetAtt DiscountServiceApi.ApiEndpoint
+
+  ApiId:
+    Description: Discount Service API ID
+    Value: !Ref DiscountServiceApi
+
+  IamRoleArn:
+    Description: Discount Service Lambda IAM Role ARN
+    Value: !GetAtt DiscountServiceLambdaRole.Arn
+
+  IamRoleName:
+    Description: Discount Service Lambda IAM Role Name
+    Value: !Ref DiscountServiceLambdaRole

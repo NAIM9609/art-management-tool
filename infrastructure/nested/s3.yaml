@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 bucket for image storage with lifecycle rules'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  ImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'art-management-images-${Environment}'
+      VersioningConfiguration:
+        Status: Suspended
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: delete-temp-objects
+            Status: Enabled
+            Prefix: temp/
+            ExpirationInDays: 365
+          - Id: glacier-transition
+            Status: Enabled
+            Prefix: archive/
+            Transitions:
+              - StorageClass: GLACIER
+                TransitionInDays: 180
+      Tags:
+        - Key: Name
+          Value: !Sub 'art-management-images-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: cloudformation
+
+Outputs:
+  BucketName:
+    Value: !Ref ImagesBucket
+  BucketArn:
+    Value: !GetAtt ImagesBucket.Arn
+  BucketDomainName:
+    Value: !GetAtt ImagesBucket.RegionalDomainName

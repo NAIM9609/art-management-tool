@@ -1,0 +1,336 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Notification service - Lambda functions, API Gateway, and IAM roles'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+  DynamoDBTableName:
+    Type: String
+  DynamoDBTableArn:
+    Type: String
+  JwtSecret:
+    Type: String
+    NoEcho: true
+  AllowedOrigins:
+    Type: CommaDelimitedList
+  LambdaReservedConcurrency:
+    Type: Number
+    Default: 10
+  LambdaCodeS3Bucket:
+    Type: String
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-placeholder.zip
+
+Resources:
+  # -------------------------------------------------------
+  # IAM Role
+  # -------------------------------------------------------
+  NotificationServiceLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-notification-service-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                Resource:
+                  - !Ref DynamoDBTableArn
+                  - !Sub '${DynamoDBTableArn}/index/*'
+
+  # -------------------------------------------------------
+  # CloudWatch Log Groups
+  # -------------------------------------------------------
+  ListNotificationsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-notification-service-list-notifications'
+      RetentionInDays: 14
+
+  MarkAsReadLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-notification-service-mark-as-read'
+      RetentionInDays: 14
+
+  MarkAllReadLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-notification-service-mark-all-read'
+      RetentionInDays: 14
+
+  DeleteNotificationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-notification-delete'
+      RetentionInDays: 14
+
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-notification-service'
+      RetentionInDays: 14
+
+  # -------------------------------------------------------
+  # Lambda Functions
+  # -------------------------------------------------------
+  ListNotificationsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ListNotificationsLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-notification-service-list-notifications'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/notification.handler.listNotifications
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt NotificationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  MarkAsReadFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: MarkAsReadLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-notification-service-mark-as-read'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/notification.handler.markAsRead
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt NotificationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  MarkAllReadFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: MarkAllReadLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-notification-service-mark-all-read'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/notification.handler.markAllAsRead
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt NotificationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  DeleteNotificationFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DeleteNotificationLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-notification-delete'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/notification.handler.deleteNotification
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt NotificationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  # -------------------------------------------------------
+  # API Gateway
+  # -------------------------------------------------------
+  NotificationApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-notification-service-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+        ExposeHeaders:
+          - Content-Length
+          - Content-Type
+        MaxAge: 3600
+        AllowCredentials: true
+
+  NotificationApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref NotificationApi
+      StageName: '$default'
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","sourceIp":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","path":"$context.path","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationLatency":"$context.integrationLatency"}'
+
+  # -------------------------------------------------------
+  # Integrations
+  # -------------------------------------------------------
+  ListNotificationsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref NotificationApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ListNotificationsFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  MarkAsReadIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref NotificationApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt MarkAsReadFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  MarkAllReadIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref NotificationApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt MarkAllReadFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  DeleteNotificationIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref NotificationApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt DeleteNotificationFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  # -------------------------------------------------------
+  # Routes
+  # -------------------------------------------------------
+  ListNotificationsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref NotificationApi
+      RouteKey: 'GET /api/admin/notifications'
+      Target: !Sub 'integrations/${ListNotificationsIntegration}'
+
+  MarkAsReadRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref NotificationApi
+      RouteKey: 'PATCH /api/admin/notifications/{id}/read'
+      Target: !Sub 'integrations/${MarkAsReadIntegration}'
+
+  MarkAllReadRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref NotificationApi
+      RouteKey: 'POST /api/admin/notifications/mark-all-read'
+      Target: !Sub 'integrations/${MarkAllReadIntegration}'
+
+  DeleteNotificationRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref NotificationApi
+      RouteKey: 'DELETE /api/admin/notifications/{id}'
+      Target: !Sub 'integrations/${DeleteNotificationIntegration}'
+
+  # -------------------------------------------------------
+  # Lambda Permissions for API Gateway
+  # -------------------------------------------------------
+  ListNotificationsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ListNotificationsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${NotificationApi}/*'
+
+  MarkAsReadPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MarkAsReadFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${NotificationApi}/*'
+
+  MarkAllReadPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MarkAllReadFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${NotificationApi}/*'
+
+  DeleteNotificationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DeleteNotificationFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${NotificationApi}/*'
+
+Outputs:
+  ApiEndpoint:
+    Description: Notification service API endpoint
+    Value: !GetAtt NotificationApi.ApiEndpoint
+  ApiId:
+    Description: Notification service API ID
+    Value: !Ref NotificationApi
+  IamRoleArn:
+    Description: Notification service Lambda role ARN
+    Value: !GetAtt NotificationServiceLambdaRole.Arn
+  IamRoleName:
+    Description: Notification service Lambda role name
+    Value: !Ref NotificationServiceLambdaRole

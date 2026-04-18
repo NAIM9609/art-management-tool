@@ -13,7 +13,7 @@ on:
           - staging
           - prod
       deploy_infrastructure:
-        description: 'Run Terraform apply before deploying services (recommended for new or changed environments)'
+        description: 'Run CloudFormation deploy before deploying services (recommended for new or changed environments)'
         required: false
         default: true
         type: boolean
@@ -29,7 +29,6 @@ jobs:
     uses: ./.github/workflows/deploy-infrastructure.yml
     with:
       environment: ${{ inputs.environment }}
-      action: apply
     secrets: inherit
 
   deploy-services:
@@ -128,12 +127,12 @@ jobs:
               notification-service-list-notifications
               notification-service-mark-as-read
               notification-service-mark-all-read
-              notification-service-delete-notification
+              notification-delete
           - name: integration-service
             esbuild_arg: integration
             functions: >-
               integration-service-etsy-initiate-oauth
-              integration-service-etsy-handle-callback
+              integration-etsy-callback
               integration-service-etsy-sync-products
               integration-service-etsy-sync-inventory
               integration-service-etsy-sync-orders
@@ -348,13 +347,13 @@ jobs:
         id: discover
         shell: bash
         run: |
-          PRODUCT_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-product-service"
+          PRODUCT_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-product-service-api"
           PRODUCT_API_ID=$(aws apigatewayv2 get-apis \
             --region "${AWS_REGION_CUSTOM}" \
             --query "Items[?Name=='${PRODUCT_API_NAME}'].ApiId | [0]" \
             --output text)
 
-          CART_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-cart-service"
+          CART_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-cart-service-api"
           CART_API_ID=$(aws apigatewayv2 get-apis \
             --region "${AWS_REGION_CUSTOM}" \
             --query "Items[?Name=='${CART_API_NAME}'].ApiId | [0]" \
@@ -370,8 +369,8 @@ jobs:
             exit 1
           fi
 
-          PRODUCT_BASE_URL="https://${PRODUCT_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}"
-          CART_BASE_URL="https://${CART_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}"
+          PRODUCT_BASE_URL="https://${PRODUCT_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com"
+          CART_BASE_URL="https://${CART_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com"
           echo "product_api_id=${PRODUCT_API_ID}" >> "$GITHUB_OUTPUT"
           echo "cart_api_id=${CART_API_ID}" >> "$GITHUB_OUTPUT"
           echo "product_base_url=${PRODUCT_BASE_URL}" >> "$GITHUB_OUTPUT"

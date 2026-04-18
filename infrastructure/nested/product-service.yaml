@@ -1,0 +1,1126 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Product Service - Lambda functions, API Gateway, and IAM roles
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  DynamoDBTableName:
+    Type: String
+
+  DynamoDBTableArn:
+    Type: String
+
+  S3BucketName:
+    Type: String
+
+  S3BucketArn:
+    Type: String
+
+  CdnUrl:
+    Type: String
+    Default: ''
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+
+  AllowedOrigins:
+    Type: CommaDelimitedList
+
+  LambdaReservedConcurrency:
+    Type: Number
+    Default: 10
+
+  LambdaCodeS3Bucket:
+    Type: String
+
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-placeholder.zip
+
+Resources:
+  # ============================================================================
+  # IAM Execution Role
+  # ============================================================================
+  ProductServiceLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-product-service-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:TransactWriteItems
+                  - dynamodb:TransactGetItems
+                  - dynamodb:DescribeTable
+                Resource:
+                  - !Ref DynamoDBTableArn
+                  - !Sub '${DynamoDBTableArn}/index/*'
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub '${S3BucketArn}/products/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Ref S3BucketArn
+
+  # ============================================================================
+  # CloudWatch Log Groups
+  # ============================================================================
+  ListProductsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-list-products'
+      RetentionInDays: 14
+
+  GetProductLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-get-product'
+      RetentionInDays: 14
+
+  CreateProductLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-create-product'
+      RetentionInDays: 14
+
+  UpdateProductLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-update-product'
+      RetentionInDays: 14
+
+  DeleteProductLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-delete-product'
+      RetentionInDays: 14
+
+  ListCategoriesLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-list-categories'
+      RetentionInDays: 14
+
+  GetCategoryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-get-category'
+      RetentionInDays: 14
+
+  CreateCategoryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-create-category'
+      RetentionInDays: 14
+
+  UpdateCategoryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-update-category'
+      RetentionInDays: 14
+
+  DeleteCategoryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-delete-category'
+      RetentionInDays: 14
+
+  ListVariantsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-list-variants'
+      RetentionInDays: 14
+
+  CreateVariantLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-create-variant'
+      RetentionInDays: 14
+
+  UpdateVariantLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-update-variant'
+      RetentionInDays: 14
+
+  UpdateStockLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-update-stock'
+      RetentionInDays: 14
+
+  GetUploadUrlLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-get-upload-url'
+      RetentionInDays: 14
+
+  ListImagesLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-list-images'
+      RetentionInDays: 14
+
+  DeleteImageLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-delete-image'
+      RetentionInDays: 14
+
+  HealthLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-product-service-health'
+      RetentionInDays: 14
+
+  # ============================================================================
+  # Lambda Functions
+  # ============================================================================
+  ListProductsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ListProductsLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-list-products'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/product.handler.listProducts
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  GetProductFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetProductLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-get-product'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/product.handler.getProduct
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  CreateProductFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CreateProductLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-create-product'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/product.handler.createProduct
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  UpdateProductFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UpdateProductLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-update-product'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/product.handler.updateProduct
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  DeleteProductFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DeleteProductLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-delete-product'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/product.handler.deleteProduct
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  ListCategoriesFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ListCategoriesLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-list-categories'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/category.handler.listCategories
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  GetCategoryFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetCategoryLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-get-category'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/category.handler.getCategory
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  CreateCategoryFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CreateCategoryLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-create-category'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/category.handler.createCategory
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  UpdateCategoryFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UpdateCategoryLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-update-category'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/category.handler.updateCategory
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  DeleteCategoryFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DeleteCategoryLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-delete-category'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/category.handler.deleteCategory
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  ListVariantsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ListVariantsLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-list-variants'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/variant.handler.listVariants
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  CreateVariantFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CreateVariantLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-create-variant'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/variant.handler.createVariant
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  UpdateVariantFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UpdateVariantLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-update-variant'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/variant.handler.updateVariant
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  UpdateStockFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UpdateStockLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-update-stock'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/variant.handler.updateStock
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  GetUploadUrlFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetUploadUrlLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-get-upload-url'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/image.handler.getUploadUrl
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  ListImagesFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ListImagesLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-list-images'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/image.handler.listImages
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  DeleteImageFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DeleteImageLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-delete-image'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/image.handler.deleteImage
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  HealthFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: HealthLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-product-service-health'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/health.handler.getHealth
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt ProductServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CDN_URL: !Ref CdnUrl
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+
+  # ============================================================================
+  # API Gateway HTTP API
+  # ============================================================================
+  ProductServiceApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-product-service-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+        MaxAge: 300
+
+  ProductServiceApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-product-service-api'
+      RetentionInDays: 14
+
+  ProductServiceApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      StageName: '$default'
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt ProductServiceApiLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","sourceIp":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","path":"$context.path","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationLatency":"$context.integrationLatency"}'
+
+  # ============================================================================
+  # API Gateway Integrations
+  # ============================================================================
+  ListProductsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ListProductsFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetProductIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetProductFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  CreateProductIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CreateProductFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  UpdateProductIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UpdateProductFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  DeleteProductIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt DeleteProductFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  ListCategoriesIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ListCategoriesFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetCategoryIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetCategoryFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  CreateCategoryIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CreateCategoryFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  UpdateCategoryIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UpdateCategoryFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  DeleteCategoryIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt DeleteCategoryFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  ListVariantsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ListVariantsFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  CreateVariantIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CreateVariantFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  UpdateVariantIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UpdateVariantFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  UpdateStockIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UpdateStockFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetUploadUrlIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetUploadUrlFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  ListImagesIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ListImagesFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  DeleteImageIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt DeleteImageFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  HealthIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt HealthFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  # ============================================================================
+  # API Gateway Routes
+  # ============================================================================
+  HealthRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: GET /health
+      Target: !Sub 'integrations/${HealthIntegration}'
+
+  ListProductsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: GET /api/products
+      Target: !Sub 'integrations/${ListProductsIntegration}'
+
+  GetProductRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: GET /api/products/{slug}
+      Target: !Sub 'integrations/${GetProductIntegration}'
+
+  CreateProductRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: POST /api/products
+      Target: !Sub 'integrations/${CreateProductIntegration}'
+
+  UpdateProductRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: PUT /api/products/{id}
+      Target: !Sub 'integrations/${UpdateProductIntegration}'
+
+  DeleteProductRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: DELETE /api/products/{id}
+      Target: !Sub 'integrations/${DeleteProductIntegration}'
+
+  ListCategoriesRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: GET /api/categories
+      Target: !Sub 'integrations/${ListCategoriesIntegration}'
+
+  GetCategoryRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: GET /api/categories/{slug}
+      Target: !Sub 'integrations/${GetCategoryIntegration}'
+
+  CreateCategoryRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: POST /api/categories
+      Target: !Sub 'integrations/${CreateCategoryIntegration}'
+
+  UpdateCategoryRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: PUT /api/categories/{id}
+      Target: !Sub 'integrations/${UpdateCategoryIntegration}'
+
+  DeleteCategoryRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: DELETE /api/categories/{id}
+      Target: !Sub 'integrations/${DeleteCategoryIntegration}'
+
+  ListVariantsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: GET /api/products/{id}/variants
+      Target: !Sub 'integrations/${ListVariantsIntegration}'
+
+  CreateVariantRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: POST /api/products/{id}/variants
+      Target: !Sub 'integrations/${CreateVariantIntegration}'
+
+  UpdateVariantRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: PUT /api/variants/{id}
+      Target: !Sub 'integrations/${UpdateVariantIntegration}'
+
+  UpdateStockRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: PATCH /api/variants/{id}/stock
+      Target: !Sub 'integrations/${UpdateStockIntegration}'
+
+  GetUploadUrlRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: GET /api/products/{id}/upload-url
+      Target: !Sub 'integrations/${GetUploadUrlIntegration}'
+
+  ListImagesRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: GET /api/products/{id}/images
+      Target: !Sub 'integrations/${ListImagesIntegration}'
+
+  DeleteImageRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductServiceApi
+      RouteKey: DELETE /api/products/{id}/images/{imageId}
+      Target: !Sub 'integrations/${DeleteImageIntegration}'
+
+  # ============================================================================
+  # Lambda Permissions
+  # ============================================================================
+  ListProductsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ListProductsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  GetProductPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetProductFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  CreateProductPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CreateProductFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  UpdateProductPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateProductFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  DeleteProductPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DeleteProductFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  ListCategoriesPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ListCategoriesFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  GetCategoryPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetCategoryFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  CreateCategoryPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CreateCategoryFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  UpdateCategoryPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateCategoryFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  DeleteCategoryPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DeleteCategoryFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  ListVariantsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ListVariantsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  CreateVariantPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CreateVariantFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  UpdateVariantPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateVariantFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  UpdateStockPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateStockFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  GetUploadUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetUploadUrlFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  ListImagesPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ListImagesFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  DeleteImagePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DeleteImageFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+  HealthPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HealthFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+
+Outputs:
+  ApiEndpoint:
+    Description: Product Service API endpoint URL
+    Value: !GetAtt ProductServiceApi.ApiEndpoint
+
+  ApiId:
+    Description: Product Service API ID
+    Value: !Ref ProductServiceApi
+
+  IamRoleArn:
+    Description: Product Service Lambda execution role ARN
+    Value: !GetAtt ProductServiceLambdaRole.Arn
+
+  IamRoleName:
+    Description: Product Service Lambda execution role name
+    Value: !Ref ProductServiceLambdaRole

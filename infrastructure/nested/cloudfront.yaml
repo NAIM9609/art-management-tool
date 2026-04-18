@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront distribution with S3 origin for image delivery'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+  S3BucketName:
+    Type: String
+  S3BucketArn:
+    Type: String
+  S3BucketDomainName:
+    Type: String
+
+Resources:
+  OriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub 'OAI for art-management-images-${Environment}'
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3BucketName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOAI
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${OriginAccessIdentity}'
+            Action: s3:GetObject
+            Resource: !Sub '${S3BucketArn}/*'
+
+  CachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub 'art-management-images-cache-policy-${Environment}'
+        Comment: Cache policy for image delivery with WebP support
+        DefaultTTL: 604800
+        MinTTL: 86400
+        MaxTTL: 31536000
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig:
+            CookieBehavior: none
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Accept
+              - Accept-Encoding
+          QueryStringsConfig:
+            QueryStringBehavior: none
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+
+  ResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub 'art-management-security-headers-${Environment}'
+        Comment: Security headers for art management CDN
+        SecurityHeadersConfig:
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            Override: true
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        IPV6Enabled: true
+        Comment: !Sub 'CDN for art-management-images-${Environment}'
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: !Sub 'S3-${S3BucketName}'
+            DomainName: !Ref S3BucketDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${OriginAccessIdentity}'
+        DefaultCacheBehavior:
+          TargetOriginId: !Sub 'S3-${S3BucketName}'
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: !Ref CachePolicy
+          ResponseHeadersPolicyId: !Ref ResponseHeadersPolicy
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: none
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'art-management-cdn-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: cloudformation
+
+Outputs:
+  DistributionDomainName:
+    Value: !GetAtt Distribution.DomainName
+  DistributionId:
+    Value: !Ref Distribution

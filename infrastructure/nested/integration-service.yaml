@@ -1,0 +1,545 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Integration service - Etsy integration with Lambda functions, API Gateway, and EventBridge'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+  DynamoDBTableName:
+    Type: String
+  DynamoDBTableArn:
+    Type: String
+  JwtSecret:
+    Type: String
+    NoEcho: true
+  AllowedOrigins:
+    Type: CommaDelimitedList
+  LambdaReservedConcurrency:
+    Type: Number
+    Default: 10
+  LambdaCodeS3Bucket:
+    Type: String
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-placeholder.zip
+  EtsyClientId:
+    Type: String
+    NoEcho: true
+  EtsyClientSecret:
+    Type: String
+    NoEcho: true
+  EtsyRedirectUri:
+    Type: String
+  EtsyWebhookSecret:
+    Type: String
+    NoEcho: true
+  EtsyShopIds:
+    Type: String
+  ScheduledSyncEnabled:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  ScheduledSyncCron:
+    Type: String
+    Default: 'cron(0 2 * * ? *)'
+
+Conditions:
+  IsScheduledSyncEnabled: !Equals [!Ref ScheduledSyncEnabled, 'true']
+
+Resources:
+  # -------------------------------------------------------
+  # IAM Role
+  # -------------------------------------------------------
+  IntegrationServiceLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-integration-service-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !Ref DynamoDBTableArn
+                  - !Sub '${DynamoDBTableArn}/index/*'
+
+  # -------------------------------------------------------
+  # CloudWatch Log Groups
+  # -------------------------------------------------------
+  InitiateOAuthLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-integration-service-etsy-initiate-oauth'
+      RetentionInDays: 14
+
+  CallbackLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-integration-etsy-callback'
+      RetentionInDays: 14
+
+  SyncProductsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-integration-service-etsy-sync-products'
+      RetentionInDays: 14
+
+  SyncInventoryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-integration-service-etsy-sync-inventory'
+      RetentionInDays: 14
+
+  SyncOrdersLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-integration-service-etsy-sync-orders'
+      RetentionInDays: 14
+
+  WebhookLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-integration-service-etsy-webhook'
+      RetentionInDays: 14
+
+  ScheduledSyncLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-integration-service-etsy-scheduled-sync'
+      RetentionInDays: 14
+
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-integration-service'
+      RetentionInDays: 14
+
+  # -------------------------------------------------------
+  # Lambda Functions
+  # -------------------------------------------------------
+  InitiateOAuthFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: InitiateOAuthLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-initiate-oauth'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/etsy.handler.initiateOAuth
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt IntegrationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          ETSY_CLIENT_ID: !Ref EtsyClientId
+          ETSY_CLIENT_SECRET: !Ref EtsyClientSecret
+          ETSY_REDIRECT_URI: !Ref EtsyRedirectUri
+          ETSY_WEBHOOK_SECRET: !Ref EtsyWebhookSecret
+          ETSY_SHOP_IDS: !Ref EtsyShopIds
+
+  CallbackFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CallbackLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-integration-etsy-callback'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/etsy.handler.handleCallback
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt IntegrationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          ETSY_CLIENT_ID: !Ref EtsyClientId
+          ETSY_CLIENT_SECRET: !Ref EtsyClientSecret
+          ETSY_REDIRECT_URI: !Ref EtsyRedirectUri
+          ETSY_WEBHOOK_SECRET: !Ref EtsyWebhookSecret
+          ETSY_SHOP_IDS: !Ref EtsyShopIds
+
+  SyncProductsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: SyncProductsLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-sync-products'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/etsy.handler.syncProducts
+      MemorySize: 256
+      Timeout: 30
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt IntegrationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          ETSY_CLIENT_ID: !Ref EtsyClientId
+          ETSY_CLIENT_SECRET: !Ref EtsyClientSecret
+          ETSY_REDIRECT_URI: !Ref EtsyRedirectUri
+          ETSY_WEBHOOK_SECRET: !Ref EtsyWebhookSecret
+          ETSY_SHOP_IDS: !Ref EtsyShopIds
+
+  SyncInventoryFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: SyncInventoryLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-sync-inventory'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/etsy.handler.syncInventory
+      MemorySize: 256
+      Timeout: 60
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt IntegrationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          ETSY_CLIENT_ID: !Ref EtsyClientId
+          ETSY_CLIENT_SECRET: !Ref EtsyClientSecret
+          ETSY_REDIRECT_URI: !Ref EtsyRedirectUri
+          ETSY_WEBHOOK_SECRET: !Ref EtsyWebhookSecret
+          ETSY_SHOP_IDS: !Ref EtsyShopIds
+
+  SyncOrdersFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: SyncOrdersLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-sync-orders'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/etsy.handler.syncOrders
+      MemorySize: 256
+      Timeout: 30
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt IntegrationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          ETSY_CLIENT_ID: !Ref EtsyClientId
+          ETSY_CLIENT_SECRET: !Ref EtsyClientSecret
+          ETSY_REDIRECT_URI: !Ref EtsyRedirectUri
+          ETSY_WEBHOOK_SECRET: !Ref EtsyWebhookSecret
+          ETSY_SHOP_IDS: !Ref EtsyShopIds
+
+  WebhookFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: WebhookLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-webhook'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/etsy.handler.handleWebhook
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt IntegrationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          ETSY_CLIENT_ID: !Ref EtsyClientId
+          ETSY_CLIENT_SECRET: !Ref EtsyClientSecret
+          ETSY_REDIRECT_URI: !Ref EtsyRedirectUri
+          ETSY_WEBHOOK_SECRET: !Ref EtsyWebhookSecret
+          ETSY_SHOP_IDS: !Ref EtsyShopIds
+
+  ScheduledSyncFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ScheduledSyncLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-scheduled-sync'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/etsy.handler.scheduledSync
+      MemorySize: 256
+      Timeout: 300
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt IntegrationServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          ETSY_CLIENT_ID: !Ref EtsyClientId
+          ETSY_CLIENT_SECRET: !Ref EtsyClientSecret
+          ETSY_REDIRECT_URI: !Ref EtsyRedirectUri
+          ETSY_WEBHOOK_SECRET: !Ref EtsyWebhookSecret
+          ETSY_SHOP_IDS: !Ref EtsyShopIds
+
+  # -------------------------------------------------------
+  # API Gateway
+  # -------------------------------------------------------
+  IntegrationApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-integration-service-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+          - X-Etsy-Signature
+        ExposeHeaders:
+          - Content-Length
+          - Content-Type
+        MaxAge: 3600
+        AllowCredentials: true
+
+  IntegrationApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref IntegrationApi
+      StageName: '$default'
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","sourceIp":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","path":"$context.path","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationLatency":"$context.integrationLatency"}'
+
+  # -------------------------------------------------------
+  # Integrations
+  # -------------------------------------------------------
+  InitiateOAuthIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref IntegrationApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt InitiateOAuthFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  CallbackIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref IntegrationApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CallbackFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  SyncProductsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref IntegrationApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt SyncProductsFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  SyncInventoryIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref IntegrationApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt SyncInventoryFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  SyncOrdersIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref IntegrationApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt SyncOrdersFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  WebhookIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref IntegrationApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt WebhookFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  # -------------------------------------------------------
+  # Routes
+  # -------------------------------------------------------
+  InitiateOAuthRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref IntegrationApi
+      RouteKey: 'GET /api/integrations/etsy/auth'
+      Target: !Sub 'integrations/${InitiateOAuthIntegration}'
+
+  CallbackRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref IntegrationApi
+      RouteKey: 'GET /api/integrations/etsy/callback'
+      Target: !Sub 'integrations/${CallbackIntegration}'
+
+  SyncProductsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref IntegrationApi
+      RouteKey: 'POST /api/admin/integrations/etsy/sync/products'
+      Target: !Sub 'integrations/${SyncProductsIntegration}'
+
+  SyncInventoryRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref IntegrationApi
+      RouteKey: 'POST /api/admin/integrations/etsy/sync/inventory'
+      Target: !Sub 'integrations/${SyncInventoryIntegration}'
+
+  SyncOrdersRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref IntegrationApi
+      RouteKey: 'POST /api/admin/integrations/etsy/sync/orders'
+      Target: !Sub 'integrations/${SyncOrdersIntegration}'
+
+  WebhookRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref IntegrationApi
+      RouteKey: 'POST /api/webhooks/etsy'
+      Target: !Sub 'integrations/${WebhookIntegration}'
+
+  # -------------------------------------------------------
+  # Lambda Permissions for API Gateway
+  # -------------------------------------------------------
+  InitiateOAuthPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref InitiateOAuthFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+
+  CallbackPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CallbackFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+
+  SyncProductsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SyncProductsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+
+  SyncInventoryPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SyncInventoryFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+
+  SyncOrdersPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SyncOrdersFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+
+  WebhookPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WebhookFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+
+  # -------------------------------------------------------
+  # EventBridge - Scheduled Sync
+  # -------------------------------------------------------
+  ScheduledSyncRule:
+    Type: AWS::Events::Rule
+    Condition: IsScheduledSyncEnabled
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-etsy-scheduled-sync'
+      Description: Scheduled sync for Etsy integration
+      ScheduleExpression: !Ref ScheduledSyncCron
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt ScheduledSyncFunction.Arn
+          Id: ScheduledSyncTarget
+
+  ScheduledSyncEventPermission:
+    Type: AWS::Lambda::Permission
+    Condition: IsScheduledSyncEnabled
+    Properties:
+      FunctionName: !Ref ScheduledSyncFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScheduledSyncRule.Arn
+
+Outputs:
+  ApiEndpoint:
+    Description: Integration service API endpoint
+    Value: !GetAtt IntegrationApi.ApiEndpoint
+  ApiId:
+    Description: Integration service API ID
+    Value: !Ref IntegrationApi
+  IamRoleArn:
+    Description: Integration service Lambda role ARN
+    Value: !GetAtt IntegrationServiceLambdaRole.Arn
+  IamRoleName:
+    Description: Integration service Lambda role name
+    Value: !Ref IntegrationServiceLambdaRole
+  EtsyScheduledSyncRuleArn:
+    Description: Etsy scheduled sync EventBridge rule ARN
+    Value: !If [IsScheduledSyncEnabled, !GetAtt ScheduledSyncRule.Arn, '']

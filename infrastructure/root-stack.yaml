@@ -1,0 +1,661 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Art Management Tool - Root Stack (orchestrates all nested stacks)'
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+    Description: Project name used for resource naming
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Target environment
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Description: JWT secret for authentication across all services
+
+  AdminEmail:
+    Type: String
+    Description: Email address to receive CloudWatch alarm notifications
+
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: 'https://test.giorgiopriviteralab.com,https://giorgiopriviteralab.com'
+    Description: CORS allowed origins
+
+  TemplatesBucketUrl:
+    Type: String
+    Description: S3 URL prefix for nested templates (e.g. https://s3.eu-north-1.amazonaws.com/my-bucket)
+
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: S3 bucket containing Lambda deployment packages
+
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-placeholder.zip
+    Description: S3 key for Lambda deployment package
+
+  LambdaReservedConcurrency:
+    Type: Number
+    Default: 10
+    Description: Reserved concurrency per Lambda function
+
+  DynamoDBTableName:
+    Type: String
+    Default: ''
+    Description: Custom DynamoDB table name (auto-generated if empty)
+
+  CdnUrl:
+    Type: String
+    Default: ''
+    Description: CloudFront CDN base URL for images
+
+  MonthlyBudgetLimitUsd:
+    Type: String
+    Default: '10'
+    Description: Monthly cost budget ceiling in USD
+
+  BudgetStopThresholdUsd:
+    Type: String
+    Default: '20'
+    Description: Monthly spend threshold for automatic budget stop
+
+  HealthEndpointUrl:
+    Type: String
+    Default: ''
+    Description: Full HTTPS URL of the /health endpoint for monitoring
+
+  # -- Payment / Order Service --
+  PaymentProvider:
+    Type: String
+    Default: mock
+    AllowedValues: [mock, stripe]
+  SesFromEmail:
+    Type: String
+    Default: ''
+  SesIdentityArn:
+    Type: String
+    Default: ''
+  SnsOrderTopicArn:
+    Type: String
+    Default: ''
+  StripeApiKeySsmParameterArn:
+    Type: String
+    Default: ''
+
+  # -- Integration / Etsy Service --
+  EtsyClientId:
+    Type: String
+    Default: ''
+    NoEcho: true
+  EtsyClientSecret:
+    Type: String
+    Default: ''
+    NoEcho: true
+  EtsyRedirectUri:
+    Type: String
+    Default: ''
+  EtsyWebhookSecret:
+    Type: String
+    Default: ''
+    NoEcho: true
+  EtsyShopIds:
+    Type: String
+    Default: ''
+  ScheduledSyncEnabled:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  ScheduledSyncCron:
+    Type: String
+    Default: 'cron(0 2 * * ? *)'
+
+  # -- Stack Selector Flags --
+  EnableNetworking:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableDynamoDB:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableS3:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableCloudFront:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableProductService:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableCartService:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableOrderService:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableContentService:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableDiscountService:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableIntegrationService:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableNotificationService:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableAuditService:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  EnableMonitoring:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+
+# ---------------------------------------------------------------------------
+# Conditions
+# ---------------------------------------------------------------------------
+Conditions:
+  IsNetworkingEnabled: !Equals [!Ref EnableNetworking, 'true']
+  IsDynamoDBEnabled: !Equals [!Ref EnableDynamoDB, 'true']
+  IsS3Enabled: !Equals [!Ref EnableS3, 'true']
+  IsCloudFrontEnabled: !And
+    - !Equals [!Ref EnableCloudFront, 'true']
+    - !Equals [!Ref EnableS3, 'true']
+  IsProductServiceEnabled: !And
+    - !Equals [!Ref EnableProductService, 'true']
+    - !Equals [!Ref EnableDynamoDB, 'true']
+  IsCartServiceEnabled: !And
+    - !Equals [!Ref EnableCartService, 'true']
+    - !Equals [!Ref EnableDynamoDB, 'true']
+  IsOrderServiceEnabled: !And
+    - !Equals [!Ref EnableOrderService, 'true']
+    - !Equals [!Ref EnableDynamoDB, 'true']
+  IsContentServiceEnabled: !And
+    - !Equals [!Ref EnableContentService, 'true']
+    - !Equals [!Ref EnableDynamoDB, 'true']
+  IsDiscountServiceEnabled: !And
+    - !Equals [!Ref EnableDiscountService, 'true']
+    - !Equals [!Ref EnableDynamoDB, 'true']
+  IsIntegrationServiceEnabled: !And
+    - !Equals [!Ref EnableIntegrationService, 'true']
+    - !Equals [!Ref EnableDynamoDB, 'true']
+  IsNotificationServiceEnabled: !And
+    - !Equals [!Ref EnableNotificationService, 'true']
+    - !Equals [!Ref EnableDynamoDB, 'true']
+  IsAuditServiceEnabled: !And
+    - !Equals [!Ref EnableAuditService, 'true']
+    - !Equals [!Ref EnableDynamoDB, 'true']
+  IsMonitoringEnabled: !Equals [!Ref EnableMonitoring, 'true']
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+  # ---------- Networking ----------
+  NetworkingStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsNetworkingEnabled
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/networking.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- DynamoDB ----------
+  DynamoDBStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsDynamoDBEnabled
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/dynamodb.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        TableName: !Ref DynamoDBTableName
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- S3 ----------
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsS3Enabled
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/s3.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- CloudFront ----------
+  CloudFrontStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsCloudFrontEnabled
+    DependsOn: S3Stack
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/cloudfront.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        S3BucketName: !GetAtt S3Stack.Outputs.BucketName
+        S3BucketArn: !GetAtt S3Stack.Outputs.BucketArn
+        S3BucketDomainName: !GetAtt S3Stack.Outputs.BucketDomainName
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- Product Service ----------
+  ProductServiceStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsProductServiceEnabled
+    DependsOn: DynamoDBStack
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/product-service.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DynamoDBTableName: !GetAtt DynamoDBStack.Outputs.TableName
+        DynamoDBTableArn: !GetAtt DynamoDBStack.Outputs.TableArn
+        S3BucketName: !If [IsS3Enabled, !GetAtt S3Stack.Outputs.BucketName, '']
+        S3BucketArn: !If [IsS3Enabled, !GetAtt S3Stack.Outputs.BucketArn, '']
+        CdnUrl: !Ref CdnUrl
+        JwtSecret: !Ref JwtSecret
+        AllowedOrigins: !Join [',', !Ref AllowedOrigins]
+        LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
+        LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
+        LambdaCodeS3Key: !Ref LambdaCodeS3Key
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: product-service
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- Cart Service ----------
+  CartServiceStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsCartServiceEnabled
+    DependsOn: DynamoDBStack
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/cart-service.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DynamoDBTableName: !GetAtt DynamoDBStack.Outputs.TableName
+        DynamoDBTableArn: !GetAtt DynamoDBStack.Outputs.TableArn
+        JwtSecret: !Ref JwtSecret
+        AllowedOrigins: !Join [',', !Ref AllowedOrigins]
+        LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
+        LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
+        LambdaCodeS3Key: !Ref LambdaCodeS3Key
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: cart-service
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- Order Service ----------
+  OrderServiceStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsOrderServiceEnabled
+    DependsOn: DynamoDBStack
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/order-service.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DynamoDBTableName: !GetAtt DynamoDBStack.Outputs.TableName
+        DynamoDBTableArn: !GetAtt DynamoDBStack.Outputs.TableArn
+        JwtSecret: !Ref JwtSecret
+        AllowedOrigins: !Join [',', !Ref AllowedOrigins]
+        LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
+        LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
+        LambdaCodeS3Key: !Ref LambdaCodeS3Key
+        PaymentProvider: !Ref PaymentProvider
+        SesFromEmail: !Ref SesFromEmail
+        SesIdentityArn: !Ref SesIdentityArn
+        SnsOrderTopicArn: !Ref SnsOrderTopicArn
+        StripeApiKeySsmParameterArn: !Ref StripeApiKeySsmParameterArn
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: order-service
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- Content Service ----------
+  ContentServiceStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsContentServiceEnabled
+    DependsOn: DynamoDBStack
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/content-service.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DynamoDBTableName: !GetAtt DynamoDBStack.Outputs.TableName
+        DynamoDBTableArn: !GetAtt DynamoDBStack.Outputs.TableArn
+        S3BucketName: !If [IsS3Enabled, !GetAtt S3Stack.Outputs.BucketName, '']
+        S3BucketArn: !If [IsS3Enabled, !GetAtt S3Stack.Outputs.BucketArn, '']
+        CdnUrl: !Ref CdnUrl
+        JwtSecret: !Ref JwtSecret
+        AllowedOrigins: !Join [',', !Ref AllowedOrigins]
+        LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
+        LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
+        LambdaCodeS3Key: !Ref LambdaCodeS3Key
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: content-service
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- Discount Service ----------
+  DiscountServiceStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsDiscountServiceEnabled
+    DependsOn: DynamoDBStack
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/discount-service.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DynamoDBTableName: !GetAtt DynamoDBStack.Outputs.TableName
+        DynamoDBTableArn: !GetAtt DynamoDBStack.Outputs.TableArn
+        JwtSecret: !Ref JwtSecret
+        AllowedOrigins: !Join [',', !Ref AllowedOrigins]
+        LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
+        LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
+        LambdaCodeS3Key: !Ref LambdaCodeS3Key
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: discount-service
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- Integration Service ----------
+  IntegrationServiceStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsIntegrationServiceEnabled
+    DependsOn: DynamoDBStack
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/integration-service.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DynamoDBTableName: !GetAtt DynamoDBStack.Outputs.TableName
+        DynamoDBTableArn: !GetAtt DynamoDBStack.Outputs.TableArn
+        JwtSecret: !Ref JwtSecret
+        AllowedOrigins: !Join [',', !Ref AllowedOrigins]
+        LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
+        LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
+        LambdaCodeS3Key: !Ref LambdaCodeS3Key
+        EtsyClientId: !Ref EtsyClientId
+        EtsyClientSecret: !Ref EtsyClientSecret
+        EtsyRedirectUri: !Ref EtsyRedirectUri
+        EtsyWebhookSecret: !Ref EtsyWebhookSecret
+        EtsyShopIds: !Ref EtsyShopIds
+        ScheduledSyncEnabled: !Ref ScheduledSyncEnabled
+        ScheduledSyncCron: !Ref ScheduledSyncCron
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: integration-service
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- Notification Service ----------
+  NotificationServiceStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsNotificationServiceEnabled
+    DependsOn: DynamoDBStack
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/notification-service.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DynamoDBTableName: !GetAtt DynamoDBStack.Outputs.TableName
+        DynamoDBTableArn: !GetAtt DynamoDBStack.Outputs.TableArn
+        JwtSecret: !Ref JwtSecret
+        AllowedOrigins: !Join [',', !Ref AllowedOrigins]
+        LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
+        LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
+        LambdaCodeS3Key: !Ref LambdaCodeS3Key
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: notification-service
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- Audit Service ----------
+  AuditServiceStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsAuditServiceEnabled
+    DependsOn: DynamoDBStack
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/audit-service.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DynamoDBTableName: !GetAtt DynamoDBStack.Outputs.TableName
+        DynamoDBTableArn: !GetAtt DynamoDBStack.Outputs.TableArn
+        JwtSecret: !Ref JwtSecret
+        AllowedOrigins: !Join [',', !Ref AllowedOrigins]
+        LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
+        LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
+        LambdaCodeS3Key: !Ref LambdaCodeS3Key
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: audit-service
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ---------- Monitoring ----------
+  MonitoringStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsMonitoringEnabled
+    DependsOn: DynamoDBStack
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/monitoring.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        AdminEmail: !Ref AdminEmail
+        DynamoDBTableName: !GetAtt DynamoDBStack.Outputs.TableName
+        CloudFrontDistributionId: !If [IsCloudFrontEnabled, !GetAtt CloudFrontStack.Outputs.DistributionId, '']
+        MonthlyBudgetLimitUsd: !Ref MonthlyBudgetLimitUsd
+        BudgetStopThresholdUsd: !Ref BudgetStopThresholdUsd
+        HealthEndpointUrl: !Ref HealthEndpointUrl
+        ProductServiceRoleName: !If [IsProductServiceEnabled, !GetAtt ProductServiceStack.Outputs.IamRoleName, '']
+        CartServiceRoleName: !If [IsCartServiceEnabled, !GetAtt CartServiceStack.Outputs.IamRoleName, '']
+        OrderServiceRoleName: !If [IsOrderServiceEnabled, !GetAtt OrderServiceStack.Outputs.IamRoleName, '']
+        ContentServiceRoleName: !If [IsContentServiceEnabled, !GetAtt ContentServiceStack.Outputs.IamRoleName, '']
+        DiscountServiceRoleName: !If [IsDiscountServiceEnabled, !GetAtt DiscountServiceStack.Outputs.IamRoleName, '']
+        IntegrationServiceRoleName: !If [IsIntegrationServiceEnabled, !GetAtt IntegrationServiceStack.Outputs.IamRoleName, '']
+        NotificationServiceRoleName: !If [IsNotificationServiceEnabled, !GetAtt NotificationServiceStack.Outputs.IamRoleName, '']
+        AuditServiceRoleName: !If [IsAuditServiceEnabled, !GetAtt AuditServiceStack.Outputs.IamRoleName, '']
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: cloudformation
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  DynamoDBTableName:
+    Condition: IsDynamoDBEnabled
+    Value: !GetAtt DynamoDBStack.Outputs.TableName
+    Description: DynamoDB table name
+
+  DynamoDBTableArn:
+    Condition: IsDynamoDBEnabled
+    Value: !GetAtt DynamoDBStack.Outputs.TableArn
+    Description: DynamoDB table ARN
+
+  S3BucketName:
+    Condition: IsS3Enabled
+    Value: !GetAtt S3Stack.Outputs.BucketName
+    Description: S3 images bucket name
+
+  CloudFrontDomainName:
+    Condition: IsCloudFrontEnabled
+    Value: !GetAtt CloudFrontStack.Outputs.DistributionDomainName
+    Description: CloudFront distribution domain name
+
+  CloudFrontDistributionId:
+    Condition: IsCloudFrontEnabled
+    Value: !GetAtt CloudFrontStack.Outputs.DistributionId
+    Description: CloudFront distribution ID
+
+  ProductServiceApiEndpoint:
+    Condition: IsProductServiceEnabled
+    Value: !GetAtt ProductServiceStack.Outputs.ApiEndpoint
+    Description: Product Service API endpoint
+
+  ProductServiceApiId:
+    Condition: IsProductServiceEnabled
+    Value: !GetAtt ProductServiceStack.Outputs.ApiId
+    Description: Product Service API Gateway ID
+
+  CartServiceApiEndpoint:
+    Condition: IsCartServiceEnabled
+    Value: !GetAtt CartServiceStack.Outputs.ApiEndpoint
+    Description: Cart Service API endpoint
+
+  CartServiceApiId:
+    Condition: IsCartServiceEnabled
+    Value: !GetAtt CartServiceStack.Outputs.ApiId
+    Description: Cart Service API Gateway ID
+
+  OrderServiceApiEndpoint:
+    Condition: IsOrderServiceEnabled
+    Value: !GetAtt OrderServiceStack.Outputs.ApiEndpoint
+    Description: Order Service API endpoint
+
+  OrderServiceApiId:
+    Condition: IsOrderServiceEnabled
+    Value: !GetAtt OrderServiceStack.Outputs.ApiId
+    Description: Order Service API Gateway ID
+
+  ContentServiceApiEndpoint:
+    Condition: IsContentServiceEnabled
+    Value: !GetAtt ContentServiceStack.Outputs.ApiEndpoint
+    Description: Content Service API endpoint
+
+  ContentServiceApiId:
+    Condition: IsContentServiceEnabled
+    Value: !GetAtt ContentServiceStack.Outputs.ApiId
+    Description: Content Service API Gateway ID
+
+  DiscountServiceApiEndpoint:
+    Condition: IsDiscountServiceEnabled
+    Value: !GetAtt DiscountServiceStack.Outputs.ApiEndpoint
+    Description: Discount Service API endpoint
+
+  DiscountServiceApiId:
+    Condition: IsDiscountServiceEnabled
+    Value: !GetAtt DiscountServiceStack.Outputs.ApiId
+    Description: Discount Service API Gateway ID
+
+  IntegrationServiceApiEndpoint:
+    Condition: IsIntegrationServiceEnabled
+    Value: !GetAtt IntegrationServiceStack.Outputs.ApiEndpoint
+    Description: Integration Service API endpoint
+
+  IntegrationServiceApiId:
+    Condition: IsIntegrationServiceEnabled
+    Value: !GetAtt IntegrationServiceStack.Outputs.ApiId
+    Description: Integration Service API Gateway ID
+
+  NotificationServiceApiEndpoint:
+    Condition: IsNotificationServiceEnabled
+    Value: !GetAtt NotificationServiceStack.Outputs.ApiEndpoint
+    Description: Notification Service API endpoint
+
+  NotificationServiceApiId:
+    Condition: IsNotificationServiceEnabled
+    Value: !GetAtt NotificationServiceStack.Outputs.ApiId
+    Description: Notification Service API Gateway ID
+
+  AuditServiceApiEndpoint:
+    Condition: IsAuditServiceEnabled
+    Value: !GetAtt AuditServiceStack.Outputs.ApiEndpoint
+    Description: Audit Service API endpoint
+
+  AuditServiceApiId:
+    Condition: IsAuditServiceEnabled
+    Value: !GetAtt AuditServiceStack.Outputs.ApiId
+    Description: Audit Service API Gateway ID

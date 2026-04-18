@@ -1,0 +1,41 @@
+name: CloudFormation Validate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infrastructure/**'
+      - '.github/workflows/cfn-validate.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infrastructure/**'
+      - '.github/workflows/cfn-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate CloudFormation Templates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install cfn-lint
+        run: pip install cfn-lint
+
+      - name: Lint root stack
+        run: cfn-lint infrastructure/root-stack.yaml
+
+      - name: Lint nested templates
+        run: cfn-lint infrastructure/nested/*.yaml
+
+      - name: Validate YAML syntax
+        run: |
+          for f in infrastructure/root-stack.yaml infrastructure/nested/*.yaml; do
+            echo "Checking YAML syntax: ${f}"
+            python3 -c "import yaml; yaml.safe_load(open('${f}'))"
+          done

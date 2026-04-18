@@ -1,0 +1,389 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Monitoring stack - CloudWatch alarms, budgets, cost-stop, health checks, and dashboard'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+  AdminEmail:
+    Type: String
+  DynamoDBTableName:
+    Type: String
+  CloudFrontDistributionId:
+    Type: String
+  MonthlyBudgetLimitUsd:
+    Type: String
+    Default: '10'
+  BudgetStopThresholdUsd:
+    Type: String
+    Default: '20'
+  HealthEndpointUrl:
+    Type: String
+    Default: ''
+  ProductServiceRoleName:
+    Type: String
+  CartServiceRoleName:
+    Type: String
+  OrderServiceRoleName:
+    Type: String
+  ContentServiceRoleName:
+    Type: String
+  DiscountServiceRoleName:
+    Type: String
+  IntegrationServiceRoleName:
+    Type: String
+  NotificationServiceRoleName:
+    Type: String
+  AuditServiceRoleName:
+    Type: String
+
+Conditions:
+  HealthCheckEnabled: !Not [!Equals [!Ref HealthEndpointUrl, '']]
+  BudgetActionGroup1Enabled: !And
+    - !Not [!Equals [!Ref ProductServiceRoleName, '']]
+    - !Not [!Equals [!Ref CartServiceRoleName, '']]
+    - !Not [!Equals [!Ref OrderServiceRoleName, '']]
+    - !Not [!Equals [!Ref NotificationServiceRoleName, '']]
+  BudgetActionGroup2Enabled: !And
+    - !Not [!Equals [!Ref IntegrationServiceRoleName, '']]
+    - !Not [!Equals [!Ref DiscountServiceRoleName, '']]
+    - !Not [!Equals [!Ref ContentServiceRoleName, '']]
+    - !Not [!Equals [!Ref AuditServiceRoleName, '']]
+
+Resources:
+  # -------------------------------------------------------
+  # SNS Topic
+  # -------------------------------------------------------
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-${Environment}-alerts'
+
+  AlertsEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertsTopic
+      Protocol: email
+      Endpoint: !Ref AdminEmail
+
+  # -------------------------------------------------------
+  # CloudWatch Alarms
+  # -------------------------------------------------------
+  DynamoDBReadCapacityAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-dynamodb-read-capacity'
+      AlarmDescription: DynamoDB read capacity units exceeded threshold
+      Namespace: AWS/DynamoDB
+      MetricName: ConsumedReadCapacityUnits
+      Dimensions:
+        - Name: TableName
+          Value: !Ref DynamoDBTableName
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 240
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertsTopic
+
+  DynamoDBWriteCapacityAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-dynamodb-write-capacity'
+      AlarmDescription: DynamoDB write capacity units exceeded threshold
+      Namespace: AWS/DynamoDB
+      MetricName: ConsumedWriteCapacityUnits
+      Dimensions:
+        - Name: TableName
+          Value: !Ref DynamoDBTableName
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 240
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertsTopic
+
+  LambdaInvocationsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-lambda-invocations'
+      AlarmDescription: Lambda invocation count exceeded daily threshold
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 30000
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertsTopic
+
+  LambdaErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-lambda-error-rate'
+      AlarmDescription: Lambda error rate exceeded threshold
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertsTopic
+      Metrics:
+        - Id: m_errors
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: m_invocations
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Invocations
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: error_rate
+          Expression: 'IF(m_invocations>0, 100*m_errors/m_invocations, 0)'
+          Label: Error Rate
+          ReturnData: true
+
+  LambdaGbSecondsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-lambda-gb-seconds'
+      AlarmDescription: Lambda GB-seconds exceeded daily threshold
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 10667
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertsTopic
+      Metrics:
+        - Id: m_duration
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Duration
+            Period: 86400
+            Stat: Sum
+          ReturnData: false
+        - Id: gb_seconds
+          Expression: 'm_duration/1000*0.25'
+          Label: GB-Seconds
+          ReturnData: true
+
+  # -------------------------------------------------------
+  # AWS Budgets - Monthly Cost Budget (alerts only)
+  # -------------------------------------------------------
+  MonthlyCostBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub '${ProjectName}-${Environment}-monthly-cost'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetLimitUsd
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref AlertsTopic
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref AlertsTopic
+
+  # -------------------------------------------------------
+  # AWS Budgets - Cost Stop Budget
+  # -------------------------------------------------------
+  CostStopBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub '${ProjectName}-${Environment}-cost-stop'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref BudgetStopThresholdUsd
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref AlertsTopic
+
+  # -------------------------------------------------------
+  # Budget Stop IAM Resources
+  # -------------------------------------------------------
+  BudgetCostStopPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectName}-${Environment}-budget-cost-stop'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Action:
+              - dynamodb:*
+              - s3:*
+              - sns:Publish
+              - ses:SendEmail
+              - ses:SendRawEmail
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+              - lambda:InvokeFunction
+            Resource: '*'
+
+  BudgetActionExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-budget-action-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: budgets.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BudgetActionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                Resource:
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-${Environment}-*-lambda-role'
+                Condition:
+                  ArnEquals:
+                    iam:PolicyARN: !Ref BudgetCostStopPolicy
+
+  BudgetActionGroup1:
+    Type: AWS::Budgets::BudgetsAction
+    Condition: BudgetActionGroup1Enabled
+    Properties:
+      BudgetName: !Ref CostStopBudget
+      NotificationType: ACTUAL
+      ActionType: APPLY_IAM_POLICY
+      ActionThreshold:
+        Type: PERCENTAGE
+        Value: 100
+      ExecutionRoleArn: !GetAtt BudgetActionExecutionRole.Arn
+      ApprovalModel: AUTOMATIC
+      Definition:
+        IamActionDefinition:
+          PolicyArn: !Ref BudgetCostStopPolicy
+          Roles:
+            - !Ref ProductServiceRoleName
+            - !Ref CartServiceRoleName
+            - !Ref OrderServiceRoleName
+            - !Ref NotificationServiceRoleName
+      Subscribers:
+        - Type: SNS
+          Address: !Ref AlertsTopic
+
+  BudgetActionGroup2:
+    Type: AWS::Budgets::BudgetsAction
+    Condition: BudgetActionGroup2Enabled
+    Properties:
+      BudgetName: !Ref CostStopBudget
+      NotificationType: ACTUAL
+      ActionType: APPLY_IAM_POLICY
+      ActionThreshold:
+        Type: PERCENTAGE
+        Value: 100
+      ExecutionRoleArn: !GetAtt BudgetActionExecutionRole.Arn
+      ApprovalModel: AUTOMATIC
+      Definition:
+        IamActionDefinition:
+          PolicyArn: !Ref BudgetCostStopPolicy
+          Roles:
+            - !Ref IntegrationServiceRoleName
+            - !Ref DiscountServiceRoleName
+            - !Ref ContentServiceRoleName
+            - !Ref AuditServiceRoleName
+      Subscribers:
+        - Type: SNS
+          Address: !Ref AlertsTopic
+
+  # -------------------------------------------------------
+  # Route 53 Health Check (conditional)
+  # -------------------------------------------------------
+  HealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Condition: HealthCheckEnabled
+    Properties:
+      HealthCheckConfig:
+        Type: HTTPS_STR_MATCH
+        FullyQualifiedDomainName: !Select [2, !Split ['/', !Ref HealthEndpointUrl]]
+        ResourcePath: !Select [1, !Split [!Select [2, !Split ['/', !Ref HealthEndpointUrl]], !Ref HealthEndpointUrl]]
+        Port: 443
+        SearchString: '"status":"healthy"'
+        RequestInterval: 30
+        FailureThreshold: 3
+      HealthCheckTags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-health-check'
+
+  # -------------------------------------------------------
+  # CloudWatch Dashboard
+  # -------------------------------------------------------
+  MonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${ProjectName}-${Environment}-monitoring'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 2,
+              "properties": {
+                "markdown": "# ${ProjectName} - ${Environment} Monitoring Dashboard\n\nServices: Product | Cart | Order | Content | Discount | Integration | Notification | Audit\n\nDynamoDB Table: ${DynamoDBTableName} | CloudFront: ${CloudFrontDistributionId}"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  SnsTopicArn:
+    Description: SNS alerts topic ARN
+    Value: !Ref AlertsTopic
+  BudgetCostStopPolicyArn:
+    Description: Budget cost-stop deny policy ARN
+    Value: !Ref BudgetCostStopPolicy
+  BudgetActionRoleArn:
+    Description: Budget action execution role ARN
+    Value: !GetAtt BudgetActionExecutionRole.Arn

@@ -1,0 +1,598 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Order Service - Lambda functions, API Gateway, and IAM roles
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  DynamoDBTableName:
+    Type: String
+
+  DynamoDBTableArn:
+    Type: String
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+
+  AllowedOrigins:
+    Type: CommaDelimitedList
+
+  LambdaReservedConcurrency:
+    Type: Number
+    Default: 10
+
+  LambdaCodeS3Bucket:
+    Type: String
+
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-placeholder.zip
+
+  PaymentProvider:
+    Type: String
+    Default: mock
+
+  SesFromEmail:
+    Type: String
+    Default: ''
+
+  SesIdentityArn:
+    Type: String
+    Default: ''
+
+  SnsOrderTopicArn:
+    Type: String
+    Default: ''
+
+  StripeApiKeySsmParameterArn:
+    Type: String
+    Default: ''
+
+Conditions:
+  SesEnabled: !And
+    - !Not [!Equals [!Ref SesIdentityArn, '']]
+    - !Not [!Equals [!Ref SesFromEmail, '']]
+
+  SnsEnabled: !Not
+    - !Equals [!Ref SnsOrderTopicArn, '']
+
+  SsmEnabled: !Not
+    - !Equals [!Ref StripeApiKeySsmParameterArn, '']
+
+Resources:
+  # ============================================================
+  # IAM Role
+  # ============================================================
+  OrderServiceLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-order-service-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:TransactWriteItems
+                  - dynamodb:TransactGetItems
+                Resource:
+                  - !Ref DynamoDBTableArn
+                  - !Sub '${DynamoDBTableArn}/index/*'
+        - !If
+          - SesEnabled
+          - PolicyName: SESAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ses:SendEmail
+                    - ses:SendRawEmail
+                  Resource: !Ref SesIdentityArn
+          - !Ref AWS::NoValue
+        - !If
+          - SnsEnabled
+          - PolicyName: SNSAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - sns:Publish
+                  Resource: !Ref SnsOrderTopicArn
+          - !Ref AWS::NoValue
+        - !If
+          - SsmEnabled
+          - PolicyName: SSMAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ssm:GetParameter
+                  Resource: !Ref StripeApiKeySsmParameterArn
+          - !Ref AWS::NoValue
+
+  # ============================================================
+  # Lambda Functions
+  # ============================================================
+  CreateOrderFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CreateOrderLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-order-service-create-order'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/order.handler.createOrder
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt OrderServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          PAYMENT_PROVIDER: !Ref PaymentProvider
+          STRIPE_API_KEY_SSM_PARAMETER_ARN: !Ref StripeApiKeySsmParameterArn
+          SES_FROM_EMAIL: !Ref SesFromEmail
+          SNS_ORDER_TOPIC_ARN: !Ref SnsOrderTopicArn
+
+  GetOrderFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetOrderLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-order-service-get-order'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/order.handler.getOrder
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt OrderServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          PAYMENT_PROVIDER: !Ref PaymentProvider
+          STRIPE_API_KEY_SSM_PARAMETER_ARN: !Ref StripeApiKeySsmParameterArn
+          SES_FROM_EMAIL: !Ref SesFromEmail
+          SNS_ORDER_TOPIC_ARN: !Ref SnsOrderTopicArn
+
+  GetCustomerOrdersFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetCustomerOrdersLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-order-service-get-customer-orders'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/order.handler.getCustomerOrders
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt OrderServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          PAYMENT_PROVIDER: !Ref PaymentProvider
+          STRIPE_API_KEY_SSM_PARAMETER_ARN: !Ref StripeApiKeySsmParameterArn
+          SES_FROM_EMAIL: !Ref SesFromEmail
+          SNS_ORDER_TOPIC_ARN: !Ref SnsOrderTopicArn
+
+  ListOrdersFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ListOrdersLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-order-service-list-orders'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/order.handler.listOrders
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt OrderServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          PAYMENT_PROVIDER: !Ref PaymentProvider
+          STRIPE_API_KEY_SSM_PARAMETER_ARN: !Ref StripeApiKeySsmParameterArn
+          SES_FROM_EMAIL: !Ref SesFromEmail
+          SNS_ORDER_TOPIC_ARN: !Ref SnsOrderTopicArn
+
+  UpdateStatusFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UpdateStatusLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-order-service-update-status'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/order.handler.updateOrderStatus
+      MemorySize: 256
+      Timeout: 5
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt OrderServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          PAYMENT_PROVIDER: !Ref PaymentProvider
+          STRIPE_API_KEY_SSM_PARAMETER_ARN: !Ref StripeApiKeySsmParameterArn
+          SES_FROM_EMAIL: !Ref SesFromEmail
+          SNS_ORDER_TOPIC_ARN: !Ref SnsOrderTopicArn
+
+  ProcessPaymentFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ProcessPaymentLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-order-service-process-payment'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/order.handler.processPayment
+      MemorySize: 256
+      Timeout: 15
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt OrderServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          PAYMENT_PROVIDER: !Ref PaymentProvider
+          STRIPE_API_KEY_SSM_PARAMETER_ARN: !Ref StripeApiKeySsmParameterArn
+          SES_FROM_EMAIL: !Ref SesFromEmail
+          SNS_ORDER_TOPIC_ARN: !Ref SnsOrderTopicArn
+
+  WebhookFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: WebhookLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-order-service-webhook'
+      Runtime: nodejs18.x
+      Handler: dist/handlers/order.handler.webhookHandler
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
+      Role: !GetAtt OrderServiceLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTableName
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+          AWS_REGION_NAME: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          JWT_SECRET: !Ref JwtSecret
+          PAYMENT_PROVIDER: !Ref PaymentProvider
+          STRIPE_API_KEY_SSM_PARAMETER_ARN: !Ref StripeApiKeySsmParameterArn
+          SES_FROM_EMAIL: !Ref SesFromEmail
+          SNS_ORDER_TOPIC_ARN: !Ref SnsOrderTopicArn
+
+  # ============================================================
+  # CloudWatch Log Groups - Lambda Functions
+  # ============================================================
+  CreateOrderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-order-service-create-order'
+      RetentionInDays: 14
+
+  GetOrderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-order-service-get-order'
+      RetentionInDays: 14
+
+  GetCustomerOrdersLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-order-service-get-customer-orders'
+      RetentionInDays: 14
+
+  ListOrdersLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-order-service-list-orders'
+      RetentionInDays: 14
+
+  UpdateStatusLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-order-service-update-status'
+      RetentionInDays: 14
+
+  ProcessPaymentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-order-service-process-payment'
+      RetentionInDays: 14
+
+  WebhookLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-order-service-webhook'
+      RetentionInDays: 14
+
+  # ============================================================
+  # API Gateway
+  # ============================================================
+  OrderApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-order-service-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+        MaxAge: 300
+
+  # CloudWatch Log Group - API Gateway
+  OrderApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-order-service-api'
+      RetentionInDays: 14
+
+  OrderApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref OrderApi
+      StageName: '$default'
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt OrderApiLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","sourceIp":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","path":"$context.path","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationLatency":"$context.integrationLatency"}'
+
+  # ============================================================
+  # Lambda Integrations
+  # ============================================================
+  CreateOrderIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref OrderApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CreateOrderFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetOrderIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref OrderApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetOrderFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetCustomerOrdersIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref OrderApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetCustomerOrdersFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  ListOrdersIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref OrderApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ListOrdersFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  UpdateStatusIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref OrderApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt UpdateStatusFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  ProcessPaymentIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref OrderApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ProcessPaymentFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  WebhookIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref OrderApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt WebhookFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  # ============================================================
+  # API Gateway Routes
+  # ============================================================
+  CreateOrderRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref OrderApi
+      RouteKey: 'POST /api/orders'
+      Target: !Sub 'integrations/${CreateOrderIntegration}'
+
+  GetOrderRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref OrderApi
+      RouteKey: 'GET /api/orders/{orderNumber}'
+      Target: !Sub 'integrations/${GetOrderIntegration}'
+
+  GetCustomerOrdersRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref OrderApi
+      RouteKey: 'GET /api/orders'
+      Target: !Sub 'integrations/${GetCustomerOrdersIntegration}'
+
+  ProcessPaymentRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref OrderApi
+      RouteKey: 'POST /api/orders/{id}/payment'
+      Target: !Sub 'integrations/${ProcessPaymentIntegration}'
+
+  ListOrdersRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref OrderApi
+      RouteKey: 'GET /api/admin/orders'
+      Target: !Sub 'integrations/${ListOrdersIntegration}'
+
+  UpdateStatusRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref OrderApi
+      RouteKey: 'PATCH /api/admin/orders/{id}/status'
+      Target: !Sub 'integrations/${UpdateStatusIntegration}'
+
+  WebhookRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref OrderApi
+      RouteKey: 'POST /api/webhooks/payment'
+      Target: !Sub 'integrations/${WebhookIntegration}'
+
+  # ============================================================
+  # Lambda Permissions for API Gateway
+  # ============================================================
+  CreateOrderPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CreateOrderFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+
+  GetOrderPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetOrderFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+
+  GetCustomerOrdersPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetCustomerOrdersFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+
+  ListOrdersPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ListOrdersFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+
+  UpdateStatusPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateStatusFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+
+  ProcessPaymentPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ProcessPaymentFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+
+  WebhookPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WebhookFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+
+Outputs:
+  ApiEndpoint:
+    Description: Order Service API endpoint
+    Value: !GetAtt OrderApi.ApiEndpoint
+
+  ApiId:
+    Description: Order Service API ID
+    Value: !Ref OrderApi
+
+  IamRoleArn:
+    Description: Order Service Lambda IAM Role ARN
+    Value: !GetAtt OrderServiceLambdaRole.Arn
+
+  IamRoleName:
+    Description: Order Service Lambda IAM Role Name
+    Value: !Ref OrderServiceLambdaRole
