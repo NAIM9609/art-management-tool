@@ -2,12 +2,14 @@
  * Health Check Lambda Handler
  *
  * Endpoint:
- *   GET /health  -> getHealth  (public)
+ *   OPTIONS /health  -> CORS preflight
+ *   GET     /health  -> handler  (public)
  *
  * Returns a JSON payload describing the current health of the product service
  * and its downstream dependencies (DynamoDB, S3, memory).
  */
 
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import {
   checkDynamoDB,
   checkS3,
@@ -15,11 +17,7 @@ import {
   buildHealthReport,
   CheckStatus,
 } from '../health-check';
-import {
-  APIGatewayProxyEvent,
-  APIGatewayProxyResult,
-  JSON_HEADERS,
-} from '../types';
+import { respond } from '../lib/http';
 
 const SERVICE_NAME = 'product-service';
 const SERVICE_VERSION = '1.0.0';
@@ -33,17 +31,23 @@ const SERVICE_VERSION = '1.0.0';
  * search_string matching `"status":"healthy"` so it can detect degraded or
  * unhealthy states without requiring a non-2xx response.
  */
-export async function getHealth(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
+export const handler: APIGatewayProxyHandler = async (event) => {
+  // Handle CORS preflight.
+  if (event.httpMethod === 'OPTIONS') {
+    return respond(204, null, event.headers);
+  }
+
   const tableName = process.env.PRODUCTS_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME || '';
   const bucketName = process.env.S3_BUCKET_NAME ?? '';
   const region = process.env.AWS_REGION_CUSTOM ?? 'us-east-1';
 
   const [dynamoResult, s3Result, memoryResult] = await Promise.all([
-    tableName ? checkDynamoDB(tableName, region) : Promise.resolve({ status: 'unhealthy' as CheckStatus, error: 'PRODUCTS_TABLE_NAME not set' }),
-    bucketName ? checkS3(bucketName, region) : Promise.resolve({ status: 'unhealthy' as CheckStatus, error: 'S3_BUCKET_NAME not set' }),
+    tableName
+      ? checkDynamoDB(tableName, region)
+      : Promise.resolve({ status: 'unhealthy' as CheckStatus, error: 'PRODUCTS_TABLE_NAME not set' }),
+    bucketName
+      ? checkS3(bucketName, region)
+      : Promise.resolve({ status: 'unhealthy' as CheckStatus, error: 'S3_BUCKET_NAME not set' }),
     Promise.resolve(checkMemory()),
   ]);
 
@@ -55,12 +59,5 @@ export async function getHealth(
 
   const report = buildHealthReport(SERVICE_NAME, SERVICE_VERSION, checks);
 
-  return {
-    statusCode: 200,
-    headers: {
-      ...JSON_HEADERS,
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-    },
-    body: JSON.stringify(report),
-  };
-}
+  return respond(200, report, event.headers);
+};
