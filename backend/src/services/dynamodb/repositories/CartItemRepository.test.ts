@@ -168,11 +168,16 @@ describe('CartItemRepository', () => {
     });
 
     it('should rethrow unexpected addItem errors', async () => {
-      ddbMock.on(PutCommand).rejects(new Error('dynamo down'));
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        ddbMock.on(PutCommand).rejects(new Error('dynamo down'));
 
-      await expect(
-        repository.addItem('cart-123', 100, undefined, 3)
-      ).rejects.toThrow('dynamo down');
+        await expect(
+          repository.addItem('cart-123', 100, undefined, 3)
+        ).rejects.toThrow('dynamo down');
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
   });
 
