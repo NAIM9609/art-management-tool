@@ -20,7 +20,7 @@ const ALLOWED_ORIGINS: string[] = [
 const ALLOWED_ORIGIN_PATTERNS: RegExp[] = [];
 
 function getCorsOrigin(
-  requestHeaders: APIGatewayProxyEventHeaders | undefined,
+  requestHeaders: APIGatewayProxyEventHeaders | null | undefined,
 ): string {
   const origin = requestHeaders?.origin ?? requestHeaders?.Origin ?? '';
   if (ALLOWED_ORIGINS.includes(origin)) return origin;
@@ -40,7 +40,7 @@ function getCorsOrigin(
 export function respond(
   statusCode: number,
   body: unknown,
-  requestHeaders?: APIGatewayProxyEventHeaders,
+  requestHeaders?: APIGatewayProxyEventHeaders | null,
 ): APIGatewayProxyResult {
   const corsOrigin = getCorsOrigin(requestHeaders);
   return {
