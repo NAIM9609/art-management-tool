@@ -1,4 +1,6 @@
-import { APIGatewayProxyEventHeaders, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyResult } from '../types';
+
+type RequestHeaders = Record<string, string> | null | undefined;
 
 const CORS_ALLOWED_HEADERS = 'Content-Type,Authorization';
 const CORS_ALLOWED_METHODS = 'OPTIONS,GET,POST,PUT,PATCH,DELETE';
@@ -19,9 +21,7 @@ const ALLOWED_ORIGINS: string[] = [
  */
 const ALLOWED_ORIGIN_PATTERNS: RegExp[] = [];
 
-function getCorsOrigin(
-  requestHeaders: APIGatewayProxyEventHeaders | null | undefined,
-): string {
+function getCorsOrigin(requestHeaders: RequestHeaders): string {
   const origin = requestHeaders?.origin ?? requestHeaders?.Origin ?? '';
   if (ALLOWED_ORIGINS.includes(origin)) return origin;
   if (ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin))) return origin;
@@ -40,7 +40,7 @@ function getCorsOrigin(
 export function respond(
   statusCode: number,
   body: unknown,
-  requestHeaders?: APIGatewayProxyEventHeaders | null,
+  requestHeaders?: RequestHeaders,
 ): APIGatewayProxyResult {
   const corsOrigin = getCorsOrigin(requestHeaders);
   return {

@@ -862,9 +862,14 @@ describe('ProductRepository', () => {
     });
 
     it('should re-throw non-index errors from findBySlug', async () => {
-      ddbMock.on(QueryCommand).rejects(new Error('some unexpected error'));
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        ddbMock.on(QueryCommand).rejects(new Error('some unexpected error'));
 
-      await expect(repository.findBySlug('any')).rejects.toThrow('some unexpected error');
+        await expect(repository.findBySlug('any')).rejects.toThrow('some unexpected error');
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
 
     it('should return null when scan finds nothing', async () => {
@@ -930,9 +935,14 @@ describe('ProductRepository', () => {
     });
 
     it('should re-throw non-index errors from findByStatus', async () => {
-      ddbMock.on(QueryCommand).rejects(new Error('network error'));
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        ddbMock.on(QueryCommand).rejects(new Error('network error'));
 
-      await expect(repository.findByStatus(ProductStatus.PUBLISHED)).rejects.toThrow('network error');
+        await expect(repository.findByStatus(ProductStatus.PUBLISHED)).rejects.toThrow('network error');
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
   });
 
@@ -1020,9 +1030,14 @@ describe('ProductRepository', () => {
     });
 
     it('should re-throw non-index errors from search', async () => {
-      ddbMock.on(QueryCommand).rejects(new Error('search failed'));
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        ddbMock.on(QueryCommand).rejects(new Error('search failed'));
 
-      await expect(repository.search('Hero')).rejects.toThrow('search failed');
+        await expect(repository.search('Hero')).rejects.toThrow('search failed');
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
   });
 

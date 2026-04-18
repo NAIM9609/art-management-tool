@@ -8,20 +8,20 @@
  *   PATCH /api/variants/{id}/stock      -> updateStock   (admin)
  */
 
-import { APIGatewayProxyHandler, APIGatewayProxyEventHeaders } from 'aws-lambda';
+import { APIGatewayProxyResult, APIGatewayProxyEvent } from '../types';
 import { ProductService } from '../../../../src/services/ProductService';
 import { requireAuth, AuthError } from '../auth';
 import { respond } from '../lib/http';
 
 const productService = new ProductService();
 
-function handleError(error: unknown, h: APIGatewayProxyEventHeaders | null) {
+function handleError(error: unknown, h: APIGatewayProxyEvent['headers']) {
   if (error instanceof AuthError) {
-    return respond(error.statusCode, { message: error.message }, h);
+    return respond(error.statusCode, { error: error.message }, h);
   }
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
-    if (msg.includes('not found')) return respond(404, { message: error.message }, h);
+    if (msg.includes('not found')) return respond(404, { error: error.message }, h);
     if (
       msg.includes('validation') ||
       msg.includes('invalid') ||
@@ -29,10 +29,10 @@ function handleError(error: unknown, h: APIGatewayProxyEventHeaders | null) {
       msg.includes('negative') ||
       msg.includes('cannot')
     ) {
-      return respond(400, { message: error.message }, h);
+      return respond(400, { error: error.message }, h);
     }
   }
-  return respond(500, { message: 'Internal server error' }, h);
+  return respond(500, { error: 'Internal server error' }, h);
 }
 
 function validateCreateVariant(body: Record<string, unknown>): string | null {
@@ -52,18 +52,18 @@ function validateCreateVariant(body: Record<string, unknown>): string | null {
 }
 
 /** GET /api/products/{id}/variants */
-export const listVariants: APIGatewayProxyHandler = async (event) => {
+export const listVariants = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const idParam = event.pathParameters?.id;
-    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
+    if (!idParam) return respond(400, { error: 'id is required' }, event.headers);
     const productId = parseInt(idParam, 10);
     if (isNaN(productId) || productId <= 0) {
-      return respond(400, { message: 'id must be a positive integer' }, event.headers);
+      return respond(400, { error: 'id must be a positive integer' }, event.headers);
     }
 
     const product = await productService.getProductById(productId);
-    if (!product) return respond(404, { message: 'Product not found' }, event.headers);
+    if (!product) return respond(404, { error: 'Product not found' }, event.headers);
 
     return respond(200, { variants: product.variants || [] }, event.headers);
   } catch (error) {
@@ -72,29 +72,29 @@ export const listVariants: APIGatewayProxyHandler = async (event) => {
 };
 
 /** POST /api/products/{id}/variants */
-export const createVariant: APIGatewayProxyHandler = async (event) => {
+export const createVariant = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     requireAuth(event);
 
     const idParam = event.pathParameters?.id;
-    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
+    if (!idParam) return respond(400, { error: 'id is required' }, event.headers);
     const productId = parseInt(idParam, 10);
     if (isNaN(productId) || productId <= 0) {
-      return respond(400, { message: 'id must be a positive integer' }, event.headers);
+      return respond(400, { error: 'id must be a positive integer' }, event.headers);
     }
 
-    if (!event.body) return respond(400, { message: 'Request body is required' }, event.headers);
+    if (!event.body) return respond(400, { error: 'Request body is required' }, event.headers);
 
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(event.body);
     } catch {
-      return respond(400, { message: 'Invalid JSON in request body' }, event.headers);
+      return respond(400, { error: 'Invalid JSON in request body' }, event.headers);
     }
 
     const validationError = validateCreateVariant(body);
-    if (validationError) return respond(400, { message: validationError }, event.headers);
+    if (validationError) return respond(400, { error: validationError }, event.headers);
 
     const variant = await productService.addVariant(productId, {
       sku: body.sku as string,
@@ -111,25 +111,25 @@ export const createVariant: APIGatewayProxyHandler = async (event) => {
 };
 
 /** PUT /api/variants/{id} */
-export const updateVariant: APIGatewayProxyHandler = async (event) => {
+export const updateVariant = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     requireAuth(event);
 
     const variantId = event.pathParameters?.id;
-    if (!variantId) return respond(400, { message: 'id is required' }, event.headers);
+    if (!variantId) return respond(400, { error: 'id is required' }, event.headers);
 
-    if (!event.body) return respond(400, { message: 'Request body is required' }, event.headers);
+    if (!event.body) return respond(400, { error: 'Request body is required' }, event.headers);
 
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(event.body);
     } catch {
-      return respond(400, { message: 'Invalid JSON in request body' }, event.headers);
+      return respond(400, { error: 'Invalid JSON in request body' }, event.headers);
     }
 
     if (Object.keys(body).length === 0) {
-      return respond(400, { message: 'At least one field is required for update' }, event.headers);
+      return respond(400, { error: 'At least one field is required for update' }, event.headers);
     }
 
     const variant = await productService.updateVariant(variantId, body);
@@ -141,31 +141,31 @@ export const updateVariant: APIGatewayProxyHandler = async (event) => {
 };
 
 /** PATCH /api/variants/{id}/stock */
-export const updateStock: APIGatewayProxyHandler = async (event) => {
+export const updateStock = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     requireAuth(event);
 
     const variantId = event.pathParameters?.id;
-    if (!variantId) return respond(400, { message: 'id is required' }, event.headers);
+    if (!variantId) return respond(400, { error: 'id is required' }, event.headers);
 
-    if (!event.body) return respond(400, { message: 'Request body is required' }, event.headers);
+    if (!event.body) return respond(400, { error: 'Request body is required' }, event.headers);
 
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(event.body);
     } catch {
-      return respond(400, { message: 'Invalid JSON in request body' }, event.headers);
+      return respond(400, { error: 'Invalid JSON in request body' }, event.headers);
     }
 
     if (body.quantity === undefined || body.quantity === null) {
-      return respond(400, { message: 'quantity is required' }, event.headers);
+      return respond(400, { error: 'quantity is required' }, event.headers);
     }
     if (typeof body.quantity !== 'number') {
-      return respond(400, { message: 'quantity must be a number' }, event.headers);
+      return respond(400, { error: 'quantity must be a number' }, event.headers);
     }
     if (body.quantity < 0) {
-      return respond(400, { message: 'quantity must be non-negative' }, event.headers);
+      return respond(400, { error: 'quantity must be non-negative' }, event.headers);
     }
 
     const variant = await productService.updateVariant(variantId, { stock: body.quantity as number });

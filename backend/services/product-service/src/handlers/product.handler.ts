@@ -9,7 +9,7 @@
  *   DELETE /api/products/{id}     -> deleteProduct (admin)
  */
 
-import { APIGatewayProxyHandler, APIGatewayProxyEventHeaders } from 'aws-lambda';
+import { APIGatewayProxyResult, APIGatewayProxyEvent } from '../types';
 import { ProductService, ProductFilters, ProductStatus } from '../../../../src/services/ProductService';
 import { requireAuth, AuthError } from '../auth';
 import { respond } from '../lib/http';
@@ -19,22 +19,22 @@ const MAX_PER_PAGE = 100;
 
 const productService = new ProductService();
 
-function handleError(error: unknown, h: APIGatewayProxyEventHeaders | null) {
+function handleError(error: unknown, h: APIGatewayProxyEvent['headers']) {
   if (error instanceof AuthError) {
-    return respond(error.statusCode, { message: error.message }, h);
+    return respond(error.statusCode, { error: error.message }, h);
   }
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
-    if (msg.includes('not found')) return respond(404, { message: error.message }, h);
+    if (msg.includes('not found')) return respond(404, { error: error.message }, h);
     if (
       msg.includes('validation') ||
       msg.includes('invalid') ||
       msg.includes('required')
     ) {
-      return respond(400, { message: error.message }, h);
+      return respond(400, { error: error.message }, h);
     }
   }
-  return respond(500, { message: 'Internal server error' }, h);
+  return respond(500, { error: 'Internal server error' }, h);
 }
 
 function validateCreateProduct(body: Record<string, unknown>): string | null {
@@ -54,7 +54,7 @@ function validateCreateProduct(body: Record<string, unknown>): string | null {
 }
 
 /** GET /api/products */
-export const listProducts: APIGatewayProxyHandler = async (event) => {
+export const listProducts = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const qs = event.queryStringParameters || {};
@@ -100,14 +100,14 @@ export const listProducts: APIGatewayProxyHandler = async (event) => {
 };
 
 /** GET /api/products/{slug} */
-export const getProduct: APIGatewayProxyHandler = async (event) => {
+export const getProduct = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const slug = event.pathParameters?.slug;
-    if (!slug) return respond(400, { message: 'slug is required' }, event.headers);
+    if (!slug) return respond(400, { error: 'slug is required' }, event.headers);
 
     const product = await productService.getProductBySlug(slug);
-    if (!product) return respond(404, { message: 'Product not found' }, event.headers);
+    if (!product) return respond(404, { error: 'Product not found' }, event.headers);
 
     const base = respond(200, product, event.headers);
     return {
@@ -124,22 +124,22 @@ export const getProduct: APIGatewayProxyHandler = async (event) => {
 };
 
 /** POST /api/products */
-export const createProduct: APIGatewayProxyHandler = async (event) => {
+export const createProduct = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const user = requireAuth(event);
 
-    if (!event.body) return respond(400, { message: 'Request body is required' }, event.headers);
+    if (!event.body) return respond(400, { error: 'Request body is required' }, event.headers);
 
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(event.body);
     } catch {
-      return respond(400, { message: 'Invalid JSON in request body' }, event.headers);
+      return respond(400, { error: 'Invalid JSON in request body' }, event.headers);
     }
 
     const validationError = validateCreateProduct(body);
-    if (validationError) return respond(400, { message: validationError }, event.headers);
+    if (validationError) return respond(400, { error: validationError }, event.headers);
 
     const product = await productService.createProduct(body, user.id.toString());
 
@@ -150,27 +150,27 @@ export const createProduct: APIGatewayProxyHandler = async (event) => {
 };
 
 /** PUT /api/products/{id} */
-export const updateProduct: APIGatewayProxyHandler = async (event) => {
+export const updateProduct = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const user = requireAuth(event);
 
     const idParam = event.pathParameters?.id;
-    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
+    if (!idParam) return respond(400, { error: 'id is required' }, event.headers);
     const id = parseInt(idParam, 10);
-    if (isNaN(id) || id <= 0) return respond(400, { message: 'id must be a positive integer' }, event.headers);
+    if (isNaN(id) || id <= 0) return respond(400, { error: 'id must be a positive integer' }, event.headers);
 
-    if (!event.body) return respond(400, { message: 'Request body is required' }, event.headers);
+    if (!event.body) return respond(400, { error: 'Request body is required' }, event.headers);
 
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(event.body);
     } catch {
-      return respond(400, { message: 'Invalid JSON in request body' }, event.headers);
+      return respond(400, { error: 'Invalid JSON in request body' }, event.headers);
     }
 
     if (Object.keys(body).length === 0) {
-      return respond(400, { message: 'At least one field is required for update' }, event.headers);
+      return respond(400, { error: 'At least one field is required for update' }, event.headers);
     }
 
     const product = await productService.updateProduct(id, body, user.id.toString());
@@ -182,15 +182,15 @@ export const updateProduct: APIGatewayProxyHandler = async (event) => {
 };
 
 /** DELETE /api/products/{id} */
-export const deleteProduct: APIGatewayProxyHandler = async (event) => {
+export const deleteProduct = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const user = requireAuth(event);
 
     const idParam = event.pathParameters?.id;
-    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
+    if (!idParam) return respond(400, { error: 'id is required' }, event.headers);
     const id = parseInt(idParam, 10);
-    if (isNaN(id) || id <= 0) return respond(400, { message: 'id must be a positive integer' }, event.headers);
+    if (isNaN(id) || id <= 0) return respond(400, { error: 'id must be a positive integer' }, event.headers);
 
     await productService.deleteProduct(id, user.id.toString());
 
