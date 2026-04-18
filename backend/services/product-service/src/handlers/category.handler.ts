@@ -9,7 +9,7 @@
  *   DELETE /api/categories/{id}     -> deleteCategory  (admin)
  */
 
-import { APIGatewayProxyHandler, APIGatewayProxyEventHeaders } from 'aws-lambda';
+import { APIGatewayProxyResult, APIGatewayProxyEvent } from '../types';
 import { DynamoDBOptimized } from '../../../../src/services/dynamodb/DynamoDBOptimized';
 import { CategoryRepository } from '../../../../src/services/dynamodb/repositories/CategoryRepository';
 import { requireAuth, AuthError } from '../auth';
@@ -27,13 +27,13 @@ const dynamoDB = new DynamoDBOptimized({
 
 const categoryRepository = new CategoryRepository(dynamoDB);
 
-function handleError(error: unknown, h: APIGatewayProxyEventHeaders | null) {
+function handleError(error: unknown, h: APIGatewayProxyEvent['headers']) {
   if (error instanceof AuthError) {
-    return respond(error.statusCode, { message: error.message }, h);
+    return respond(error.statusCode, { error: error.message }, h);
   }
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
-    if (msg.includes('not found')) return respond(404, { message: error.message }, h);
+    if (msg.includes('not found')) return respond(404, { error: error.message }, h);
     if (
       msg.includes('validation') ||
       msg.includes('invalid') ||
@@ -43,10 +43,10 @@ function handleError(error: unknown, h: APIGatewayProxyEventHeaders | null) {
       msg.includes('does not exist') ||
       msg.includes('deleted')
     ) {
-      return respond(400, { message: error.message }, h);
+      return respond(400, { error: error.message }, h);
     }
   }
-  return respond(500, { message: 'Internal server error' }, h);
+  return respond(500, { error: 'Internal server error' }, h);
 }
 
 function validateCreateCategory(body: Record<string, unknown>): string | null {
@@ -63,7 +63,7 @@ function validateCreateCategory(body: Record<string, unknown>): string | null {
 }
 
 /** GET /api/categories */
-export const listCategories: APIGatewayProxyHandler = async (event) => {
+export const listCategories = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const qs = event.queryStringParameters || {};
@@ -76,7 +76,7 @@ export const listCategories: APIGatewayProxyHandler = async (event) => {
       try {
         lastEvaluatedKey = JSON.parse(qs.last_key) as Record<string, unknown>;
       } catch {
-        return respond(400, { message: 'last_key must be a valid JSON object' }, event.headers);
+        return respond(400, { error: 'last_key must be a valid JSON object' }, event.headers);
       }
     }
 
@@ -100,14 +100,14 @@ export const listCategories: APIGatewayProxyHandler = async (event) => {
 };
 
 /** GET /api/categories/{slug} */
-export const getCategory: APIGatewayProxyHandler = async (event) => {
+export const getCategory = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const slug = event.pathParameters?.slug;
-    if (!slug) return respond(400, { message: 'slug is required' }, event.headers);
+    if (!slug) return respond(400, { error: 'slug is required' }, event.headers);
 
     const category = await categoryRepository.findBySlug(slug);
-    if (!category) return respond(404, { message: 'Category not found' }, event.headers);
+    if (!category) return respond(404, { error: 'Category not found' }, event.headers);
 
     const base = respond(200, category, event.headers);
     return {
@@ -124,22 +124,22 @@ export const getCategory: APIGatewayProxyHandler = async (event) => {
 };
 
 /** POST /api/categories */
-export const createCategory: APIGatewayProxyHandler = async (event) => {
+export const createCategory = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     requireAuth(event);
 
-    if (!event.body) return respond(400, { message: 'Request body is required' }, event.headers);
+    if (!event.body) return respond(400, { error: 'Request body is required' }, event.headers);
 
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(event.body);
     } catch {
-      return respond(400, { message: 'Invalid JSON in request body' }, event.headers);
+      return respond(400, { error: 'Invalid JSON in request body' }, event.headers);
     }
 
     const validationError = validateCreateCategory(body);
-    if (validationError) return respond(400, { message: validationError }, event.headers);
+    if (validationError) return respond(400, { error: validationError }, event.headers);
 
     const category = await categoryRepository.create({
       name: body.name as string,
@@ -155,32 +155,32 @@ export const createCategory: APIGatewayProxyHandler = async (event) => {
 };
 
 /** PUT /api/categories/{id} */
-export const updateCategory: APIGatewayProxyHandler = async (event) => {
+export const updateCategory = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     requireAuth(event);
 
     const idParam = event.pathParameters?.id;
-    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
+    if (!idParam) return respond(400, { error: 'id is required' }, event.headers);
     const id = parseInt(idParam, 10);
-    if (isNaN(id) || id <= 0) return respond(400, { message: 'id must be a positive integer' }, event.headers);
+    if (isNaN(id) || id <= 0) return respond(400, { error: 'id must be a positive integer' }, event.headers);
 
-    if (!event.body) return respond(400, { message: 'Request body is required' }, event.headers);
+    if (!event.body) return respond(400, { error: 'Request body is required' }, event.headers);
 
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(event.body);
     } catch {
-      return respond(400, { message: 'Invalid JSON in request body' }, event.headers);
+      return respond(400, { error: 'Invalid JSON in request body' }, event.headers);
     }
 
     if (Object.keys(body).length === 0) {
-      return respond(400, { message: 'At least one field is required for update' }, event.headers);
+      return respond(400, { error: 'At least one field is required for update' }, event.headers);
     }
 
     if (body.slug !== undefined) {
       if (typeof body.slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(body.slug)) {
-        return respond(400, { message: 'slug must contain only lowercase letters, numbers, and hyphens' }, event.headers);
+        return respond(400, { error: 'slug must contain only lowercase letters, numbers, and hyphens' }, event.headers);
       }
     }
 
@@ -191,7 +191,7 @@ export const updateCategory: APIGatewayProxyHandler = async (event) => {
       parent_id: body.parent_id as number | undefined,
     });
 
-    if (!category) return respond(404, { message: 'Category not found' }, event.headers);
+    if (!category) return respond(404, { error: 'Category not found' }, event.headers);
 
     return respond(200, category, event.headers);
   } catch (error) {
@@ -200,18 +200,18 @@ export const updateCategory: APIGatewayProxyHandler = async (event) => {
 };
 
 /** DELETE /api/categories/{id} */
-export const deleteCategory: APIGatewayProxyHandler = async (event) => {
+export const deleteCategory = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     requireAuth(event);
 
     const idParam = event.pathParameters?.id;
-    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
+    if (!idParam) return respond(400, { error: 'id is required' }, event.headers);
     const id = parseInt(idParam, 10);
-    if (isNaN(id) || id <= 0) return respond(400, { message: 'id must be a positive integer' }, event.headers);
+    if (isNaN(id) || id <= 0) return respond(400, { error: 'id must be a positive integer' }, event.headers);
 
     const deleted = await categoryRepository.softDelete(id);
-    if (!deleted) return respond(404, { message: 'Category not found' }, event.headers);
+    if (!deleted) return respond(404, { error: 'Category not found' }, event.headers);
 
     return respond(200, { message: 'Category deleted' }, event.headers);
   } catch (error) {

@@ -3,13 +3,14 @@
  *
  * Endpoint:
  *   OPTIONS /health  -> CORS preflight
- *   GET     /health  -> handler  (public)
+ *   GET     /health  -> getHealth  (public)
  *
  * Returns a JSON payload describing the current health of the product service
  * and its downstream dependencies (DynamoDB, S3, memory).
  */
 
-import { APIGatewayProxyHandler } from 'aws-lambda';
+import { APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyEvent } from '../types';
 import {
   checkDynamoDB,
   checkS3,
@@ -31,7 +32,7 @@ const SERVICE_VERSION = '1.0.0';
  * search_string matching `"status":"healthy"` so it can detect degraded or
  * unhealthy states without requiring a non-2xx response.
  */
-export const handler: APIGatewayProxyHandler = async (event) => {
+export const getHealth = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   // Handle CORS preflight.
   if (event.httpMethod === 'OPTIONS') {
     return respond(204, null, event.headers);
@@ -59,5 +60,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
   const report = buildHealthReport(SERVICE_NAME, SERVICE_VERSION, checks);
 
-  return respond(200, report, event.headers);
+  const base = respond(200, report, event.headers);
+  return {
+    ...base,
+    headers: {
+      ...base.headers,
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    },
+  };
 };
