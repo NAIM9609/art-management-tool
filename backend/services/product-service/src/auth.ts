@@ -3,7 +3,8 @@
  */
 
 import jwt from 'jsonwebtoken';
-import { APIGatewayProxyEvent, JWTPayload } from './types';
+import { APIGatewayProxyEvent } from 'aws-lambda';
+import { JWTPayload } from './types';
 
 const JWT_SECRET = (() => {
   const secret = process.env.JWT_SECRET;

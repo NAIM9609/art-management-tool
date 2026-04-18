@@ -7,148 +7,109 @@
  *   DELETE /api/products/{id}/images/{imageId}   -> deleteImage   (admin)
  */
 
+import { APIGatewayProxyHandler, APIGatewayProxyEventHeaders } from 'aws-lambda';
 import { ProductService } from '../../../../src/services/ProductService';
 import { S3Service } from '../../../../src/services/s3/S3Service';
 import { requireAuth, AuthError } from '../auth';
-import {
-  APIGatewayProxyEvent,
-  APIGatewayProxyResult,
-  successResponse,
-  errorResponse,
-} from '../types';
+import { respond } from '../lib/http';
 
 const productService = new ProductService();
 const s3Service = new S3Service();
 
-function getProductService(): ProductService {
-  return productService;
-}
-
-function getS3Service(): S3Service {
-  return s3Service;
-}
-
-function handleError(error: unknown): APIGatewayProxyResult {
+function handleError(error: unknown, h: APIGatewayProxyEventHeaders | null) {
   if (error instanceof AuthError) {
-    return errorResponse(error.message, error.statusCode);
+    return respond(error.statusCode, { message: error.message }, h);
   }
   if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    if (message.includes('not found')) {
-      return errorResponse(error.message, 404);
-    }
+    const msg = error.message.toLowerCase();
+    if (msg.includes('not found')) return respond(404, { message: error.message }, h);
     if (
-      message.includes('validation') ||
-      message.includes('invalid') ||
-      message.includes('required')
+      msg.includes('validation') ||
+      msg.includes('invalid') ||
+      msg.includes('required')
     ) {
-      return errorResponse(error.message, 400);
+      return respond(400, { message: error.message }, h);
     }
   }
-  return errorResponse('Internal server error', 500);
+  return respond(500, { message: 'Internal server error' }, h);
 }
 
-/**
- * GET /api/products/{id}/upload-url
- * Generate a pre-signed S3 upload URL for a product image.
- * Requires admin authentication.
- */
-export async function getUploadUrl(
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
+/** GET /api/products/{id}/upload-url */
+export const getUploadUrl: APIGatewayProxyHandler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     requireAuth(event);
 
     const idParam = event.pathParameters?.id;
-    if (!idParam) {
-      return errorResponse('id is required', 400);
-    }
+    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
     const productId = parseInt(idParam, 10);
     if (isNaN(productId) || productId <= 0) {
-      return errorResponse('id must be a positive integer', 400);
+      return respond(400, { message: 'id must be a positive integer' }, event.headers);
     }
 
     const qs = event.queryStringParameters || {};
     const contentType = qs.content_type || 'image/jpeg';
-
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/avif'];
     if (!allowedTypes.includes(contentType)) {
-      return errorResponse(`content_type must be one of: ${allowedTypes.join(', ')}`, 400);
+      return respond(400, { message: `content_type must be one of: ${allowedTypes.join(', ')}` }, event.headers);
     }
 
-    const s3Service = getS3Service();
     const result = await s3Service.generatePresignedUploadUrl(
       `product-${productId}`,
       contentType,
-      `products/${productId}`
+      `products/${productId}`,
     );
 
-    return successResponse({
+    return respond(200, {
       upload_url: result.uploadUrl,
       cdn_url: result.cdnUrl,
       key: result.key,
       expires_in: 300,
-    });
+    }, event.headers);
   } catch (error) {
-    return handleError(error);
+    return handleError(error, event.headers);
   }
-}
+};
 
-/**
- * GET /api/products/{id}/images
- * List all images for a product.
- */
-export async function listImages(
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
+/** GET /api/products/{id}/images */
+export const listImages: APIGatewayProxyHandler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const idParam = event.pathParameters?.id;
-    if (!idParam) {
-      return errorResponse('id is required', 400);
-    }
+    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
     const productId = parseInt(idParam, 10);
     if (isNaN(productId) || productId <= 0) {
-      return errorResponse('id must be a positive integer', 400);
+      return respond(400, { message: 'id must be a positive integer' }, event.headers);
     }
 
-    const service = getProductService();
-    const images = await service.listImages(productId);
+    const images = await productService.listImages(productId);
 
-    return successResponse({ images });
+    return respond(200, { images }, event.headers);
   } catch (error) {
-    return handleError(error);
+    return handleError(error, event.headers);
   }
-}
+};
 
-/**
- * DELETE /api/products/{id}/images/{imageId}
- * Delete a product image. Requires admin authentication.
- */
-export async function deleteImage(
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
+/** DELETE /api/products/{id}/images/{imageId} */
+export const deleteImage: APIGatewayProxyHandler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     requireAuth(event);
 
     const idParam = event.pathParameters?.id;
-    if (!idParam) {
-      return errorResponse('id is required', 400);
-    }
+    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
     const productId = parseInt(idParam, 10);
     if (isNaN(productId) || productId <= 0) {
-      return errorResponse('id must be a positive integer', 400);
+      return respond(400, { message: 'id must be a positive integer' }, event.headers);
     }
 
     const imageId = event.pathParameters?.imageId;
-    if (!imageId) {
-      return errorResponse('imageId is required', 400);
-    }
+    if (!imageId) return respond(400, { message: 'imageId is required' }, event.headers);
 
-    const service = getProductService();
-    await service.deleteImage(productId, imageId);
+    await productService.deleteImage(productId, imageId);
 
-    return successResponse({ message: 'Image deleted' });
+    return respond(200, { message: 'Image deleted' }, event.headers);
   } catch (error) {
-    return handleError(error);
+    return handleError(error, event.headers);
   }
-}
+};

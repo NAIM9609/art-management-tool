@@ -9,45 +9,32 @@
  *   DELETE /api/products/{id}     -> deleteProduct (admin)
  */
 
+import { APIGatewayProxyHandler, APIGatewayProxyEventHeaders } from 'aws-lambda';
 import { ProductService, ProductFilters, ProductStatus } from '../../../../src/services/ProductService';
 import { requireAuth, AuthError } from '../auth';
-import {
-  APIGatewayProxyEvent,
-  APIGatewayProxyResult,
-  PUBLIC_CACHE_HEADERS,
-  successResponse,
-  errorResponse,
-} from '../types';
+import { respond } from '../lib/http';
 
 const DEFAULT_PER_PAGE = 20;
 const MAX_PER_PAGE = 100;
-let productService: ProductService | null = null;
 
-function getProductService(): ProductService {
-  if (!productService) {
-    productService = new ProductService();
-  }
-  return productService;
-}
+const productService = new ProductService();
 
-function handleError(error: unknown): APIGatewayProxyResult {
+function handleError(error: unknown, h: APIGatewayProxyEventHeaders | null) {
   if (error instanceof AuthError) {
-    return errorResponse(error.message, error.statusCode);
+    return respond(error.statusCode, { message: error.message }, h);
   }
   if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    if (message.includes('not found')) {
-      return errorResponse(error.message, 404);
-    }
+    const msg = error.message.toLowerCase();
+    if (msg.includes('not found')) return respond(404, { message: error.message }, h);
     if (
-      message.includes('validation') ||
-      message.includes('invalid') ||
-      message.includes('required')
+      msg.includes('validation') ||
+      msg.includes('invalid') ||
+      msg.includes('required')
     ) {
-      return errorResponse(error.message, 400);
+      return respond(400, { message: error.message }, h);
     }
   }
-  return errorResponse('Internal server error', 500);
+  return respond(500, { message: 'Internal server error' }, h);
 }
 
 function validateCreateProduct(body: Record<string, unknown>): string | null {
@@ -66,17 +53,12 @@ function validateCreateProduct(body: Record<string, unknown>): string | null {
   return null;
 }
 
-/**
- * GET /api/products
- * List products with optional filters and pagination.
- */
-export async function listProducts(
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
+/** GET /api/products */
+export const listProducts: APIGatewayProxyHandler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const qs = event.queryStringParameters || {};
     const filters: ProductFilters = {};
-
     if (qs.category) filters.category = qs.category;
     if (qs.search) filters.search = qs.search;
     if (qs.status && Object.values(ProductStatus).includes(qs.status as ProductStatus)) {
@@ -92,165 +74,128 @@ export async function listProducts(
     }
 
     const page = Math.max(1, parseInt(qs.page || '1', 10) || 1);
-    const perPage = Math.min(MAX_PER_PAGE, Math.max(1, parseInt(qs.per_page || String(DEFAULT_PER_PAGE), 10) || DEFAULT_PER_PAGE));
+    const perPage = Math.min(
+      MAX_PER_PAGE,
+      Math.max(1, parseInt(qs.per_page || String(DEFAULT_PER_PAGE), 10) || DEFAULT_PER_PAGE),
+    );
 
-    const service = getProductService();
-    const result = await service.listProducts(filters, page, perPage);
-
+    const result = await productService.listProducts(filters, page, perPage);
+    const base = respond(200, {
+      products: result.products,
+      total: result.total,
+      page,
+      per_page: perPage,
+    }, event.headers);
     return {
-      statusCode: 200,
+      ...base,
       headers: {
-        ...PUBLIC_CACHE_HEADERS,
+        ...base.headers,
+        'Cache-Control': 'public, max-age=300',
         ETag: `"products-${page}-${perPage}-${result.total}"`,
       },
-      body: JSON.stringify({
-        products: result.products,
-        total: result.total,
-        page,
-        per_page: perPage,
-      }),
     };
   } catch (error) {
-    return handleError(error);
+    return handleError(error, event.headers);
   }
-}
+};
 
-/**
- * GET /api/products/{slug}
- * Get a single product by slug.
- */
-export async function getProduct(
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
+/** GET /api/products/{slug} */
+export const getProduct: APIGatewayProxyHandler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const slug = event.pathParameters?.slug;
-    if (!slug) {
-      return errorResponse('slug is required', 400);
-    }
+    if (!slug) return respond(400, { message: 'slug is required' }, event.headers);
 
-    const service = getProductService();
-    const product = await service.getProductBySlug(slug);
+    const product = await productService.getProductBySlug(slug);
+    if (!product) return respond(404, { message: 'Product not found' }, event.headers);
 
-    if (!product) {
-      return errorResponse('Product not found', 404);
-    }
-
+    const base = respond(200, product, event.headers);
     return {
-      statusCode: 200,
+      ...base,
       headers: {
-        ...PUBLIC_CACHE_HEADERS,
+        ...base.headers,
+        'Cache-Control': 'public, max-age=300',
         ETag: `"product-${product.id}-${product.updated_at}"`,
       },
-      body: JSON.stringify(product),
     };
   } catch (error) {
-    return handleError(error);
+    return handleError(error, event.headers);
   }
-}
+};
 
-/**
- * POST /api/products
- * Create a new product. Requires admin authentication.
- */
-export async function createProduct(
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
+/** POST /api/products */
+export const createProduct: APIGatewayProxyHandler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const user = requireAuth(event);
 
-    if (!event.body) {
-      return errorResponse('Request body is required', 400);
-    }
+    if (!event.body) return respond(400, { message: 'Request body is required' }, event.headers);
 
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(event.body);
     } catch {
-      return errorResponse('Invalid JSON in request body', 400);
+      return respond(400, { message: 'Invalid JSON in request body' }, event.headers);
     }
 
     const validationError = validateCreateProduct(body);
-    if (validationError) {
-      return errorResponse(validationError, 400);
-    }
+    if (validationError) return respond(400, { message: validationError }, event.headers);
 
-    const service = getProductService();
-    const product = await service.createProduct(body, user.id.toString());
+    const product = await productService.createProduct(body, user.id.toString());
 
-    return successResponse(product, 201);
+    return respond(201, product, event.headers);
   } catch (error) {
-    return handleError(error);
+    return handleError(error, event.headers);
   }
-}
+};
 
-/**
- * PUT /api/products/{id}
- * Update an existing product. Requires admin authentication.
- */
-export async function updateProduct(
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
+/** PUT /api/products/{id} */
+export const updateProduct: APIGatewayProxyHandler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const user = requireAuth(event);
 
     const idParam = event.pathParameters?.id;
-    if (!idParam) {
-      return errorResponse('id is required', 400);
-    }
+    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
     const id = parseInt(idParam, 10);
-    if (isNaN(id) || id <= 0) {
-      return errorResponse('id must be a positive integer', 400);
-    }
+    if (isNaN(id) || id <= 0) return respond(400, { message: 'id must be a positive integer' }, event.headers);
 
-    if (!event.body) {
-      return errorResponse('Request body is required', 400);
-    }
+    if (!event.body) return respond(400, { message: 'Request body is required' }, event.headers);
 
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(event.body);
     } catch {
-      return errorResponse('Invalid JSON in request body', 400);
+      return respond(400, { message: 'Invalid JSON in request body' }, event.headers);
     }
 
-    // Prevent updating with empty body
     if (Object.keys(body).length === 0) {
-      return errorResponse('At least one field is required for update', 400);
+      return respond(400, { message: 'At least one field is required for update' }, event.headers);
     }
 
-    const service = getProductService();
-    const product = await service.updateProduct(id, body, user.id.toString());
+    const product = await productService.updateProduct(id, body, user.id.toString());
 
-    return successResponse(product);
+    return respond(200, product, event.headers);
   } catch (error) {
-    return handleError(error);
+    return handleError(error, event.headers);
   }
-}
+};
 
-/**
- * DELETE /api/products/{id}
- * Delete a product. Requires admin authentication.
- */
-export async function deleteProduct(
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
+/** DELETE /api/products/{id} */
+export const deleteProduct: APIGatewayProxyHandler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return respond(204, null, event.headers);
   try {
     const user = requireAuth(event);
 
     const idParam = event.pathParameters?.id;
-    if (!idParam) {
-      return errorResponse('id is required', 400);
-    }
+    if (!idParam) return respond(400, { message: 'id is required' }, event.headers);
     const id = parseInt(idParam, 10);
-    if (isNaN(id) || id <= 0) {
-      return errorResponse('id must be a positive integer', 400);
-    }
+    if (isNaN(id) || id <= 0) return respond(400, { message: 'id must be a positive integer' }, event.headers);
 
-    const service = getProductService();
-    await service.deleteProduct(id, user.id.toString());
+    await productService.deleteProduct(id, user.id.toString());
 
-    return successResponse({ message: 'Product deleted' });
+    return respond(200, { message: 'Product deleted' }, event.headers);
   } catch (error) {
-    return handleError(error);
+    return handleError(error, event.headers);
   }
-}
+};
