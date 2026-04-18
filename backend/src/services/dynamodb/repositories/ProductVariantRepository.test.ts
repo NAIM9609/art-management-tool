@@ -374,6 +374,20 @@ describe('ProductVariantRepository', () => {
 
       await expect(repository.update('123', 1, updateData)).rejects.toThrow('Stock cannot be negative');
     });
+
+    it('should return null when update returns no data', async () => {
+      ddbMock.on(UpdateCommand).resolves({});
+
+      const variant = await repository.update('123', 1, { name: 'Updated' });
+
+      expect(variant).toBeNull();
+    });
+
+    it('should rethrow non-ConditionalCheck errors in update', async () => {
+      ddbMock.on(UpdateCommand).rejects(new Error('Service unavailable'));
+
+      await expect(repository.update('123', 1, { name: 'Updated' })).rejects.toThrow('Service unavailable');
+    });
   });
 
   describe('softDelete', () => {
@@ -402,6 +416,20 @@ describe('ProductVariantRepository', () => {
       const variant = await repository.softDelete('999', 1);
 
       expect(variant).toBeNull();
+    });
+
+    it('should return null when softDelete returns no data', async () => {
+      ddbMock.on(UpdateCommand).resolves({});
+
+      const variant = await repository.softDelete('123', 1);
+
+      expect(variant).toBeNull();
+    });
+
+    it('should rethrow non-ConditionalCheck errors in softDelete', async () => {
+      ddbMock.on(UpdateCommand).rejects(new Error('Service unavailable'));
+
+      await expect(repository.softDelete('123', 1)).rejects.toThrow('Service unavailable');
     });
   });
 
@@ -568,6 +596,12 @@ describe('ProductVariantRepository', () => {
       await expect(repository.decrementStock('123', 1, 0)).rejects.toThrow('Decrement quantity must be positive');
       await expect(repository.decrementStock('123', 1, -5)).rejects.toThrow('Decrement quantity must be positive');
     });
+
+    it('should rethrow non-ConditionalCheck errors in decrementStock', async () => {
+      ddbMock.on(UpdateCommand).rejects(new Error('Service unavailable'));
+
+      await expect(repository.decrementStock('123', 1, 5)).rejects.toThrow('Service unavailable');
+    });
   });
 
   describe('incrementStock', () => {
@@ -613,6 +647,12 @@ describe('ProductVariantRepository', () => {
     it('should throw error if quantity is not positive', async () => {
       await expect(repository.incrementStock('123', 1, 0)).rejects.toThrow('Increment quantity must be positive');
       await expect(repository.incrementStock('123', 1, -5)).rejects.toThrow('Increment quantity must be positive');
+    });
+
+    it('should rethrow non-ConditionalCheck errors in incrementStock', async () => {
+      ddbMock.on(UpdateCommand).rejects(new Error('Service unavailable'));
+
+      await expect(repository.incrementStock('123', 1, 5)).rejects.toThrow('Service unavailable');
     });
   });
 

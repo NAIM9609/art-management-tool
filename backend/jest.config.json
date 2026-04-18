@@ -17,6 +17,7 @@
     "!src/**/*.spec.ts",
     "!src/**/examples.ts",
     "!src/index.ts",
+    "!src/lambda.ts",
     "!src/database/**",
     "!src/entities/**",
     "!src/handlers/**",
