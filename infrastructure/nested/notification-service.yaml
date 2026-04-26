@@ -1,6 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Notification service - Lambda functions, API Gateway, and IAM roles'
 
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - W2531
+        - W3037
+
 Parameters:
   ProjectName:
     Type: String

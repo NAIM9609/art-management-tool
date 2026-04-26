@@ -347,11 +347,7 @@ Resources:
         FullyQualifiedDomainName: !Select
           - 2
           - !Split ['/', !Ref HealthEndpointUrl]
-        ResourcePath: !Select
-          - 1
-          - !Split
-            - !Select [2, !Split ['/', !Ref HealthEndpointUrl]]
-            - !Ref HealthEndpointUrl
+        ResourcePath: /health
         Port: 443
         SearchString: '"status":"healthy"'
         RequestInterval: 30
