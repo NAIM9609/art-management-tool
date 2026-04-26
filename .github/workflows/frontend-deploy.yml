@@ -151,7 +151,7 @@ jobs:
           check_status "GET" "${CART_BASE_URL}" "/api/cart"
           check_status "GET" "${ORDER_BASE_URL}" "/api/orders"
           check_status "GET" "${CONTENT_BASE_URL}" "/api/personaggi"
-          check_status "POST" "${DISCOUNT_BASE_URL}" "/api/discounts/validate" '{"code":"SMOKE","cartTotal":100}'
+          check_status "POST" "${DISCOUNT_BASE_URL}" "/api/shop/discounts/validate" '{"code":"SMOKE","cartTotal":100}'
           check_status "GET" "${NOTIFICATION_BASE_URL}" "/api/admin/notifications"
           check_status "GET" "${INTEGRATION_BASE_URL}" "/api/integrations/etsy/auth"
 
