@@ -60,6 +60,8 @@ jobs:
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
+          FALLBACK_API_URL="${{ secrets.NEXT_PUBLIC_API_BASE_URL || vars.NEXT_PUBLIC_API_BASE_URL || '' }}"
+
           get_stack_output() {
             local output_key="$1"
             local output
@@ -70,15 +72,23 @@ jobs:
               --output text 2>/dev/null || true)
             echo "${output}"
           }
-          BACKEND_ENDPOINTS_READY=true
+          BACKEND_ENDPOINTS_READY=false
           SHARED_API_ID=$(get_stack_output "AuthApiId")
           SHARED_API_URL=$(get_stack_output "AuthApiEndpoint")
 
           if [ -z "${SHARED_API_ID}" ] || [ "${SHARED_API_ID}" = "None" ] || [ -z "${SHARED_API_URL}" ] || [ "${SHARED_API_URL}" = "None" ]; then
-            echo "::error::Shared API outputs (AuthApiId/AuthApiEndpoint) were not found on ${PROJECT_NAME}-root."
-            echo "::error::This workflow enforces a single API Gateway for all services. Deploy/update the root stack first."
+            echo "::warning::Shared API outputs (AuthApiId/AuthApiEndpoint) were not found on ${PROJECT_NAME}-root in ${AWS_REGION_CUSTOM}."
+            echo "::warning::Trying NEXT_PUBLIC_API_BASE_URL from secrets/variables as a fallback."
+            SHARED_API_URL="${FALLBACK_API_URL}"
+            SHARED_API_ID="fallback-configured"
+          fi
+
+          if [ -z "${SHARED_API_URL}" ] || [ "${SHARED_API_URL}" = "None" ]; then
+            echo "::error::No shared API endpoint available (missing root stack outputs and NEXT_PUBLIC_API_BASE_URL secret/variable)."
             exit 1
           fi
+
+          BACKEND_ENDPOINTS_READY=true
 
           PRODUCT_API_URL="${SHARED_API_URL}"
           CART_API_URL="${SHARED_API_URL}"
