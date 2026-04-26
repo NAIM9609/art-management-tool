@@ -1,0 +1,216 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Main API - Auth Routes (Lambda + API Gateway v2) - handles /api/auth/login, /api/auth/logout'
+
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - W3037
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: art-management-tool
+
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+
+  AllowedOrigins:
+    Type: CommaDelimitedList
+
+  LambdaReservedConcurrency:
+    Type: Number
+    Default: 10
+
+  LambdaCodeS3Bucket:
+    Type: String
+
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-placeholder.zip
+
+  DynamoDBTableName:
+    Type: String
+    Default: ''
+
+  DynamoDBTableArn:
+    Type: String
+    Default: ''
+
+Conditions:
+  IsDynamoDBEnabled: !Not [!Equals [!Ref DynamoDBTableArn, '']]
+
+Resources:
+  # ============================================================================
+  # IAM Execution Role
+  # ============================================================================
+  AuthApiLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-auth-api-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !If [IsDynamoDBEnabled, !Ref DynamoDBTableArn, !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/placeholder']
+                  - !If [IsDynamoDBEnabled, !Sub '${DynamoDBTableArn}/index/*', !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/placeholder/index/*']
+
+  # ============================================================================
+  # CloudWatch Log Groups
+  # ============================================================================
+  AuthApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-auth-api'
+      RetentionInDays: 14
+
+  AuthApiLogGroupGateway:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-auth-api'
+      RetentionInDays: 14
+
+  # ============================================================================
+  # Lambda Function - Main Auth API
+  # ============================================================================
+  AuthApiFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: AuthApiLogGroup
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-auth-api'
+      Runtime: nodejs24.x
+      Handler: index.handler
+      Role: !GetAtt AuthApiLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+          DYNAMODB_TABLE_NAME: !If [IsDynamoDBEnabled, !Ref DynamoDBTableName, '']
+          ALLOWED_ORIGINS: !Join [',', !Ref AllowedOrigins]
+          ENVIRONMENT: !Ref Environment
+          AWS_REGION_CUSTOM: !Ref AWS::Region
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: auth-api
+        - Key: ManagedBy
+          Value: cloudformation
+
+  # ============================================================================
+  # Lambda Permission for API Gateway
+  # ============================================================================
+  AuthApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AuthApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthApiGateway}/*/*'
+
+  # ============================================================================
+  # API Gateway v2 (HTTP API)
+  # ============================================================================
+  AuthApiGateway:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-auth-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+          - X-Cart-Session
+          - x-session-id
+        MaxAge: 300
+
+  AuthApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref AuthApiGateway
+      StageName: !Ref Environment
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt AuthApiLogGroupGateway.Arn
+        Format: '{"requestId":"$context.requestId","sourceIp":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","path":"$context.path","status":"$context.status","integrationLatency":"$context.integrationLatency"}'
+
+  # ============================================================================
+  # API Gateway Integration - Catch-all Route
+  # ============================================================================
+  AuthApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref AuthApiGateway
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt AuthApiFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  AuthApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AuthApiGateway
+      RouteKey: '$default'
+      Target: !Sub 'integrations/${AuthApiIntegration}'
+
+Outputs:
+  ApiEndpoint:
+    Value: !Sub 'https://${AuthApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Description: Auth API endpoint (handles /api/auth/login, /api/auth/logout, etc.)
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-auth-api-endpoint'
+
+  ApiId:
+    Value: !Ref AuthApiGateway
+    Description: Auth API Gateway ID
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-auth-api-id'
+
+  LambdaFunctionArn:
+    Value: !GetAtt AuthApiFunction.Arn
+    Description: Auth API Lambda function ARN
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-auth-lambda-arn'
+
+  IamRoleName:
+    Value: !Ref AuthApiLambdaRole
+    Description: IAM role name for Auth API Lambda
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-auth-lambda-role'

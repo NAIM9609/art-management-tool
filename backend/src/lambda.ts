@@ -232,7 +232,10 @@ async function handleLogin(event: APIGatewayProxyEvent): Promise<APIGatewayProxy
 
 	const token = jwt.sign({ id: 1, username }, config.jwtSecret, { expiresIn: '24h' });
 	auditService.logAction('1', 'LOGIN', 'User', '1', undefined, ipAddress).catch(() => undefined);
-	return successResponse({ token, user: username });
+	const result = successResponse({ message: 'Login successful', user: username });
+	result.headers = result.headers || {};
+	result.headers['Set-Cookie'] = `auth_token=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=86400`;
+	return result;
 }
 
 async function handleLogout(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {

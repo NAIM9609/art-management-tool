@@ -25,12 +25,11 @@ export default function AdminLogin() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ username, password }),
+        credentials: 'include',
       });
 
       if (response.ok) {
         const data = await response.json();
-        localStorage.setItem('adminToken', data.token);
-        localStorage.setItem('adminUser', data.user);
         router.push('/admin');
       } else {
         setError('Invalid credentials');
@@ -96,3 +95,5 @@ export default function AdminLogin() {
     </div>
   );
 }
+
+  credentials: 'include',

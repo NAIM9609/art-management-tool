@@ -167,6 +167,11 @@ Parameters:
     Type: String
     Default: 'true'
     AllowedValues: ['true', 'false']
+  EnableAuthApi:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable Auth API (Lambda + API Gateway for JWT authentication)
   EnableMonitoring:
     Type: String
     Default: 'true'
@@ -206,6 +211,7 @@ Conditions:
   IsAuditServiceEnabled: !And
     - !Equals [!Ref EnableAuditService, 'true']
     - !Equals [!Ref EnableDynamoDB, 'true']
+  IsAuthApiEnabled: !Equals [!Ref EnableAuthApi, 'true']
   IsMonitoringEnabled: !Equals [!Ref EnableMonitoring, 'true']
 
 # ---------------------------------------------------------------------------
@@ -510,6 +516,32 @@ Resources:
         - Key: ManagedBy
           Value: cloudformation
 
+  # ---------- Main Auth API ----------
+  AuthApiStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsAuthApiEnabled
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/nested/auth-api.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        JwtSecret: !Ref JwtSecret
+        AllowedOrigins: !Join [',', !Ref AllowedOrigins]
+        LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
+        LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
+        LambdaCodeS3Key: !Ref LambdaCodeS3Key
+        DynamoDBTableName: !If [IsDynamoDBEnabled, !GetAtt DynamoDBStack.Outputs.TableName, '']
+        DynamoDBTableArn: !If [IsDynamoDBEnabled, !GetAtt DynamoDBStack.Outputs.TableArn, '']
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: auth-api
+        - Key: ManagedBy
+          Value: cloudformation
+
   # ---------- Monitoring ----------
   MonitoringStack:
     Type: AWS::CloudFormation::Stack
@@ -649,3 +681,23 @@ Outputs:
     Condition: IsAuditServiceEnabled
     Value: !GetAtt AuditServiceStack.Outputs.ApiId
     Description: Audit Service API Gateway ID
+  AuthApiEndpoint:
+    Condition: IsAuthApiEnabled
+    Value: !GetAtt AuthApiStack.Outputs.ApiEndpoint
+    Description: Main Auth API endpoint (includes /api/auth/login, /api/auth/logout, /health)
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-auth-api-endpoint'
+
+  AuthApiId:
+    Condition: IsAuthApiEnabled
+    Value: !GetAtt AuthApiStack.Outputs.ApiId
+    Description: Main Auth API Gateway ID
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-auth-api-id'
+
+  AuthLambdaArn:
+    Condition: IsAuthApiEnabled
+    Value: !GetAtt AuthApiStack.Outputs.LambdaFunctionArn
+    Description: Auth API Lambda function ARN
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-auth-lambda-arn'
