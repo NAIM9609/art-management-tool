@@ -52,8 +52,14 @@ Parameters:
     Type: String
     Default: 'cron(0 2 * * ? *)'
 
+  SharedHttpApiId:
+    Type: String
+    Default: ''
+
 Conditions:
   IsScheduledSyncEnabled: !Equals [!Ref ScheduledSyncEnabled, 'true']
+  UseSharedHttpApi: !Not [!Equals [!Ref SharedHttpApiId, '']]
+  CreateServiceApi: !Equals [!Ref SharedHttpApiId, '']
 
 Resources:
   # -------------------------------------------------------
@@ -332,6 +338,7 @@ Resources:
   # -------------------------------------------------------
   IntegrationApi:
     Type: AWS::ApiGatewayV2::Api
+    Condition: CreateServiceApi
     Properties:
       Name: !Sub '${ProjectName}-${Environment}-integration-service-api'
       ProtocolType: HTTP
@@ -354,6 +361,7 @@ Resources:
 
   IntegrationApiStage:
     Type: AWS::ApiGatewayV2::Stage
+    Condition: CreateServiceApi
     Properties:
       ApiId: !Ref IntegrationApi
       StageName: '$default'
@@ -368,7 +376,7 @@ Resources:
   InitiateOAuthIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt InitiateOAuthFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -376,7 +384,7 @@ Resources:
   CallbackIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt CallbackFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -384,7 +392,7 @@ Resources:
   SyncProductsIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt SyncProductsFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -392,7 +400,7 @@ Resources:
   SyncInventoryIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt SyncInventoryFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -400,7 +408,7 @@ Resources:
   SyncOrdersIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt SyncOrdersFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -408,7 +416,7 @@ Resources:
   WebhookIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt WebhookFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -419,42 +427,42 @@ Resources:
   InitiateOAuthRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       RouteKey: 'GET /api/integrations/etsy/auth'
       Target: !Sub 'integrations/${InitiateOAuthIntegration}'
 
   CallbackRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       RouteKey: 'GET /api/integrations/etsy/callback'
       Target: !Sub 'integrations/${CallbackIntegration}'
 
   SyncProductsRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       RouteKey: 'POST /api/admin/integrations/etsy/sync/products'
       Target: !Sub 'integrations/${SyncProductsIntegration}'
 
   SyncInventoryRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       RouteKey: 'POST /api/admin/integrations/etsy/sync/inventory'
       Target: !Sub 'integrations/${SyncInventoryIntegration}'
 
   SyncOrdersRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       RouteKey: 'POST /api/admin/integrations/etsy/sync/orders'
       Target: !Sub 'integrations/${SyncOrdersIntegration}'
 
   WebhookRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref IntegrationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
       RouteKey: 'POST /api/webhooks/etsy'
       Target: !Sub 'integrations/${WebhookIntegration}'
 
@@ -467,7 +475,9 @@ Resources:
       FunctionName: !Ref InitiateOAuthFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
 
   CallbackPermission:
     Type: AWS::Lambda::Permission
@@ -475,7 +485,9 @@ Resources:
       FunctionName: !Ref CallbackFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
 
   SyncProductsPermission:
     Type: AWS::Lambda::Permission
@@ -483,7 +495,9 @@ Resources:
       FunctionName: !Ref SyncProductsFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
 
   SyncInventoryPermission:
     Type: AWS::Lambda::Permission
@@ -491,7 +505,9 @@ Resources:
       FunctionName: !Ref SyncInventoryFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
 
   SyncOrdersPermission:
     Type: AWS::Lambda::Permission
@@ -499,7 +515,9 @@ Resources:
       FunctionName: !Ref SyncOrdersFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
 
   WebhookPermission:
     Type: AWS::Lambda::Permission
@@ -507,7 +525,9 @@ Resources:
       FunctionName: !Ref WebhookFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${IntegrationApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
 
   # -------------------------------------------------------
   # EventBridge - Scheduled Sync
@@ -536,10 +556,13 @@ Resources:
 Outputs:
   ApiEndpoint:
     Description: Integration service API endpoint
-    Value: !GetAtt IntegrationApi.ApiEndpoint
+    Value: !If
+      - UseSharedHttpApi
+      - !Sub 'https://${SharedHttpApiId}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+      - !GetAtt IntegrationApi.ApiEndpoint
   ApiId:
     Description: Integration service API ID
-    Value: !Ref IntegrationApi
+    Value: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref IntegrationApi]
   IamRoleArn:
     Description: Integration service Lambda role ARN
     Value: !GetAtt IntegrationServiceLambdaRole.Arn

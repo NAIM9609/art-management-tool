@@ -53,6 +53,14 @@ Parameters:
     Type: String
     Default: lambda-placeholder.zip
 
+  SharedHttpApiId:
+    Type: String
+    Default: ''
+
+Conditions:
+  UseSharedHttpApi: !Not [!Equals [!Ref SharedHttpApiId, '']]
+  CreateServiceApi: !Equals [!Ref SharedHttpApiId, '']
+
 Resources:
   # ============================================================================
   # IAM Execution Role
@@ -657,6 +665,7 @@ Resources:
   # ============================================================================
   ProductServiceApi:
     Type: AWS::ApiGatewayV2::Api
+    Condition: CreateServiceApi
     Properties:
       Name: !Sub '${ProjectName}-${Environment}-product-service-api'
       ProtocolType: HTTP
@@ -677,12 +686,14 @@ Resources:
 
   ProductServiceApiLogGroup:
     Type: AWS::Logs::LogGroup
+    Condition: CreateServiceApi
     Properties:
       LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-product-service-api'
       RetentionInDays: 14
 
   ProductServiceApiStage:
     Type: AWS::ApiGatewayV2::Stage
+    Condition: CreateServiceApi
     Properties:
       ApiId: !Ref ProductServiceApi
       StageName: '$default'
@@ -697,7 +708,7 @@ Resources:
   ListProductsIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ListProductsFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -705,7 +716,7 @@ Resources:
   GetProductIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetProductFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -713,7 +724,7 @@ Resources:
   CreateProductIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt CreateProductFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -721,7 +732,7 @@ Resources:
   UpdateProductIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt UpdateProductFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -729,7 +740,7 @@ Resources:
   DeleteProductIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt DeleteProductFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -737,7 +748,7 @@ Resources:
   ListCategoriesIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ListCategoriesFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -745,7 +756,7 @@ Resources:
   GetCategoryIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetCategoryFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -753,7 +764,7 @@ Resources:
   CreateCategoryIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt CreateCategoryFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -761,7 +772,7 @@ Resources:
   UpdateCategoryIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt UpdateCategoryFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -769,7 +780,7 @@ Resources:
   DeleteCategoryIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt DeleteCategoryFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -777,7 +788,7 @@ Resources:
   ListVariantsIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ListVariantsFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -785,7 +796,7 @@ Resources:
   CreateVariantIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt CreateVariantFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -793,7 +804,7 @@ Resources:
   UpdateVariantIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt UpdateVariantFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -801,7 +812,7 @@ Resources:
   UpdateStockIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt UpdateStockFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -809,7 +820,7 @@ Resources:
   GetUploadUrlIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetUploadUrlFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -817,7 +828,7 @@ Resources:
   ListImagesIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ListImagesFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -825,7 +836,7 @@ Resources:
   DeleteImageIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt DeleteImageFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -833,7 +844,7 @@ Resources:
   HealthIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt HealthFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -844,126 +855,126 @@ Resources:
   HealthRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: GET /health
       Target: !Sub 'integrations/${HealthIntegration}'
 
   ListProductsRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: GET /api/products
       Target: !Sub 'integrations/${ListProductsIntegration}'
 
   GetProductRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: GET /api/products/{slug}
       Target: !Sub 'integrations/${GetProductIntegration}'
 
   CreateProductRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: POST /api/products
       Target: !Sub 'integrations/${CreateProductIntegration}'
 
   UpdateProductRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: PUT /api/products/{id}
       Target: !Sub 'integrations/${UpdateProductIntegration}'
 
   DeleteProductRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: DELETE /api/products/{id}
       Target: !Sub 'integrations/${DeleteProductIntegration}'
 
   ListCategoriesRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: GET /api/categories
       Target: !Sub 'integrations/${ListCategoriesIntegration}'
 
   GetCategoryRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: GET /api/categories/{slug}
       Target: !Sub 'integrations/${GetCategoryIntegration}'
 
   CreateCategoryRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: POST /api/categories
       Target: !Sub 'integrations/${CreateCategoryIntegration}'
 
   UpdateCategoryRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: PUT /api/categories/{id}
       Target: !Sub 'integrations/${UpdateCategoryIntegration}'
 
   DeleteCategoryRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: DELETE /api/categories/{id}
       Target: !Sub 'integrations/${DeleteCategoryIntegration}'
 
   ListVariantsRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: GET /api/products/{id}/variants
       Target: !Sub 'integrations/${ListVariantsIntegration}'
 
   CreateVariantRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: POST /api/products/{id}/variants
       Target: !Sub 'integrations/${CreateVariantIntegration}'
 
   UpdateVariantRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: PUT /api/variants/{id}
       Target: !Sub 'integrations/${UpdateVariantIntegration}'
 
   UpdateStockRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: PATCH /api/variants/{id}/stock
       Target: !Sub 'integrations/${UpdateStockIntegration}'
 
   GetUploadUrlRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: GET /api/products/{id}/upload-url
       Target: !Sub 'integrations/${GetUploadUrlIntegration}'
 
   ListImagesRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: GET /api/products/{id}/images
       Target: !Sub 'integrations/${ListImagesIntegration}'
 
   DeleteImageRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ProductServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
       RouteKey: DELETE /api/products/{id}/images/{imageId}
       Target: !Sub 'integrations/${DeleteImageIntegration}'
 
@@ -976,7 +987,9 @@ Resources:
       FunctionName: !Ref ListProductsFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   GetProductPermission:
     Type: AWS::Lambda::Permission
@@ -984,7 +997,9 @@ Resources:
       FunctionName: !Ref GetProductFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   CreateProductPermission:
     Type: AWS::Lambda::Permission
@@ -992,7 +1007,9 @@ Resources:
       FunctionName: !Ref CreateProductFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   UpdateProductPermission:
     Type: AWS::Lambda::Permission
@@ -1000,7 +1017,9 @@ Resources:
       FunctionName: !Ref UpdateProductFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   DeleteProductPermission:
     Type: AWS::Lambda::Permission
@@ -1008,7 +1027,9 @@ Resources:
       FunctionName: !Ref DeleteProductFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   ListCategoriesPermission:
     Type: AWS::Lambda::Permission
@@ -1016,7 +1037,9 @@ Resources:
       FunctionName: !Ref ListCategoriesFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   GetCategoryPermission:
     Type: AWS::Lambda::Permission
@@ -1024,7 +1047,9 @@ Resources:
       FunctionName: !Ref GetCategoryFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   CreateCategoryPermission:
     Type: AWS::Lambda::Permission
@@ -1032,7 +1057,9 @@ Resources:
       FunctionName: !Ref CreateCategoryFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   UpdateCategoryPermission:
     Type: AWS::Lambda::Permission
@@ -1040,7 +1067,9 @@ Resources:
       FunctionName: !Ref UpdateCategoryFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   DeleteCategoryPermission:
     Type: AWS::Lambda::Permission
@@ -1048,7 +1077,9 @@ Resources:
       FunctionName: !Ref DeleteCategoryFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   ListVariantsPermission:
     Type: AWS::Lambda::Permission
@@ -1056,7 +1087,9 @@ Resources:
       FunctionName: !Ref ListVariantsFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   CreateVariantPermission:
     Type: AWS::Lambda::Permission
@@ -1064,7 +1097,9 @@ Resources:
       FunctionName: !Ref CreateVariantFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   UpdateVariantPermission:
     Type: AWS::Lambda::Permission
@@ -1072,7 +1107,9 @@ Resources:
       FunctionName: !Ref UpdateVariantFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   UpdateStockPermission:
     Type: AWS::Lambda::Permission
@@ -1080,7 +1117,9 @@ Resources:
       FunctionName: !Ref UpdateStockFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   GetUploadUrlPermission:
     Type: AWS::Lambda::Permission
@@ -1088,7 +1127,9 @@ Resources:
       FunctionName: !Ref GetUploadUrlFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   ListImagesPermission:
     Type: AWS::Lambda::Permission
@@ -1096,7 +1137,9 @@ Resources:
       FunctionName: !Ref ListImagesFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   DeleteImagePermission:
     Type: AWS::Lambda::Permission
@@ -1104,7 +1147,9 @@ Resources:
       FunctionName: !Ref DeleteImageFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   HealthPermission:
     Type: AWS::Lambda::Permission
@@ -1112,16 +1157,21 @@ Resources:
       FunctionName: !Ref HealthFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
 Outputs:
   ApiEndpoint:
     Description: Product Service API endpoint URL
-    Value: !GetAtt ProductServiceApi.ApiEndpoint
+    Value: !If
+      - UseSharedHttpApi
+      - !Sub 'https://${SharedHttpApiId}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+      - !GetAtt ProductServiceApi.ApiEndpoint
 
   ApiId:
     Description: Product Service API ID
-    Value: !Ref ProductServiceApi
+    Value: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ProductServiceApi]
 
   IamRoleArn:
     Description: Product Service Lambda execution role ARN

@@ -32,6 +32,14 @@ Parameters:
     Type: String
     Default: lambda-placeholder.zip
 
+  SharedHttpApiId:
+    Type: String
+    Default: ''
+
+Conditions:
+  UseSharedHttpApi: !Not [!Equals [!Ref SharedHttpApiId, '']]
+  CreateServiceApi: !Equals [!Ref SharedHttpApiId, '']
+
 Resources:
   # -------------------------------------------------------
   # IAM Role
@@ -164,6 +172,7 @@ Resources:
   # -------------------------------------------------------
   AuditApi:
     Type: AWS::ApiGatewayV2::Api
+    Condition: CreateServiceApi
     Properties:
       Name: !Sub '${ProjectName}-${Environment}-audit-service-api'
       ProtocolType: HTTP
@@ -184,6 +193,7 @@ Resources:
 
   AuditApiStage:
     Type: AWS::ApiGatewayV2::Stage
+    Condition: CreateServiceApi
     Properties:
       ApiId: !Ref AuditApi
       StageName: '$default'
@@ -198,7 +208,7 @@ Resources:
   GetEntityHistoryIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref AuditApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref AuditApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetEntityHistoryFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -206,7 +216,7 @@ Resources:
   GetUserActivityIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref AuditApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref AuditApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetUserActivityFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -214,7 +224,7 @@ Resources:
   GetActivityByDateIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref AuditApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref AuditApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetActivityByDateFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -225,21 +235,21 @@ Resources:
   GetEntityHistoryRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref AuditApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref AuditApi]
       RouteKey: 'GET /api/admin/audit/entity/{type}/{id}'
       Target: !Sub 'integrations/${GetEntityHistoryIntegration}'
 
   GetUserActivityRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref AuditApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref AuditApi]
       RouteKey: 'GET /api/admin/audit/user/{userId}'
       Target: !Sub 'integrations/${GetUserActivityIntegration}'
 
   GetActivityByDateRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref AuditApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref AuditApi]
       RouteKey: 'GET /api/admin/audit/date-range'
       Target: !Sub 'integrations/${GetActivityByDateIntegration}'
 
@@ -252,7 +262,9 @@ Resources:
       FunctionName: !Ref GetEntityHistoryFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${AuditApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref AuditApi]
 
   GetUserActivityPermission:
     Type: AWS::Lambda::Permission
@@ -260,7 +272,9 @@ Resources:
       FunctionName: !Ref GetUserActivityFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${AuditApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref AuditApi]
 
   GetActivityByDatePermission:
     Type: AWS::Lambda::Permission
@@ -268,15 +282,20 @@ Resources:
       FunctionName: !Ref GetActivityByDateFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${AuditApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref AuditApi]
 
 Outputs:
   ApiEndpoint:
     Description: Audit service API endpoint
-    Value: !GetAtt AuditApi.ApiEndpoint
+    Value: !If
+      - UseSharedHttpApi
+      - !Sub 'https://${SharedHttpApiId}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+      - !GetAtt AuditApi.ApiEndpoint
   ApiId:
     Description: Audit service API ID
-    Value: !Ref AuditApi
+    Value: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref AuditApi]
   IamRoleArn:
     Description: Audit service Lambda role ARN
     Value: !GetAtt AuditServiceLambdaRole.Arn

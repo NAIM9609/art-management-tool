@@ -63,6 +63,10 @@ Parameters:
     Type: String
     Default: ''
 
+  SharedHttpApiId:
+    Type: String
+    Default: ''
+
 Conditions:
   SesEnabled: !And
     - !Not [!Equals [!Ref SesIdentityArn, '']]
@@ -73,6 +77,9 @@ Conditions:
 
   SsmEnabled: !Not
     - !Equals [!Ref StripeApiKeySsmParameterArn, '']
+
+  UseSharedHttpApi: !Not [!Equals [!Ref SharedHttpApiId, '']]
+  CreateServiceApi: !Equals [!Ref SharedHttpApiId, '']
 
 Resources:
   # ============================================================
@@ -381,6 +388,7 @@ Resources:
   # ============================================================
   OrderApi:
     Type: AWS::ApiGatewayV2::Api
+    Condition: CreateServiceApi
     Properties:
       Name: !Sub '${ProjectName}-${Environment}-order-service-api'
       ProtocolType: HTTP
@@ -402,12 +410,14 @@ Resources:
   # CloudWatch Log Group - API Gateway
   OrderApiLogGroup:
     Type: AWS::Logs::LogGroup
+    Condition: CreateServiceApi
     Properties:
       LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-order-service-api'
       RetentionInDays: 14
 
   OrderApiStage:
     Type: AWS::ApiGatewayV2::Stage
+    Condition: CreateServiceApi
     Properties:
       ApiId: !Ref OrderApi
       StageName: '$default'
@@ -422,7 +432,7 @@ Resources:
   CreateOrderIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt CreateOrderFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -430,7 +440,7 @@ Resources:
   GetOrderIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetOrderFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -438,7 +448,7 @@ Resources:
   GetCustomerOrdersIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetCustomerOrdersFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -446,7 +456,7 @@ Resources:
   ListOrdersIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ListOrdersFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -454,7 +464,7 @@ Resources:
   UpdateStatusIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt UpdateStatusFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -462,7 +472,7 @@ Resources:
   ProcessPaymentIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ProcessPaymentFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -470,7 +480,7 @@ Resources:
   WebhookIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt WebhookFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -481,49 +491,49 @@ Resources:
   CreateOrderRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       RouteKey: 'POST /api/orders'
       Target: !Sub 'integrations/${CreateOrderIntegration}'
 
   GetOrderRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       RouteKey: 'GET /api/orders/{orderNumber}'
       Target: !Sub 'integrations/${GetOrderIntegration}'
 
   GetCustomerOrdersRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       RouteKey: 'GET /api/orders'
       Target: !Sub 'integrations/${GetCustomerOrdersIntegration}'
 
   ProcessPaymentRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       RouteKey: 'POST /api/orders/{id}/payment'
       Target: !Sub 'integrations/${ProcessPaymentIntegration}'
 
   ListOrdersRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       RouteKey: 'GET /api/admin/orders'
       Target: !Sub 'integrations/${ListOrdersIntegration}'
 
   UpdateStatusRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       RouteKey: 'PATCH /api/admin/orders/{id}/status'
       Target: !Sub 'integrations/${UpdateStatusIntegration}'
 
   WebhookRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref OrderApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
       RouteKey: 'POST /api/webhooks/payment'
       Target: !Sub 'integrations/${WebhookIntegration}'
 
@@ -536,7 +546,9 @@ Resources:
       FunctionName: !Ref CreateOrderFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
 
   GetOrderPermission:
     Type: AWS::Lambda::Permission
@@ -544,7 +556,9 @@ Resources:
       FunctionName: !Ref GetOrderFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
 
   GetCustomerOrdersPermission:
     Type: AWS::Lambda::Permission
@@ -552,7 +566,9 @@ Resources:
       FunctionName: !Ref GetCustomerOrdersFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
 
   ListOrdersPermission:
     Type: AWS::Lambda::Permission
@@ -560,7 +576,9 @@ Resources:
       FunctionName: !Ref ListOrdersFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
 
   UpdateStatusPermission:
     Type: AWS::Lambda::Permission
@@ -568,7 +586,9 @@ Resources:
       FunctionName: !Ref UpdateStatusFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
 
   ProcessPaymentPermission:
     Type: AWS::Lambda::Permission
@@ -576,7 +596,9 @@ Resources:
       FunctionName: !Ref ProcessPaymentFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
 
   WebhookPermission:
     Type: AWS::Lambda::Permission
@@ -584,16 +606,21 @@ Resources:
       FunctionName: !Ref WebhookFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OrderApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
 
 Outputs:
   ApiEndpoint:
     Description: Order Service API endpoint
-    Value: !GetAtt OrderApi.ApiEndpoint
+    Value: !If
+      - UseSharedHttpApi
+      - !Sub 'https://${SharedHttpApiId}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+      - !GetAtt OrderApi.ApiEndpoint
 
   ApiId:
     Description: Order Service API ID
-    Value: !Ref OrderApi
+    Value: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref OrderApi]
 
   IamRoleArn:
     Description: Order Service Lambda IAM Role ARN

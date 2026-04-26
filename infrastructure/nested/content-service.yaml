@@ -42,6 +42,14 @@ Parameters:
     Type: String
     Default: lambda-placeholder.zip
 
+  SharedHttpApiId:
+    Type: String
+    Default: ''
+
+Conditions:
+  UseSharedHttpApi: !Not [!Equals [!Ref SharedHttpApiId, '']]
+  CreateServiceApi: !Equals [!Ref SharedHttpApiId, '']
+
 Resources:
   # ============================================================
   # IAM Role
@@ -491,6 +499,7 @@ Resources:
   # ============================================================
   ContentServiceApi:
     Type: AWS::ApiGatewayV2::Api
+    Condition: CreateServiceApi
     Properties:
       Name: !Sub '${ProjectName}-${Environment}-content-service-api'
       ProtocolType: HTTP
@@ -511,12 +520,14 @@ Resources:
 
   ContentServiceApiLogGroup:
     Type: AWS::Logs::LogGroup
+    Condition: CreateServiceApi
     Properties:
       LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-content-service-api'
       RetentionInDays: 14
 
   ContentServiceApiStage:
     Type: AWS::ApiGatewayV2::Stage
+    Condition: CreateServiceApi
     Properties:
       ApiId: !Ref ContentServiceApi
       StageName: '$default'
@@ -531,7 +542,7 @@ Resources:
   ListPersonaggiIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ListPersonaggiFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -539,7 +550,7 @@ Resources:
   GetPersonaggioIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetPersonaggioFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -547,7 +558,7 @@ Resources:
   CreatePersonaggioIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt CreatePersonaggioFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -555,7 +566,7 @@ Resources:
   UpdatePersonaggioIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt UpdatePersonaggioFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -563,7 +574,7 @@ Resources:
   DeletePersonaggioIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt DeletePersonaggioFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -571,7 +582,7 @@ Resources:
   UploadPersonaggioImageIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt UploadPersonaggioImageFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -579,7 +590,7 @@ Resources:
   ListFumettiIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ListFumettiFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -587,7 +598,7 @@ Resources:
   GetFumettoIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetFumettoFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -595,7 +606,7 @@ Resources:
   CreateFumettoIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt CreateFumettoFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -603,7 +614,7 @@ Resources:
   UpdateFumettoIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt UpdateFumettoFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -611,7 +622,7 @@ Resources:
   DeleteFumettoIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt DeleteFumettoFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -619,7 +630,7 @@ Resources:
   GetFumettoUploadUrlIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetFumettoUploadUrlFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -627,7 +638,7 @@ Resources:
   TempUploadPresignIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt TempUploadPresignFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -638,91 +649,91 @@ Resources:
   ListPersonaggiRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'GET /api/personaggi'
       Target: !Sub 'integrations/${ListPersonaggiIntegration}'
 
   GetPersonaggioRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'GET /api/personaggi/{id}'
       Target: !Sub 'integrations/${GetPersonaggioIntegration}'
 
   CreatePersonaggioRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'POST /api/personaggi'
       Target: !Sub 'integrations/${CreatePersonaggioIntegration}'
 
   UpdatePersonaggioRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'PUT /api/personaggi/{id}'
       Target: !Sub 'integrations/${UpdatePersonaggioIntegration}'
 
   DeletePersonaggioRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'DELETE /api/personaggi/{id}'
       Target: !Sub 'integrations/${DeletePersonaggioIntegration}'
 
   UploadPersonaggioImageRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'POST /api/personaggi/{id}/upload'
       Target: !Sub 'integrations/${UploadPersonaggioImageIntegration}'
 
   ListFumettiRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'GET /api/fumetti'
       Target: !Sub 'integrations/${ListFumettiIntegration}'
 
   GetFumettoRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'GET /api/fumetti/{id}'
       Target: !Sub 'integrations/${GetFumettoIntegration}'
 
   CreateFumettoRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'POST /api/fumetti'
       Target: !Sub 'integrations/${CreateFumettoIntegration}'
 
   UpdateFumettoRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'PUT /api/fumetti/{id}'
       Target: !Sub 'integrations/${UpdateFumettoIntegration}'
 
   DeleteFumettoRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'DELETE /api/fumetti/{id}'
       Target: !Sub 'integrations/${DeleteFumettoIntegration}'
 
   GetFumettoUploadUrlRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'POST /api/fumetti/{id}/upload'
       Target: !Sub 'integrations/${GetFumettoUploadUrlIntegration}'
 
   TempUploadPresignRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref ContentServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
       RouteKey: 'POST /api/upload/temp'
       Target: !Sub 'integrations/${TempUploadPresignIntegration}'
 
@@ -735,7 +746,9 @@ Resources:
       FunctionName: !Ref ListPersonaggiFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   GetPersonaggioPermission:
     Type: AWS::Lambda::Permission
@@ -743,7 +756,9 @@ Resources:
       FunctionName: !Ref GetPersonaggioFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   CreatePersonaggioPermission:
     Type: AWS::Lambda::Permission
@@ -751,7 +766,9 @@ Resources:
       FunctionName: !Ref CreatePersonaggioFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   UpdatePersonaggioPermission:
     Type: AWS::Lambda::Permission
@@ -759,7 +776,9 @@ Resources:
       FunctionName: !Ref UpdatePersonaggioFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   DeletePersonaggioPermission:
     Type: AWS::Lambda::Permission
@@ -767,7 +786,9 @@ Resources:
       FunctionName: !Ref DeletePersonaggioFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   UploadPersonaggioImagePermission:
     Type: AWS::Lambda::Permission
@@ -775,7 +796,9 @@ Resources:
       FunctionName: !Ref UploadPersonaggioImageFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   ListFumettiPermission:
     Type: AWS::Lambda::Permission
@@ -783,7 +806,9 @@ Resources:
       FunctionName: !Ref ListFumettiFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   GetFumettoPermission:
     Type: AWS::Lambda::Permission
@@ -791,7 +816,9 @@ Resources:
       FunctionName: !Ref GetFumettoFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   CreateFumettoPermission:
     Type: AWS::Lambda::Permission
@@ -799,7 +826,9 @@ Resources:
       FunctionName: !Ref CreateFumettoFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   UpdateFumettoPermission:
     Type: AWS::Lambda::Permission
@@ -807,7 +836,9 @@ Resources:
       FunctionName: !Ref UpdateFumettoFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   DeleteFumettoPermission:
     Type: AWS::Lambda::Permission
@@ -815,7 +846,9 @@ Resources:
       FunctionName: !Ref DeleteFumettoFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   GetFumettoUploadUrlPermission:
     Type: AWS::Lambda::Permission
@@ -823,7 +856,9 @@ Resources:
       FunctionName: !Ref GetFumettoUploadUrlFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   TempUploadPresignPermission:
     Type: AWS::Lambda::Permission
@@ -831,16 +866,21 @@ Resources:
       FunctionName: !Ref TempUploadPresignFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ContentServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
 Outputs:
   ApiEndpoint:
     Description: Content Service API endpoint URL
-    Value: !GetAtt ContentServiceApi.ApiEndpoint
+    Value: !If
+      - UseSharedHttpApi
+      - !Sub 'https://${SharedHttpApiId}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+      - !GetAtt ContentServiceApi.ApiEndpoint
 
   ApiId:
     Description: Content Service API ID
-    Value: !Ref ContentServiceApi
+    Value: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref ContentServiceApi]
 
   IamRoleArn:
     Description: Content Service Lambda IAM Role ARN

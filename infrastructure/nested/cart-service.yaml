@@ -43,6 +43,14 @@ Parameters:
     Type: String
     Default: lambda-placeholder.zip
 
+  SharedHttpApiId:
+    Type: String
+    Default: ''
+
+Conditions:
+  UseSharedHttpApi: !Not [!Equals [!Ref SharedHttpApiId, '']]
+  CreateServiceApi: !Equals [!Ref SharedHttpApiId, '']
+
 Resources:
   # ============================================================
   # IAM Role
@@ -288,6 +296,7 @@ Resources:
   # ============================================================
   CartApi:
     Type: AWS::ApiGatewayV2::Api
+    Condition: CreateServiceApi
     Properties:
       Name: !Sub '${ProjectName}-${Environment}-cart-service-api'
       ProtocolType: HTTP
@@ -314,12 +323,14 @@ Resources:
   # CloudWatch Log Group - API Gateway
   CartApiLogGroup:
     Type: AWS::Logs::LogGroup
+    Condition: CreateServiceApi
     Properties:
       LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-cart-service-api'
       RetentionInDays: 14
 
   CartApiStage:
     Type: AWS::ApiGatewayV2::Stage
+    Condition: CreateServiceApi
     Properties:
       ApiId: !Ref CartApi
       StageName: '$default'
@@ -334,7 +345,7 @@ Resources:
   GetCartIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetCartFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -342,7 +353,7 @@ Resources:
   AddItemIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt AddItemFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -350,7 +361,7 @@ Resources:
   UpdateQuantityIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt UpdateQuantityFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -358,7 +369,7 @@ Resources:
   RemoveItemIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt RemoveItemFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -366,7 +377,7 @@ Resources:
   ClearCartIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ClearCartFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -374,7 +385,7 @@ Resources:
   ApplyDiscountIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ApplyDiscountFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -382,7 +393,7 @@ Resources:
   RemoveDiscountIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt RemoveDiscountFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -393,49 +404,49 @@ Resources:
   GetCartRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       RouteKey: 'GET /api/cart'
       Target: !Sub 'integrations/${GetCartIntegration}'
 
   AddItemRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       RouteKey: 'POST /api/cart/items'
       Target: !Sub 'integrations/${AddItemIntegration}'
 
   UpdateQuantityRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       RouteKey: 'PATCH /api/cart/items/{id}'
       Target: !Sub 'integrations/${UpdateQuantityIntegration}'
 
   RemoveItemRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       RouteKey: 'DELETE /api/cart/items/{id}'
       Target: !Sub 'integrations/${RemoveItemIntegration}'
 
   ClearCartRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       RouteKey: 'DELETE /api/cart'
       Target: !Sub 'integrations/${ClearCartIntegration}'
 
   ApplyDiscountRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       RouteKey: 'POST /api/cart/discount'
       Target: !Sub 'integrations/${ApplyDiscountIntegration}'
 
   RemoveDiscountRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref CartApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
       RouteKey: 'DELETE /api/cart/discount'
       Target: !Sub 'integrations/${RemoveDiscountIntegration}'
 
@@ -448,7 +459,9 @@ Resources:
       FunctionName: !Ref GetCartFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
 
   AddItemPermission:
     Type: AWS::Lambda::Permission
@@ -456,7 +469,9 @@ Resources:
       FunctionName: !Ref AddItemFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
 
   UpdateQuantityPermission:
     Type: AWS::Lambda::Permission
@@ -464,7 +479,9 @@ Resources:
       FunctionName: !Ref UpdateQuantityFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
 
   RemoveItemPermission:
     Type: AWS::Lambda::Permission
@@ -472,7 +489,9 @@ Resources:
       FunctionName: !Ref RemoveItemFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
 
   ClearCartPermission:
     Type: AWS::Lambda::Permission
@@ -480,7 +499,9 @@ Resources:
       FunctionName: !Ref ClearCartFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
 
   ApplyDiscountPermission:
     Type: AWS::Lambda::Permission
@@ -488,7 +509,9 @@ Resources:
       FunctionName: !Ref ApplyDiscountFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
 
   RemoveDiscountPermission:
     Type: AWS::Lambda::Permission
@@ -496,16 +519,21 @@ Resources:
       FunctionName: !Ref RemoveDiscountFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CartApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
 
 Outputs:
   ApiEndpoint:
     Description: Cart Service API endpoint
-    Value: !GetAtt CartApi.ApiEndpoint
+    Value: !If
+      - UseSharedHttpApi
+      - !Sub 'https://${SharedHttpApiId}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+      - !GetAtt CartApi.ApiEndpoint
 
   ApiId:
     Description: Cart Service API ID
-    Value: !Ref CartApi
+    Value: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref CartApi]
 
   IamRoleArn:
     Description: Cart Service Lambda IAM Role ARN

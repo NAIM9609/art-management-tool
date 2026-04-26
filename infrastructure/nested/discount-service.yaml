@@ -35,6 +35,14 @@ Parameters:
     Type: String
     Default: lambda-placeholder.zip
 
+  SharedHttpApiId:
+    Type: String
+    Default: ''
+
+Conditions:
+  UseSharedHttpApi: !Not [!Equals [!Ref SharedHttpApiId, '']]
+  CreateServiceApi: !Equals [!Ref SharedHttpApiId, '']
+
 Resources:
   # ============================================================
   # IAM Role
@@ -274,6 +282,7 @@ Resources:
   # ============================================================
   DiscountServiceApi:
     Type: AWS::ApiGatewayV2::Api
+    Condition: CreateServiceApi
     Properties:
       Name: !Sub '${ProjectName}-${Environment}-discount-service-api'
       ProtocolType: HTTP
@@ -294,12 +303,14 @@ Resources:
 
   DiscountServiceApiLogGroup:
     Type: AWS::Logs::LogGroup
+    Condition: CreateServiceApi
     Properties:
       LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-discount-service-api'
       RetentionInDays: 14
 
   DiscountServiceApiStage:
     Type: AWS::ApiGatewayV2::Stage
+    Condition: CreateServiceApi
     Properties:
       ApiId: !Ref DiscountServiceApi
       StageName: '$default'
@@ -314,7 +325,7 @@ Resources:
   ValidateCodeIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ValidateCodeFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -322,7 +333,7 @@ Resources:
   ListDiscountsIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ListDiscountsFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -330,7 +341,7 @@ Resources:
   GetDiscountIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetDiscountFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -338,7 +349,7 @@ Resources:
   CreateDiscountIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt CreateDiscountFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -346,7 +357,7 @@ Resources:
   UpdateDiscountIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt UpdateDiscountFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -354,7 +365,7 @@ Resources:
   DeleteDiscountIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt DeleteDiscountFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -362,7 +373,7 @@ Resources:
   GetStatsIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt GetStatsFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -373,49 +384,49 @@ Resources:
   ValidateCodeRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       RouteKey: 'POST /api/discounts/validate'
       Target: !Sub 'integrations/${ValidateCodeIntegration}'
 
   ListDiscountsRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       RouteKey: 'GET /api/admin/discounts'
       Target: !Sub 'integrations/${ListDiscountsIntegration}'
 
   GetDiscountRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       RouteKey: 'GET /api/admin/discounts/{id}'
       Target: !Sub 'integrations/${GetDiscountIntegration}'
 
   CreateDiscountRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       RouteKey: 'POST /api/admin/discounts'
       Target: !Sub 'integrations/${CreateDiscountIntegration}'
 
   UpdateDiscountRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       RouteKey: 'PUT /api/admin/discounts/{id}'
       Target: !Sub 'integrations/${UpdateDiscountIntegration}'
 
   DeleteDiscountRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       RouteKey: 'DELETE /api/admin/discounts/{id}'
       Target: !Sub 'integrations/${DeleteDiscountIntegration}'
 
   GetStatsRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref DiscountServiceApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
       RouteKey: 'GET /api/admin/discounts/{id}/stats'
       Target: !Sub 'integrations/${GetStatsIntegration}'
 
@@ -428,7 +439,9 @@ Resources:
       FunctionName: !Ref ValidateCodeFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
 
   ListDiscountsPermission:
     Type: AWS::Lambda::Permission
@@ -436,7 +449,9 @@ Resources:
       FunctionName: !Ref ListDiscountsFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
 
   GetDiscountPermission:
     Type: AWS::Lambda::Permission
@@ -444,7 +459,9 @@ Resources:
       FunctionName: !Ref GetDiscountFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
 
   CreateDiscountPermission:
     Type: AWS::Lambda::Permission
@@ -452,7 +469,9 @@ Resources:
       FunctionName: !Ref CreateDiscountFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
 
   UpdateDiscountPermission:
     Type: AWS::Lambda::Permission
@@ -460,7 +479,9 @@ Resources:
       FunctionName: !Ref UpdateDiscountFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
 
   DeleteDiscountPermission:
     Type: AWS::Lambda::Permission
@@ -468,7 +489,9 @@ Resources:
       FunctionName: !Ref DeleteDiscountFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
 
   GetStatsPermission:
     Type: AWS::Lambda::Permission
@@ -476,16 +499,21 @@ Resources:
       FunctionName: !Ref GetStatsFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DiscountServiceApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
 
 Outputs:
   ApiEndpoint:
     Description: Discount Service API endpoint URL
-    Value: !GetAtt DiscountServiceApi.ApiEndpoint
+    Value: !If
+      - UseSharedHttpApi
+      - !Sub 'https://${SharedHttpApiId}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+      - !GetAtt DiscountServiceApi.ApiEndpoint
 
   ApiId:
     Description: Discount Service API ID
-    Value: !Ref DiscountServiceApi
+    Value: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref DiscountServiceApi]
 
   IamRoleArn:
     Description: Discount Service Lambda IAM Role ARN

@@ -309,6 +309,7 @@ Resources:
         LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
         LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
         LambdaCodeS3Key: !Ref LambdaCodeS3Key
+        SharedHttpApiId: !If [IsAuthApiEnabled, !GetAtt AuthApiStack.Outputs.ApiId, '']
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -335,6 +336,7 @@ Resources:
         LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
         LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
         LambdaCodeS3Key: !Ref LambdaCodeS3Key
+        SharedHttpApiId: !If [IsAuthApiEnabled, !GetAtt AuthApiStack.Outputs.ApiId, '']
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -366,6 +368,7 @@ Resources:
         SesIdentityArn: !Ref SesIdentityArn
         SnsOrderTopicArn: !Ref SnsOrderTopicArn
         StripeApiKeySsmParameterArn: !Ref StripeApiKeySsmParameterArn
+        SharedHttpApiId: !If [IsAuthApiEnabled, !GetAtt AuthApiStack.Outputs.ApiId, '']
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -395,6 +398,7 @@ Resources:
         LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
         LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
         LambdaCodeS3Key: !Ref LambdaCodeS3Key
+        SharedHttpApiId: !If [IsAuthApiEnabled, !GetAtt AuthApiStack.Outputs.ApiId, '']
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -421,6 +425,7 @@ Resources:
         LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
         LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
         LambdaCodeS3Key: !Ref LambdaCodeS3Key
+        SharedHttpApiId: !If [IsAuthApiEnabled, !GetAtt AuthApiStack.Outputs.ApiId, '']
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -454,6 +459,7 @@ Resources:
         EtsyShopIds: !Ref EtsyShopIds
         ScheduledSyncEnabled: !Ref ScheduledSyncEnabled
         ScheduledSyncCron: !Ref ScheduledSyncCron
+        SharedHttpApiId: !If [IsAuthApiEnabled, !GetAtt AuthApiStack.Outputs.ApiId, '']
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -480,6 +486,7 @@ Resources:
         LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
         LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
         LambdaCodeS3Key: !Ref LambdaCodeS3Key
+        SharedHttpApiId: !If [IsAuthApiEnabled, !GetAtt AuthApiStack.Outputs.ApiId, '']
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -506,6 +513,7 @@ Resources:
         LambdaReservedConcurrency: !Ref LambdaReservedConcurrency
         LambdaCodeS3Bucket: !Ref LambdaCodeS3Bucket
         LambdaCodeS3Key: !Ref LambdaCodeS3Key
+        SharedHttpApiId: !If [IsAuthApiEnabled, !GetAtt AuthApiStack.Outputs.ApiId, '']
       Tags:
         - Key: Project
           Value: !Ref ProjectName

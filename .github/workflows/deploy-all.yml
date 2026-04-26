@@ -343,34 +343,56 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION_CUSTOM }}
 
-      - name: Discover product and cart API endpoints
+      - name: Discover service API endpoints
         id: discover
         shell: bash
         run: |
-          PRODUCT_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-product-service-api"
-          PRODUCT_API_ID=$(aws apigatewayv2 get-apis \
-            --region "${AWS_REGION_CUSTOM}" \
-            --query "Items[?Name=='${PRODUCT_API_NAME}'].ApiId | [0]" \
-            --output text)
+          get_stack_output() {
+            local output_key="$1"
+            aws cloudformation describe-stacks \
+              --stack-name "${PROJECT_NAME}-root" \
+              --region "${AWS_REGION_CUSTOM}" \
+              --query "Stacks[0].Outputs[?OutputKey=='${output_key}'].OutputValue | [0]" \
+              --output text
+          }
 
-          CART_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-cart-service-api"
-          CART_API_ID=$(aws apigatewayv2 get-apis \
-            --region "${AWS_REGION_CUSTOM}" \
-            --query "Items[?Name=='${CART_API_NAME}'].ApiId | [0]" \
-            --output text)
+          SHARED_API_ID=$(get_stack_output "AuthApiId")
+          SHARED_API_URL=$(get_stack_output "AuthApiEndpoint")
 
-          if [ -z "${PRODUCT_API_ID}" ] || [ "${PRODUCT_API_ID}" = "None" ]; then
-            echo "::error::Product API not found: ${PRODUCT_API_NAME}"
-            exit 1
+          if [ -n "${SHARED_API_ID}" ] && [ "${SHARED_API_ID}" != "None" ] && [ -n "${SHARED_API_URL}" ] && [ "${SHARED_API_URL}" != "None" ]; then
+            PRODUCT_API_ID="${SHARED_API_ID}"
+            CART_API_ID="${SHARED_API_ID}"
+            PRODUCT_BASE_URL="${SHARED_API_URL}"
+            CART_BASE_URL="${SHARED_API_URL}"
+            echo "Using shared API endpoint: ${SHARED_API_URL}"
+          else
+            PRODUCT_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-product-service-api"
+            PRODUCT_API_ID=$(aws apigatewayv2 get-apis \
+              --region "${AWS_REGION_CUSTOM}" \
+              --query "Items[?Name=='${PRODUCT_API_NAME}'].ApiId | [0]" \
+              --output text)
+
+            CART_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-cart-service-api"
+            CART_API_ID=$(aws apigatewayv2 get-apis \
+              --region "${AWS_REGION_CUSTOM}" \
+              --query "Items[?Name=='${CART_API_NAME}'].ApiId | [0]" \
+              --output text)
+
+            if [ -z "${PRODUCT_API_ID}" ] || [ "${PRODUCT_API_ID}" = "None" ]; then
+              echo "::error::Product API not found: ${PRODUCT_API_NAME}"
+              exit 1
+            fi
+
+            if [ -z "${CART_API_ID}" ] || [ "${CART_API_ID}" = "None" ]; then
+              echo "::error::Cart API not found: ${CART_API_NAME}"
+              exit 1
+            fi
+
+            PRODUCT_BASE_URL="https://${PRODUCT_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com"
+            CART_BASE_URL="https://${CART_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com"
+            echo "Shared endpoint not found, using per-service fallback"
           fi
 
-          if [ -z "${CART_API_ID}" ] || [ "${CART_API_ID}" = "None" ]; then
-            echo "::error::Cart API not found: ${CART_API_NAME}"
-            exit 1
-          fi
-
-          PRODUCT_BASE_URL="https://${PRODUCT_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com"
-          CART_BASE_URL="https://${CART_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com"
           echo "product_api_id=${PRODUCT_API_ID}" >> "$GITHUB_OUTPUT"
           echo "cart_api_id=${CART_API_ID}" >> "$GITHUB_OUTPUT"
           echo "product_base_url=${PRODUCT_BASE_URL}" >> "$GITHUB_OUTPUT"

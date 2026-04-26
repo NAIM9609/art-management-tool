@@ -32,6 +32,14 @@ Parameters:
     Type: String
     Default: lambda-placeholder.zip
 
+  SharedHttpApiId:
+    Type: String
+    Default: ''
+
+Conditions:
+  UseSharedHttpApi: !Not [!Equals [!Ref SharedHttpApiId, '']]
+  CreateServiceApi: !Equals [!Ref SharedHttpApiId, '']
+
 Resources:
   # -------------------------------------------------------
   # IAM Role
@@ -194,6 +202,7 @@ Resources:
   # -------------------------------------------------------
   NotificationApi:
     Type: AWS::ApiGatewayV2::Api
+    Condition: CreateServiceApi
     Properties:
       Name: !Sub '${ProjectName}-${Environment}-notification-service-api'
       ProtocolType: HTTP
@@ -218,6 +227,7 @@ Resources:
 
   NotificationApiStage:
     Type: AWS::ApiGatewayV2::Stage
+    Condition: CreateServiceApi
     Properties:
       ApiId: !Ref NotificationApi
       StageName: '$default'
@@ -232,7 +242,7 @@ Resources:
   ListNotificationsIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref NotificationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt ListNotificationsFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -240,7 +250,7 @@ Resources:
   MarkAsReadIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref NotificationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt MarkAsReadFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -248,7 +258,7 @@ Resources:
   MarkAllReadIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref NotificationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt MarkAllReadFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -256,7 +266,7 @@ Resources:
   DeleteNotificationIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref NotificationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt DeleteNotificationFunction.Arn
       PayloadFormatVersion: '2.0'
@@ -267,28 +277,28 @@ Resources:
   ListNotificationsRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref NotificationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
       RouteKey: 'GET /api/admin/notifications'
       Target: !Sub 'integrations/${ListNotificationsIntegration}'
 
   MarkAsReadRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref NotificationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
       RouteKey: 'PATCH /api/admin/notifications/{id}/read'
       Target: !Sub 'integrations/${MarkAsReadIntegration}'
 
   MarkAllReadRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref NotificationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
       RouteKey: 'POST /api/admin/notifications/mark-all-read'
       Target: !Sub 'integrations/${MarkAllReadIntegration}'
 
   DeleteNotificationRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref NotificationApi
+      ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
       RouteKey: 'DELETE /api/admin/notifications/{id}'
       Target: !Sub 'integrations/${DeleteNotificationIntegration}'
 
@@ -301,7 +311,9 @@ Resources:
       FunctionName: !Ref ListNotificationsFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${NotificationApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
 
   MarkAsReadPermission:
     Type: AWS::Lambda::Permission
@@ -309,7 +321,9 @@ Resources:
       FunctionName: !Ref MarkAsReadFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${NotificationApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
 
   MarkAllReadPermission:
     Type: AWS::Lambda::Permission
@@ -317,7 +331,9 @@ Resources:
       FunctionName: !Ref MarkAllReadFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${NotificationApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
 
   DeleteNotificationPermission:
     Type: AWS::Lambda::Permission
@@ -325,15 +341,20 @@ Resources:
       FunctionName: !Ref DeleteNotificationFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${NotificationApi}/*'
+      SourceArn: !Sub
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
 
 Outputs:
   ApiEndpoint:
     Description: Notification service API endpoint
-    Value: !GetAtt NotificationApi.ApiEndpoint
+    Value: !If
+      - UseSharedHttpApi
+      - !Sub 'https://${SharedHttpApiId}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+      - !GetAtt NotificationApi.ApiEndpoint
   ApiId:
     Description: Notification service API ID
-    Value: !Ref NotificationApi
+    Value: !If [UseSharedHttpApi, !Ref SharedHttpApiId, !Ref NotificationApi]
   IamRoleArn:
     Description: Notification service Lambda role ARN
     Value: !GetAtt NotificationServiceLambdaRole.Arn
