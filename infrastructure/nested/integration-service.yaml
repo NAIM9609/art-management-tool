@@ -5,7 +5,6 @@ Metadata:
   cfn-lint:
     config:
       ignore_checks:
-        - W2531
         - W3037
 
 Parameters:
@@ -151,7 +150,7 @@ Resources:
     DependsOn: InitiateOAuthLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-initiate-oauth'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/etsy.handler.initiateOAuth
       MemorySize: 256
       Timeout: 5
@@ -177,7 +176,7 @@ Resources:
     DependsOn: CallbackLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-integration-etsy-callback'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/etsy.handler.handleCallback
       MemorySize: 256
       Timeout: 10
@@ -203,7 +202,7 @@ Resources:
     DependsOn: SyncProductsLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-sync-products'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/etsy.handler.syncProducts
       MemorySize: 256
       Timeout: 30
@@ -229,7 +228,7 @@ Resources:
     DependsOn: SyncInventoryLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-sync-inventory'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/etsy.handler.syncInventory
       MemorySize: 256
       Timeout: 60
@@ -255,7 +254,7 @@ Resources:
     DependsOn: SyncOrdersLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-sync-orders'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/etsy.handler.syncOrders
       MemorySize: 256
       Timeout: 30
@@ -281,7 +280,7 @@ Resources:
     DependsOn: WebhookLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-webhook'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/etsy.handler.handleWebhook
       MemorySize: 256
       Timeout: 10
@@ -307,7 +306,7 @@ Resources:
     DependsOn: ScheduledSyncLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-integration-service-etsy-scheduled-sync'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/etsy.handler.scheduledSync
       MemorySize: 256
       Timeout: 300

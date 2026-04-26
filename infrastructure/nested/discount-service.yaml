@@ -5,7 +5,6 @@ Metadata:
   cfn-lint:
     config:
       ignore_checks:
-        - W2531
         - W3037
 
 Parameters:
@@ -121,7 +120,7 @@ Resources:
     DependsOn: ValidateCodeLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-validate-code'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/discount.handler.validateCode
       MemorySize: 256
       Timeout: 5
@@ -143,7 +142,7 @@ Resources:
     DependsOn: ListDiscountsLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-list-discounts'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/discount.handler.listDiscounts
       MemorySize: 256
       Timeout: 10
@@ -165,7 +164,7 @@ Resources:
     DependsOn: GetDiscountLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-get-discount'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/discount.handler.getDiscount
       MemorySize: 256
       Timeout: 5
@@ -187,7 +186,7 @@ Resources:
     DependsOn: CreateDiscountLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-create-discount'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/discount.handler.createDiscount
       MemorySize: 256
       Timeout: 5
@@ -209,7 +208,7 @@ Resources:
     DependsOn: UpdateDiscountLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-update-discount'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/discount.handler.updateDiscount
       MemorySize: 256
       Timeout: 5
@@ -231,7 +230,7 @@ Resources:
     DependsOn: DeleteDiscountLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-delete-discount'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/discount.handler.deleteDiscount
       MemorySize: 256
       Timeout: 5
@@ -253,7 +252,7 @@ Resources:
     DependsOn: GetStatsLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-discount-service-get-stats'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/discount.handler.getStats
       MemorySize: 256
       Timeout: 10

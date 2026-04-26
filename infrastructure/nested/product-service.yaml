@@ -5,7 +5,6 @@ Metadata:
   cfn-lint:
     config:
       ignore_checks:
-        - W2531
         - W3037
 
 Parameters:
@@ -226,7 +225,7 @@ Resources:
     DependsOn: ListProductsLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-list-products'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/product.handler.listProducts
       MemorySize: 256
       Timeout: 10
@@ -250,7 +249,7 @@ Resources:
     DependsOn: GetProductLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-get-product'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/product.handler.getProduct
       MemorySize: 256
       Timeout: 5
@@ -274,7 +273,7 @@ Resources:
     DependsOn: CreateProductLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-create-product'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/product.handler.createProduct
       MemorySize: 256
       Timeout: 5
@@ -298,7 +297,7 @@ Resources:
     DependsOn: UpdateProductLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-update-product'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/product.handler.updateProduct
       MemorySize: 256
       Timeout: 5
@@ -322,7 +321,7 @@ Resources:
     DependsOn: DeleteProductLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-delete-product'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/product.handler.deleteProduct
       MemorySize: 256
       Timeout: 5
@@ -346,7 +345,7 @@ Resources:
     DependsOn: ListCategoriesLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-list-categories'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/category.handler.listCategories
       MemorySize: 256
       Timeout: 10
@@ -370,7 +369,7 @@ Resources:
     DependsOn: GetCategoryLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-get-category'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/category.handler.getCategory
       MemorySize: 256
       Timeout: 5
@@ -394,7 +393,7 @@ Resources:
     DependsOn: CreateCategoryLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-create-category'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/category.handler.createCategory
       MemorySize: 256
       Timeout: 5
@@ -418,7 +417,7 @@ Resources:
     DependsOn: UpdateCategoryLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-update-category'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/category.handler.updateCategory
       MemorySize: 256
       Timeout: 5
@@ -442,7 +441,7 @@ Resources:
     DependsOn: DeleteCategoryLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-delete-category'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/category.handler.deleteCategory
       MemorySize: 256
       Timeout: 5
@@ -466,7 +465,7 @@ Resources:
     DependsOn: ListVariantsLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-list-variants'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/variant.handler.listVariants
       MemorySize: 256
       Timeout: 10
@@ -490,7 +489,7 @@ Resources:
     DependsOn: CreateVariantLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-create-variant'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/variant.handler.createVariant
       MemorySize: 256
       Timeout: 5
@@ -514,7 +513,7 @@ Resources:
     DependsOn: UpdateVariantLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-update-variant'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/variant.handler.updateVariant
       MemorySize: 256
       Timeout: 5
@@ -538,7 +537,7 @@ Resources:
     DependsOn: UpdateStockLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-update-stock'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/variant.handler.updateStock
       MemorySize: 256
       Timeout: 5
@@ -562,7 +561,7 @@ Resources:
     DependsOn: GetUploadUrlLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-get-upload-url'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/image.handler.getUploadUrl
       MemorySize: 256
       Timeout: 5
@@ -586,7 +585,7 @@ Resources:
     DependsOn: ListImagesLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-list-images'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/image.handler.listImages
       MemorySize: 256
       Timeout: 10
@@ -610,7 +609,7 @@ Resources:
     DependsOn: DeleteImageLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-delete-image'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/image.handler.deleteImage
       MemorySize: 256
       Timeout: 5
@@ -634,7 +633,7 @@ Resources:
     DependsOn: HealthLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-product-service-health'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/health.handler.getHealth
       MemorySize: 256
       Timeout: 10

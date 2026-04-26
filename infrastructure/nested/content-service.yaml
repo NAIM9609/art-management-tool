@@ -5,7 +5,6 @@ Metadata:
   cfn-lint:
     config:
       ignore_checks:
-        - W2531
         - W3037
 
 Parameters:
@@ -180,7 +179,7 @@ Resources:
     DependsOn: ListPersonaggiLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-list-personaggi'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/personaggi.handler.listPersonaggi
       MemorySize: 256
       Timeout: 10
@@ -204,7 +203,7 @@ Resources:
     DependsOn: GetPersonaggioLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-get-personaggio'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/personaggi.handler.getPersonaggio
       MemorySize: 256
       Timeout: 5
@@ -228,7 +227,7 @@ Resources:
     DependsOn: CreatePersonaggioLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-create-personaggio'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/personaggi.handler.createPersonaggio
       MemorySize: 256
       Timeout: 5
@@ -252,7 +251,7 @@ Resources:
     DependsOn: UpdatePersonaggioLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-update-personaggio'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/personaggi.handler.updatePersonaggio
       MemorySize: 256
       Timeout: 5
@@ -276,7 +275,7 @@ Resources:
     DependsOn: DeletePersonaggioLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-delete-personaggio'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/personaggi.handler.deletePersonaggio
       MemorySize: 256
       Timeout: 5
@@ -300,7 +299,7 @@ Resources:
     DependsOn: UploadPersonaggioImageLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-personaggio-upload-url'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/personaggi.handler.uploadImage
       MemorySize: 256
       Timeout: 5
@@ -324,7 +323,7 @@ Resources:
     DependsOn: ListFumettiLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-list-fumetti'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/fumetti.handler.listFumetti
       MemorySize: 256
       Timeout: 10
@@ -348,7 +347,7 @@ Resources:
     DependsOn: GetFumettoLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-get-fumetto'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/fumetti.handler.getFumetto
       MemorySize: 256
       Timeout: 5
@@ -372,7 +371,7 @@ Resources:
     DependsOn: CreateFumettoLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-create-fumetto'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/fumetti.handler.createFumetto
       MemorySize: 256
       Timeout: 5
@@ -396,7 +395,7 @@ Resources:
     DependsOn: UpdateFumettoLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-update-fumetto'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/fumetti.handler.updateFumetto
       MemorySize: 256
       Timeout: 5
@@ -420,7 +419,7 @@ Resources:
     DependsOn: DeleteFumettoLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-delete-fumetto'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/fumetti.handler.deleteFumetto
       MemorySize: 256
       Timeout: 5
@@ -444,7 +443,7 @@ Resources:
     DependsOn: GetFumettoUploadUrlLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-get-fumetto-upload-url'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/fumetti.handler.uploadPage
       MemorySize: 256
       Timeout: 5
@@ -468,7 +467,7 @@ Resources:
     DependsOn: TempUploadPresignLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-content-service-temp-upload-presign'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/upload.handler.tempUploadPresign
       MemorySize: 256
       Timeout: 5

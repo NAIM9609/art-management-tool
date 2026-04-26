@@ -5,7 +5,6 @@ Metadata:
   cfn-lint:
     config:
       ignore_checks:
-        - W2531
         - W3037
 
 Parameters:
@@ -99,7 +98,7 @@ Resources:
     DependsOn: GetEntityHistoryLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-audit-service-get-entity-history'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/audit.handler.getEntityHistory
       MemorySize: 256
       Timeout: 10
@@ -121,7 +120,7 @@ Resources:
     DependsOn: GetUserActivityLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-audit-service-get-user-activity'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/audit.handler.getUserActivity
       MemorySize: 256
       Timeout: 10
@@ -143,7 +142,7 @@ Resources:
     DependsOn: GetActivityByDateLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-audit-service-get-activity-by-date'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/audit.handler.getActivityByDate
       MemorySize: 256
       Timeout: 10

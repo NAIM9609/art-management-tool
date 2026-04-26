@@ -5,7 +5,6 @@ Metadata:
   cfn-lint:
     config:
       ignore_checks:
-        - W2531
         - W3037
 
 Parameters:
@@ -107,7 +106,7 @@ Resources:
     DependsOn: ListNotificationsLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-notification-service-list-notifications'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/notification.handler.listNotifications
       MemorySize: 256
       Timeout: 10
@@ -129,7 +128,7 @@ Resources:
     DependsOn: MarkAsReadLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-notification-service-mark-as-read'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/notification.handler.markAsRead
       MemorySize: 256
       Timeout: 5
@@ -151,7 +150,7 @@ Resources:
     DependsOn: MarkAllReadLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-notification-service-mark-all-read'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/notification.handler.markAllAsRead
       MemorySize: 256
       Timeout: 5
@@ -173,7 +172,7 @@ Resources:
     DependsOn: DeleteNotificationLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-notification-delete'
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/notification.handler.deleteNotification
       MemorySize: 256
       Timeout: 5

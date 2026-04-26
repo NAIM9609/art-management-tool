@@ -35,7 +35,4 @@ jobs:
 
       - name: Validate YAML syntax
         run: |
-          for f in infrastructure/root-stack.yaml infrastructure/nested/*.yaml; do
-            echo "Checking YAML syntax: ${f}"
-            python3 -c "import yaml; yaml.safe_load(open('${f}'))"
-          done
+          python3 -c "import glob,yaml; from yaml.nodes import ScalarNode,SequenceNode; yaml.SafeLoader.add_multi_constructor('!', lambda loader,tag_suffix,node: loader.construct_scalar(node) if isinstance(node, ScalarNode) else loader.construct_sequence(node) if isinstance(node, SequenceNode) else loader.construct_mapping(node)); files=['infrastructure/root-stack.yaml',*glob.glob('infrastructure/nested/*.yaml')]; [print(f'Checking YAML syntax: {f}') or yaml.load(open(f, encoding='utf-8'), Loader=yaml.SafeLoader) for f in files]"

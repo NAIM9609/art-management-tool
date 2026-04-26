@@ -5,7 +5,6 @@ Metadata:
   cfn-lint:
     config:
       ignore_checks:
-        - W2531
         - W3037
 
 Parameters:
@@ -90,7 +89,7 @@ Resources:
     DependsOn: GetCartLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-get-cart'
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/cart.handler.getCart
       MemorySize: 256
       Timeout: 10
@@ -112,7 +111,7 @@ Resources:
     DependsOn: AddItemLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-add-item'
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/cart.handler.addItem
       MemorySize: 256
       Timeout: 5
@@ -134,7 +133,7 @@ Resources:
     DependsOn: UpdateQuantityLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-update-quantity'
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/cart.handler.updateQuantity
       MemorySize: 256
       Timeout: 5
@@ -156,7 +155,7 @@ Resources:
     DependsOn: RemoveItemLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-remove-item'
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/cart.handler.removeItem
       MemorySize: 256
       Timeout: 5
@@ -178,7 +177,7 @@ Resources:
     DependsOn: ClearCartLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-clear-cart'
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/cart.handler.clearCart
       MemorySize: 256
       Timeout: 5
@@ -200,7 +199,7 @@ Resources:
     DependsOn: ApplyDiscountLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-apply-discount'
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/cart.handler.applyDiscount
       MemorySize: 256
       Timeout: 5
@@ -222,7 +221,7 @@ Resources:
     DependsOn: RemoveDiscountLogGroup
     Properties:
       FunctionName: !Sub '${ProjectName}-${Environment}-cart-service-remove-discount'
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: dist/handlers/cart.handler.removeDiscount
       MemorySize: 256
       Timeout: 5
