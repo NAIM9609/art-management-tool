@@ -361,39 +361,17 @@ jobs:
           SHARED_API_ID=$(get_stack_output "AuthApiId")
           SHARED_API_URL=$(get_stack_output "AuthApiEndpoint")
 
-          if [ -n "${SHARED_API_ID}" ] && [ "${SHARED_API_ID}" != "None" ] && [ -n "${SHARED_API_URL}" ] && [ "${SHARED_API_URL}" != "None" ]; then
-            PRODUCT_API_ID="${SHARED_API_ID}"
-            CART_API_ID="${SHARED_API_ID}"
-            PRODUCT_BASE_URL="${SHARED_API_URL}"
-            CART_BASE_URL="${SHARED_API_URL}"
-            echo "Using shared API endpoint: ${SHARED_API_URL}"
-          else
-            PRODUCT_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-product-service-api"
-            PRODUCT_API_ID=$(aws apigatewayv2 get-apis \
-              --region "${AWS_REGION_CUSTOM}" \
-              --query "Items[?Name=='${PRODUCT_API_NAME}'].ApiId | [0]" \
-              --output text)
-
-            CART_API_NAME="${PROJECT_NAME}-${DEPLOY_ENV}-cart-service-api"
-            CART_API_ID=$(aws apigatewayv2 get-apis \
-              --region "${AWS_REGION_CUSTOM}" \
-              --query "Items[?Name=='${CART_API_NAME}'].ApiId | [0]" \
-              --output text)
-
-            if [ -z "${PRODUCT_API_ID}" ] || [ "${PRODUCT_API_ID}" = "None" ]; then
-              echo "::error::Product API not found: ${PRODUCT_API_NAME}"
-              exit 1
-            fi
-
-            if [ -z "${CART_API_ID}" ] || [ "${CART_API_ID}" = "None" ]; then
-              echo "::error::Cart API not found: ${CART_API_NAME}"
-              exit 1
-            fi
-
-            PRODUCT_BASE_URL="https://${PRODUCT_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com"
-            CART_BASE_URL="https://${CART_API_ID}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com"
-            echo "Shared endpoint not found, using per-service fallback"
+          if [ -z "${SHARED_API_ID}" ] || [ "${SHARED_API_ID}" = "None" ] || [ -z "${SHARED_API_URL}" ] || [ "${SHARED_API_URL}" = "None" ]; then
+            echo "::error::Shared API outputs (AuthApiId/AuthApiEndpoint) were not found on ${PROJECT_NAME}-root."
+            echo "::error::This workflow enforces a single API Gateway for all services. Deploy/update the root stack first."
+            exit 1
           fi
+
+          PRODUCT_API_ID="${SHARED_API_ID}"
+          CART_API_ID="${SHARED_API_ID}"
+          PRODUCT_BASE_URL="${SHARED_API_URL}"
+          CART_BASE_URL="${SHARED_API_URL}"
+          echo "Using shared API endpoint: ${SHARED_API_URL} (${SHARED_API_ID})"
 
           echo "product_api_id=${PRODUCT_API_ID}" >> "$GITHUB_OUTPUT"
           echo "cart_api_id=${CART_API_ID}" >> "$GITHUB_OUTPUT"

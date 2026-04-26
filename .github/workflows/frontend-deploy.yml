@@ -60,8 +60,6 @@ jobs:
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
-          BACKEND_ENDPOINTS_READY=true
-
           get_stack_output() {
             local output_key="$1"
             local output
@@ -72,56 +70,24 @@ jobs:
               --output text 2>/dev/null || true)
             echo "${output}"
           }
-
-          discover_url() {
-            local service_name="$1"
-            local api_name="${PROJECT_NAME}-${DEPLOY_ENV}-${service_name}"
-            local api_id
-            api_id=$(aws apigatewayv2 get-apis \
-              --region "${AWS_REGION_CUSTOM}" \
-              --query "Items[?Name=='${api_name}'].ApiId | [0]" \
-              --output text 2>/dev/null || true)
-
-            if [ -z "${api_id}" ] || [ "${api_id}" = "None" ]; then
-              return 1
-            fi
-
-            echo "https://${api_id}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}"
-          }
-
+          BACKEND_ENDPOINTS_READY=true
+          SHARED_API_ID=$(get_stack_output "AuthApiId")
           SHARED_API_URL=$(get_stack_output "AuthApiEndpoint")
 
-          if [ -n "${SHARED_API_URL}" ] && [ "${SHARED_API_URL}" != "None" ]; then
-            PRODUCT_API_URL="${SHARED_API_URL}"
-            CART_API_URL="${SHARED_API_URL}"
-            ORDER_API_URL="${SHARED_API_URL}"
-            CONTENT_API_URL="${SHARED_API_URL}"
-            DISCOUNT_API_URL="${SHARED_API_URL}"
-            NOTIFICATION_API_URL="${SHARED_API_URL}"
-            INTEGRATION_API_URL="${SHARED_API_URL}"
-            echo "Using shared API endpoint from stack output: ${SHARED_API_URL}"
-          else
-            PRODUCT_API_URL=$(discover_url "product-service") || BACKEND_ENDPOINTS_READY=false
-            CART_API_URL=$(discover_url "cart-service") || BACKEND_ENDPOINTS_READY=false
-            ORDER_API_URL=$(discover_url "order-service") || BACKEND_ENDPOINTS_READY=false
-            CONTENT_API_URL=$(discover_url "content-service") || BACKEND_ENDPOINTS_READY=false
-            DISCOUNT_API_URL=$(discover_url "discount-service") || BACKEND_ENDPOINTS_READY=false
-            NOTIFICATION_API_URL=$(discover_url "notification-service") || BACKEND_ENDPOINTS_READY=false
-            INTEGRATION_API_URL=$(discover_url "integration-service") || BACKEND_ENDPOINTS_READY=false
-
-            if [ "${BACKEND_ENDPOINTS_READY}" = "true" ]; then
-              echo "Shared endpoint not found, using per-service discovery fallback"
-            else
-              echo "::warning::Backend endpoints not discoverable; continuing build with placeholder API URLs"
-              PRODUCT_API_URL=""
-              CART_API_URL=""
-              ORDER_API_URL=""
-              CONTENT_API_URL=""
-              DISCOUNT_API_URL=""
-              NOTIFICATION_API_URL=""
-              INTEGRATION_API_URL=""
-            fi
+          if [ -z "${SHARED_API_ID}" ] || [ "${SHARED_API_ID}" = "None" ] || [ -z "${SHARED_API_URL}" ] || [ "${SHARED_API_URL}" = "None" ]; then
+            echo "::error::Shared API outputs (AuthApiId/AuthApiEndpoint) were not found on ${PROJECT_NAME}-root."
+            echo "::error::This workflow enforces a single API Gateway for all services. Deploy/update the root stack first."
+            exit 1
           fi
+
+          PRODUCT_API_URL="${SHARED_API_URL}"
+          CART_API_URL="${SHARED_API_URL}"
+          ORDER_API_URL="${SHARED_API_URL}"
+          CONTENT_API_URL="${SHARED_API_URL}"
+          DISCOUNT_API_URL="${SHARED_API_URL}"
+          NOTIFICATION_API_URL="${SHARED_API_URL}"
+          INTEGRATION_API_URL="${SHARED_API_URL}"
+          echo "Using shared API endpoint from stack output: ${SHARED_API_URL} (${SHARED_API_ID})"
 
           echo "PRODUCT_API_URL=${PRODUCT_API_URL}" >> "$GITHUB_ENV"
           echo "CART_API_URL=${CART_API_URL}" >> "$GITHUB_ENV"
@@ -152,26 +118,42 @@ jobs:
           INTEGRATION_BASE_URL="${INTEGRATION_BASE_URL%/}"
 
           check_status() {
-            local base_url="$1"
-            local path="$2"
+            local method="$1"
+            local base_url="$2"
+            local path="$3"
+            local body="${4:-}"
             local url="${base_url}${path}"
             local status
-            status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
-            echo "${url} -> ${status}"
-            if [ "$status" = "000" ] || [ "$status" = "404" ]; then
+            if [ -n "${body}" ]; then
+              status=$(curl -s -o /dev/null -w "%{http_code}" -X "${method}" -H "Content-Type: application/json" -d "${body}" "$url")
+            else
+              status=$(curl -s -o /dev/null -w "%{http_code}" -X "${method}" "$url")
+            fi
+            echo "${method} ${url} -> ${status}"
+            if [ "$status" = "000" ] || [ "$status" = "404" ] || [ "$status" = "405" ]; then
               echo "::error::Backend endpoint check failed for ${url} (status ${status})."
               exit 1
             fi
           }
 
-          check_status "${PRODUCT_BASE_URL}" "/health"
-          check_status "${PRODUCT_BASE_URL}" "/api/products"
-          check_status "${CART_BASE_URL}" "/api/cart"
-          check_status "${ORDER_BASE_URL}" "/api/orders"
-          check_status "${CONTENT_BASE_URL}" "/api/personaggi"
-          check_status "${DISCOUNT_BASE_URL}" "/api/discounts/validate"
-          check_status "${NOTIFICATION_BASE_URL}" "/api/admin/notifications"
-          check_status "${INTEGRATION_BASE_URL}" "/api/integrations/etsy/auth"
+          if [ "${PRODUCT_BASE_URL}" != "${CART_BASE_URL}" ] || \
+             [ "${PRODUCT_BASE_URL}" != "${ORDER_BASE_URL}" ] || \
+             [ "${PRODUCT_BASE_URL}" != "${CONTENT_BASE_URL}" ] || \
+             [ "${PRODUCT_BASE_URL}" != "${DISCOUNT_BASE_URL}" ] || \
+             [ "${PRODUCT_BASE_URL}" != "${NOTIFICATION_BASE_URL}" ] || \
+             [ "${PRODUCT_BASE_URL}" != "${INTEGRATION_BASE_URL}" ]; then
+            echo "::error::Multiple API Gateway base URLs detected. A single shared API is required."
+            exit 1
+          fi
+
+          check_status "GET" "${PRODUCT_BASE_URL}" "/health"
+          check_status "GET" "${PRODUCT_BASE_URL}" "/api/products"
+          check_status "GET" "${CART_BASE_URL}" "/api/cart"
+          check_status "GET" "${ORDER_BASE_URL}" "/api/orders"
+          check_status "GET" "${CONTENT_BASE_URL}" "/api/personaggi"
+          check_status "POST" "${DISCOUNT_BASE_URL}" "/api/discounts/validate" '{"code":"SMOKE","cartTotal":100}'
+          check_status "GET" "${NOTIFICATION_BASE_URL}" "/api/admin/notifications"
+          check_status "GET" "${INTEGRATION_BASE_URL}" "/api/integrations/etsy/auth"
 
       # Step 1: Checkout the repository code
       - name: Checkout code
