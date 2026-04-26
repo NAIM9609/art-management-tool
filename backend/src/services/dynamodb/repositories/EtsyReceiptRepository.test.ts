@@ -101,6 +101,34 @@ describe('EtsyReceiptRepository', () => {
       expect(putCalls[0].args[0].input.Item?.GSI1PK).toBeUndefined();
       expect(putCalls[0].args[0].input.Item?.GSI1SK).toBeUndefined();
     });
+
+    it('should persist all optional fields when provided', async () => {
+      const createData: CreateEtsyReceiptData = {
+        etsy_receipt_id: 111222,
+        shop_id: 'shop456',
+        etsy_created_at: '2026-01-01T00:00:00Z',
+        etsy_updated_at: '2026-01-01T00:00:00Z',
+        total_tax_cost: 5.5,
+        payment_method: 'credit_card',
+        shipping_address: '123 Main St',
+        message_from_buyer: 'Please gift-wrap',
+      };
+
+      ddbMock.on(PutCommand).resolves({});
+
+      const result = await repository.create(createData);
+
+      expect(result.total_tax_cost).toBe(5.5);
+      expect(result.payment_method).toBe('credit_card');
+      expect(result.shipping_address).toBe('123 Main St');
+      expect(result.message_from_buyer).toBe('Please gift-wrap');
+
+      const putCalls = ddbMock.commandCalls(PutCommand);
+      expect(putCalls[0].args[0].input.Item?.total_tax_cost).toBe(5.5);
+      expect(putCalls[0].args[0].input.Item?.payment_method).toBe('credit_card');
+      expect(putCalls[0].args[0].input.Item?.shipping_address).toBe('123 Main St');
+      expect(putCalls[0].args[0].input.Item?.message_from_buyer).toBe('Please gift-wrap');
+    });
   });
 
   describe('findByEtsyReceiptId', () => {
@@ -316,6 +344,142 @@ describe('EtsyReceiptRepository', () => {
       const result = await repository.update(999999, { is_paid: true });
 
       expect(result).toBeNull();
+    });
+
+    it('should build SET clause for extra fields alongside REMOVE when local_order_id is null', async () => {
+      const updateData: UpdateEtsyReceiptData = {
+        local_order_id: null,
+        buyer_email: 'extra@example.com',
+      };
+
+      const updatedItem = {
+        PK: 'ETSY_RECEIPT#987654',
+        SK: 'METADATA',
+        etsy_receipt_id: 987654,
+        shop_id: 'shop123',
+        buyer_email: 'extra@example.com',
+        is_paid: false,
+        is_shipped: false,
+        etsy_created_at: '2026-01-01T00:00:00Z',
+        etsy_updated_at: '2026-01-01T00:00:00Z',
+        sync_status: 'pending',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: new Date().toISOString(),
+      };
+
+      ddbMock.on(UpdateCommand).resolves({ Attributes: updatedItem });
+
+      const result = await repository.update(987654, updateData);
+
+      expect(result).not.toBeNull();
+      expect(result?.buyer_email).toBe('extra@example.com');
+      expect(result?.local_order_id).toBeUndefined();
+
+      const calls = ddbMock.commandCalls(UpdateCommand);
+      const input = calls[0].args[0].input as UpdateCommandInput;
+      expect(input.UpdateExpression).toContain('SET');
+      expect(input.UpdateExpression).toContain('REMOVE');
+    });
+
+    it('should return null when Attributes absent in null local_order_id path', async () => {
+      ddbMock.on(UpdateCommand).resolves({});
+
+      const result = await repository.update(987654, { local_order_id: null });
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when error.code is ConditionalCheckFailedException in null local_order_id path', async () => {
+      ddbMock.on(UpdateCommand).rejects(
+        Object.assign(new Error('The conditional request failed'), { code: 'ConditionalCheckFailedException' })
+      );
+
+      const result = await repository.update(987654, { local_order_id: null });
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when UpdateCommand returns no Attributes in normal update path', async () => {
+      ddbMock.on(UpdateCommand).resolves({});
+
+      const result = await repository.update(987654, { is_paid: true });
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when error.code is ConditionalCheckFailedException in normal update path', async () => {
+      ddbMock.on(UpdateCommand).rejects(
+        Object.assign(new Error('The conditional request failed'), { code: 'ConditionalCheckFailedException' })
+      );
+
+      const result = await repository.update(987654, { is_paid: true });
+
+      expect(result).toBeNull();
+    });
+
+    it('should rethrow non-ConditionalCheck errors in null local_order_id path', async () => {
+      ddbMock.on(UpdateCommand).rejects(new Error('Service unavailable'));
+
+      await expect(repository.update(987654, { local_order_id: null })).rejects.toThrow('Service unavailable');
+    });
+
+    it('should rethrow non-ConditionalCheck errors in normal update path', async () => {
+      ddbMock.on(UpdateCommand).rejects(new Error('Service unavailable'));
+
+      await expect(repository.update(987654, { is_paid: true })).rejects.toThrow('Service unavailable');
+    });
+
+    it('should update all optional fields in normal update path', async () => {
+      const updateData: UpdateEtsyReceiptData = {
+        local_order_id: 42,
+        grand_total: 150.0,
+        subtotal: 130.0,
+        total_shipping_cost: 10.0,
+        total_tax_cost: 10.0,
+        currency: 'EUR',
+        payment_method: 'paypal',
+        shipping_address: '456 Elm St',
+        message_from_buyer: 'No rush',
+        etsy_updated_at: '2026-06-01T00:00:00Z',
+        last_synced_at: '2026-06-01T01:00:00Z',
+        sync_status: 'synced',
+      };
+
+      const updatedItem = {
+        PK: 'ETSY_RECEIPT#987654',
+        SK: 'METADATA',
+        etsy_receipt_id: 987654,
+        shop_id: 'shop123',
+        local_order_id: 42,
+        GSI1PK: 'ETSY_ORDER#42',
+        GSI1SK: 'METADATA',
+        grand_total: 150.0,
+        subtotal: 130.0,
+        total_shipping_cost: 10.0,
+        total_tax_cost: 10.0,
+        currency: 'EUR',
+        payment_method: 'paypal',
+        shipping_address: '456 Elm St',
+        message_from_buyer: 'No rush',
+        etsy_created_at: '2026-01-01T00:00:00Z',
+        etsy_updated_at: '2026-06-01T00:00:00Z',
+        last_synced_at: '2026-06-01T01:00:00Z',
+        sync_status: 'synced',
+        is_paid: false,
+        is_shipped: false,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: new Date().toISOString(),
+      };
+
+      ddbMock.on(UpdateCommand).resolves({ Attributes: updatedItem });
+
+      const result = await repository.update(987654, updateData);
+
+      expect(result).not.toBeNull();
+      expect(result?.local_order_id).toBe(42);
+      expect(result?.grand_total).toBe(150.0);
+      expect(result?.currency).toBe('EUR');
+      expect(result?.sync_status).toBe('synced');
     });
   });
 

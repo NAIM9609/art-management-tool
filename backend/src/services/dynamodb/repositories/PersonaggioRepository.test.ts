@@ -475,6 +475,14 @@ describe('PersonaggioRepository', () => {
 
       expect(personaggio).toBeNull();
     });
+
+    it('should return null when update returns no data', async () => {
+      ddbMock.on(UpdateCommand).resolves({});
+
+      const personaggio = await repository.update(1, { name: 'Updated' });
+
+      expect(personaggio).toBeNull();
+    });
   });
 
   describe('softDelete', () => {
@@ -503,6 +511,24 @@ describe('PersonaggioRepository', () => {
       const error = new Error('The conditional request failed');
       error.name = 'ConditionalCheckFailedException';
       ddbMock.on(UpdateCommand).rejects(error);
+
+      const personaggio = await repository.softDelete(999);
+
+      expect(personaggio).toBeNull();
+    });
+
+    it('should return null when softDelete returns no data', async () => {
+      ddbMock.on(UpdateCommand).resolves({});
+
+      const personaggio = await repository.softDelete(1);
+
+      expect(personaggio).toBeNull();
+    });
+
+    it('should return null when error.code is ConditionalCheckFailedException in softDelete', async () => {
+      ddbMock.on(UpdateCommand).rejects(
+        Object.assign(new Error('The conditional request failed'), { code: 'ConditionalCheckFailedException' })
+      );
 
       const personaggio = await repository.softDelete(999);
 
@@ -567,6 +593,50 @@ describe('PersonaggioRepository', () => {
       ddbMock.on(GetCommand).resolves({ Item: undefined });
 
       const personaggio = await repository.restore(999);
+
+      expect(personaggio).toBeNull();
+    });
+
+    it('should return null when restore UpdateCommand returns no Attributes', async () => {
+      const deletedItem = {
+        PK: 'PERSONAGGIO#1',
+        SK: 'METADATA',
+        id: 1,
+        name: 'Superman',
+        images: JSON.stringify([]),
+        order: 1,
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-02T00:00:00.000Z',
+        deleted_at: '2024-01-02T00:00:00.000Z',
+      };
+
+      ddbMock.on(GetCommand).resolves({ Item: deletedItem });
+      ddbMock.on(UpdateCommand).resolves({});
+
+      const personaggio = await repository.restore(1);
+
+      expect(personaggio).toBeNull();
+    });
+
+    it('should return null when error.code is ConditionalCheckFailedException in restore', async () => {
+      const deletedItem = {
+        PK: 'PERSONAGGIO#1',
+        SK: 'METADATA',
+        id: 1,
+        name: 'Superman',
+        images: JSON.stringify([]),
+        order: 1,
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-02T00:00:00.000Z',
+        deleted_at: '2024-01-02T00:00:00.000Z',
+      };
+
+      ddbMock.on(GetCommand).resolves({ Item: deletedItem });
+      ddbMock.on(UpdateCommand).rejects(
+        Object.assign(new Error('The conditional request failed'), { code: 'ConditionalCheckFailedException' })
+      );
+
+      const personaggio = await repository.restore(1);
 
       expect(personaggio).toBeNull();
     });

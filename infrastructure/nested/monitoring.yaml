@@ -22,7 +22,7 @@ Parameters:
     Default: '20'
   HealthEndpointUrl:
     Type: String
-    Default: ''
+    Default: 'https://example.com/health'
   ProductServiceRoleName:
     Type: String
   CartServiceRoleName:
@@ -344,8 +344,14 @@ Resources:
     Properties:
       HealthCheckConfig:
         Type: HTTPS_STR_MATCH
-        FullyQualifiedDomainName: !Select [2, !Split ['/', !Ref HealthEndpointUrl]]
-        ResourcePath: !Select [1, !Split [!Select [2, !Split ['/', !Ref HealthEndpointUrl]], !Ref HealthEndpointUrl]]
+        FullyQualifiedDomainName: !Select
+          - 2
+          - !Split ['/', !Ref HealthEndpointUrl]
+        ResourcePath: !Select
+          - 1
+          - !Split
+            - !Select [2, !Split ['/', !Ref HealthEndpointUrl]]
+            - !Ref HealthEndpointUrl
         Port: 443
         SearchString: '"status":"healthy"'
         RequestInterval: 30

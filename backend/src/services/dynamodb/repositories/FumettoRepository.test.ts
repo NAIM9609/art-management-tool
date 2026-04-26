@@ -407,6 +407,20 @@ describe('FumettoRepository', () => {
 
       expect(fumetto).toBeNull();
     });
+
+    it('should return null when update returns no data', async () => {
+      ddbMock.on(UpdateCommand).resolves({});
+
+      const fumetto = await repository.update(1, { title: 'Updated' });
+
+      expect(fumetto).toBeNull();
+    });
+
+    it('should rethrow non-ConditionalCheck errors in update', async () => {
+      ddbMock.on(UpdateCommand).rejects(new Error('Service unavailable'));
+
+      await expect(repository.update(1, { title: 'Updated' })).rejects.toThrow('Service unavailable');
+    });
   });
 
   describe('softDelete', () => {
@@ -447,6 +461,20 @@ describe('FumettoRepository', () => {
       const fumetto = await repository.softDelete(999);
 
       expect(fumetto).toBeNull();
+    });
+
+    it('should return null when softDelete returns no data', async () => {
+      ddbMock.on(UpdateCommand).resolves({});
+
+      const fumetto = await repository.softDelete(1);
+
+      expect(fumetto).toBeNull();
+    });
+
+    it('should rethrow non-ConditionalCheck errors in softDelete', async () => {
+      ddbMock.on(UpdateCommand).rejects(new Error('Service unavailable'));
+
+      await expect(repository.softDelete(1)).rejects.toThrow('Service unavailable');
     });
   });
 
@@ -533,6 +561,66 @@ describe('FumettoRepository', () => {
       const fumetto = await repository.restore(1);
 
       expect(fumetto).toBeNull();
+    });
+
+    it('should return null when restore UpdateCommand returns no Attributes', async () => {
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          title: 'Comic',
+          order: 0,
+          pages: [],
+          deleted_at: '2024-01-02T00:00:00.000Z',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-02T00:00:00.000Z',
+        },
+      });
+
+      ddbMock.on(UpdateCommand).resolves({});
+
+      const fumetto = await repository.restore(1);
+
+      expect(fumetto).toBeNull();
+    });
+
+    it('should return null when error.code is ConditionalCheckFailedException in restore', async () => {
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          title: 'Comic',
+          order: 0,
+          pages: [],
+          deleted_at: '2024-01-02T00:00:00.000Z',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-02T00:00:00.000Z',
+        },
+      });
+
+      ddbMock.on(UpdateCommand).rejects(
+        Object.assign(new Error('The conditional request failed'), { code: 'ConditionalCheckFailedException' })
+      );
+
+      const fumetto = await repository.restore(1);
+
+      expect(fumetto).toBeNull();
+    });
+
+    it('should rethrow non-ConditionalCheck errors in restore', async () => {
+      ddbMock.on(GetCommand).resolves({
+        Item: {
+          id: 1,
+          title: 'Comic',
+          order: 0,
+          pages: [],
+          deleted_at: '2024-01-02T00:00:00.000Z',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-02T00:00:00.000Z',
+        },
+      });
+
+      ddbMock.on(UpdateCommand).rejects(new Error('Service unavailable'));
+
+      await expect(repository.restore(1)).rejects.toThrow('Service unavailable');
     });
   });
 
