@@ -268,7 +268,6 @@ Resources:
   CloudFrontStack:
     Type: AWS::CloudFormation::Stack
     Condition: IsCloudFrontEnabled
-    DependsOn: S3Stack
     Properties:
       TemplateURL: !Sub '${TemplatesBucketUrl}/nested/cloudfront.yaml'
       Parameters:
@@ -289,7 +288,6 @@ Resources:
   ProductServiceStack:
     Type: AWS::CloudFormation::Stack
     Condition: IsProductServiceEnabled
-    DependsOn: DynamoDBStack
     Properties:
       TemplateURL: !Sub '${TemplatesBucketUrl}/nested/product-service.yaml'
       Parameters:
@@ -319,7 +317,6 @@ Resources:
   CartServiceStack:
     Type: AWS::CloudFormation::Stack
     Condition: IsCartServiceEnabled
-    DependsOn: DynamoDBStack
     Properties:
       TemplateURL: !Sub '${TemplatesBucketUrl}/nested/cart-service.yaml'
       Parameters:
@@ -346,7 +343,6 @@ Resources:
   OrderServiceStack:
     Type: AWS::CloudFormation::Stack
     Condition: IsOrderServiceEnabled
-    DependsOn: DynamoDBStack
     Properties:
       TemplateURL: !Sub '${TemplatesBucketUrl}/nested/order-service.yaml'
       Parameters:
@@ -378,7 +374,6 @@ Resources:
   ContentServiceStack:
     Type: AWS::CloudFormation::Stack
     Condition: IsContentServiceEnabled
-    DependsOn: DynamoDBStack
     Properties:
       TemplateURL: !Sub '${TemplatesBucketUrl}/nested/content-service.yaml'
       Parameters:
@@ -408,7 +403,6 @@ Resources:
   DiscountServiceStack:
     Type: AWS::CloudFormation::Stack
     Condition: IsDiscountServiceEnabled
-    DependsOn: DynamoDBStack
     Properties:
       TemplateURL: !Sub '${TemplatesBucketUrl}/nested/discount-service.yaml'
       Parameters:
@@ -435,7 +429,6 @@ Resources:
   IntegrationServiceStack:
     Type: AWS::CloudFormation::Stack
     Condition: IsIntegrationServiceEnabled
-    DependsOn: DynamoDBStack
     Properties:
       TemplateURL: !Sub '${TemplatesBucketUrl}/nested/integration-service.yaml'
       Parameters:
@@ -469,7 +462,6 @@ Resources:
   NotificationServiceStack:
     Type: AWS::CloudFormation::Stack
     Condition: IsNotificationServiceEnabled
-    DependsOn: DynamoDBStack
     Properties:
       TemplateURL: !Sub '${TemplatesBucketUrl}/nested/notification-service.yaml'
       Parameters:
@@ -496,7 +488,6 @@ Resources:
   AuditServiceStack:
     Type: AWS::CloudFormation::Stack
     Condition: IsAuditServiceEnabled
-    DependsOn: DynamoDBStack
     Properties:
       TemplateURL: !Sub '${TemplatesBucketUrl}/nested/audit-service.yaml'
       Parameters:
@@ -523,14 +514,13 @@ Resources:
   MonitoringStack:
     Type: AWS::CloudFormation::Stack
     Condition: IsMonitoringEnabled
-    DependsOn: DynamoDBStack
     Properties:
       TemplateURL: !Sub '${TemplatesBucketUrl}/nested/monitoring.yaml'
       Parameters:
         ProjectName: !Ref ProjectName
         Environment: !Ref Environment
         AdminEmail: !Ref AdminEmail
-        DynamoDBTableName: !GetAtt DynamoDBStack.Outputs.TableName
+        DynamoDBTableName: !If [IsDynamoDBEnabled, !GetAtt DynamoDBStack.Outputs.TableName, '']
         CloudFrontDistributionId: !If [IsCloudFrontEnabled, !GetAtt CloudFrontStack.Outputs.DistributionId, '']
         MonthlyBudgetLimitUsd: !Ref MonthlyBudgetLimitUsd
         BudgetStopThresholdUsd: !Ref BudgetStopThresholdUsd
