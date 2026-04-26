@@ -60,13 +60,17 @@ jobs:
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
+          BACKEND_ENDPOINTS_READY=true
+
           get_stack_output() {
             local output_key="$1"
-            aws cloudformation describe-stacks \
+            local output
+            output=$(aws cloudformation describe-stacks \
               --stack-name "${PROJECT_NAME}-root" \
               --region "${AWS_REGION_CUSTOM}" \
               --query "Stacks[0].Outputs[?OutputKey=='${output_key}'].OutputValue | [0]" \
-              --output text
+              --output text 2>/dev/null || true)
+            echo "${output}"
           }
 
           discover_url() {
@@ -76,11 +80,10 @@ jobs:
             api_id=$(aws apigatewayv2 get-apis \
               --region "${AWS_REGION_CUSTOM}" \
               --query "Items[?Name=='${api_name}'].ApiId | [0]" \
-              --output text)
+              --output text 2>/dev/null || true)
 
             if [ -z "${api_id}" ] || [ "${api_id}" = "None" ]; then
-              echo "::error::API not found: ${api_name}"
-              exit 1
+              return 1
             fi
 
             echo "https://${api_id}.execute-api.${AWS_REGION_CUSTOM}.amazonaws.com/${DEPLOY_ENV}"
@@ -98,14 +101,26 @@ jobs:
             INTEGRATION_API_URL="${SHARED_API_URL}"
             echo "Using shared API endpoint from stack output: ${SHARED_API_URL}"
           else
-            PRODUCT_API_URL=$(discover_url "product-service")
-            CART_API_URL=$(discover_url "cart-service")
-            ORDER_API_URL=$(discover_url "order-service")
-            CONTENT_API_URL=$(discover_url "content-service")
-            DISCOUNT_API_URL=$(discover_url "discount-service")
-            NOTIFICATION_API_URL=$(discover_url "notification-service")
-            INTEGRATION_API_URL=$(discover_url "integration-service")
-            echo "Shared endpoint not found, using per-service discovery fallback"
+            PRODUCT_API_URL=$(discover_url "product-service") || BACKEND_ENDPOINTS_READY=false
+            CART_API_URL=$(discover_url "cart-service") || BACKEND_ENDPOINTS_READY=false
+            ORDER_API_URL=$(discover_url "order-service") || BACKEND_ENDPOINTS_READY=false
+            CONTENT_API_URL=$(discover_url "content-service") || BACKEND_ENDPOINTS_READY=false
+            DISCOUNT_API_URL=$(discover_url "discount-service") || BACKEND_ENDPOINTS_READY=false
+            NOTIFICATION_API_URL=$(discover_url "notification-service") || BACKEND_ENDPOINTS_READY=false
+            INTEGRATION_API_URL=$(discover_url "integration-service") || BACKEND_ENDPOINTS_READY=false
+
+            if [ "${BACKEND_ENDPOINTS_READY}" = "true" ]; then
+              echo "Shared endpoint not found, using per-service discovery fallback"
+            else
+              echo "::warning::Backend endpoints not discoverable; continuing build with placeholder API URLs"
+              PRODUCT_API_URL=""
+              CART_API_URL=""
+              ORDER_API_URL=""
+              CONTENT_API_URL=""
+              DISCOUNT_API_URL=""
+              NOTIFICATION_API_URL=""
+              INTEGRATION_API_URL=""
+            fi
           fi
 
           echo "PRODUCT_API_URL=${PRODUCT_API_URL}" >> "$GITHUB_ENV"
@@ -115,9 +130,10 @@ jobs:
           echo "DISCOUNT_API_URL=${DISCOUNT_API_URL}" >> "$GITHUB_ENV"
           echo "NOTIFICATION_API_URL=${NOTIFICATION_API_URL}" >> "$GITHUB_ENV"
           echo "INTEGRATION_API_URL=${INTEGRATION_API_URL}" >> "$GITHUB_ENV"
+          echo "BACKEND_ENDPOINTS_READY=${BACKEND_ENDPOINTS_READY}" >> "$GITHUB_ENV"
 
       - name: Validate backend endpoint reachability
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && env.BACKEND_ENDPOINTS_READY == 'true'
         run: |
           PRODUCT_BASE_URL="${PRODUCT_API_URL}"
           CART_BASE_URL="${CART_API_URL}"

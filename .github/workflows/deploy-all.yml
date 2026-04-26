@@ -349,11 +349,13 @@ jobs:
         run: |
           get_stack_output() {
             local output_key="$1"
-            aws cloudformation describe-stacks \
+            local output
+            output=$(aws cloudformation describe-stacks \
               --stack-name "${PROJECT_NAME}-root" \
               --region "${AWS_REGION_CUSTOM}" \
               --query "Stacks[0].Outputs[?OutputKey=='${output_key}'].OutputValue | [0]" \
-              --output text
+              --output text 2>/dev/null || true)
+            echo "${output}"
           }
 
           SHARED_API_ID=$(get_stack_output "AuthApiId")

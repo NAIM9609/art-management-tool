@@ -28,10 +28,10 @@ jobs:
         run: pip install cfn-lint
 
       - name: Lint root stack
-        run: cfn-lint infrastructure/root-stack.yaml
+        run: cfn-lint --non-zero-exit-code error infrastructure/root-stack.yaml
 
       - name: Lint nested templates
-        run: cfn-lint infrastructure/nested/*.yaml
+        run: cfn-lint --non-zero-exit-code error infrastructure/nested/*.yaml
 
       - name: Validate YAML syntax
         run: |

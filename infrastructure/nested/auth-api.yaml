@@ -109,6 +109,7 @@ Resources:
         S3Key: !Ref LambdaCodeS3Key
       Timeout: 30
       MemorySize: 512
+      ReservedConcurrentExecutions: !Ref LambdaReservedConcurrency
       Environment:
         Variables:
           JWT_SECRET: !Ref JwtSecret
